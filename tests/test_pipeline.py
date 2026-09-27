@@ -4,16 +4,20 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError
+from pathlib import Path
 from typing import Any
 
 import pytest
 from pydantic import ValidationError
 
+from parsecraft import pipeline as public_pipeline
+from parsecraft.backends import default_registry
 from parsecraft.backends.errors import BackendError
 from parsecraft.backends.native._common import DependencyUnavailableError
 from parsecraft.backends.protocol import (
     AnalysisResult,
     BackendCapabilities,
+    BackendConfig,
     BackendDescriptor,
     BackendRef,
     BackendResult,
@@ -33,7 +37,18 @@ from parsecraft.ir.models import (
     PassStatus,
     StructuredChunk,
 )
-from parsecraft.pipeline import PageGroup, PassAttempt, PipelineResult, execute
+from parsecraft.pipeline import (
+    MEDIA_TYPES,
+    NoAnalyzerError,
+    PageGroup,
+    PassAttempt,
+    PipelineResult,
+    UnsupportedSourceError,
+    analyze_source,
+    choose_analyzer,
+    execute,
+    media_type_for,
+)
 from parsecraft.pipeline.executor import ALL_PASSES_FAILED_CODE
 from parsecraft.routing import Intent, RoutingConstraints, RoutingError
 
@@ -74,6 +89,21 @@ class _StubFactory:
         if self._create_error is not None:
             raise self._create_error
         return _StubBackend(self.descriptor.name, self.descriptor.capabilities, self._convert_fn, self._calls)
+
+
+class _WorkingAnalyzer:
+    name = "native-a"
+
+    def __init__(self) -> None:
+        self.capabilities = make_descriptor("native-a").capabilities
+
+    @staticmethod
+    def analyze(source: SourceDocument) -> AnalysisResult:
+        return make_analysis(1)
+
+    @staticmethod
+    def convert(request: ConversionRequest) -> BackendResult:
+        raise AssertionError("analyze_source must not convert")
 
 
 # ── grouping: per-page plan → per-range dispatch ───────────────────────────
@@ -388,35 +418,6 @@ def test_empty_signals_propagates_routing_error(monkeypatch: pytest.MonkeyPatch)
         execute(analysis, registry, make_constraints(), make_source(), produced_at=PRODUCED)
 
 
-def make_descriptor(name: str, **kwargs: Any) -> BackendDescriptor:
-    return BackendDescriptor(name=name, version=_VERSION, capabilities=make_caps(**kwargs))
-
-
-def make_caps(
-    formats: tuple[str, ...] = ("text/plain",),
-    *,
-    ranges: bool = True,
-    multi: bool = True,
-    gpu: bool = False,
-    vram: float | None = None,
-    group: str | None = None,
-) -> BackendCapabilities:
-    return BackendCapabilities(
-        supported_formats=list(formats),
-        supports_page_ranges=ranges,
-        supports_multi_page=multi,
-        requires_gpu=gpu,
-        estimated_vram_gb=vram,
-        optional_dependency_group=group,
-    )
-
-
-def make_registry(monkeypatch: pytest.MonkeyPatch) -> BackendRegistry:
-    """Fresh registry with entry-point discovery stubbed out (offline, isolated)."""
-    monkeypatch.setattr("parsecraft.backends.registry.entry_points", lambda **kwargs: [])
-    return BackendRegistry()
-
-
 def add_stub(
     registry: BackendRegistry,
     descriptor: BackendDescriptor,
@@ -462,10 +463,6 @@ def make_constraints(**overrides: Any) -> RoutingConstraints:
     return RoutingConstraints(**base)
 
 
-def make_source(media_type: str | None = "text/plain") -> SourceDocument:
-    return SourceDocument(uri="mem://pipeline", media_type=media_type, content=b"data")
-
-
 # ── model validators ───────────────────────────────────────────────────────
 
 
@@ -508,4 +505,105 @@ def make_failure() -> PassFailure:
         elapsed_s=0.0,
         detail="boom",
         occurred_at=PRODUCED,
+    )
+
+
+# ── public analysis API (parsecraft.pipeline) ──────────────────────────────
+
+
+def test_public_analysis_names_are_exported_from_pipeline() -> None:
+    for name in ("MEDIA_TYPES", "analyze_source", "choose_analyzer", "media_type_for"):
+        assert name in public_pipeline.__all__
+        assert hasattr(public_pipeline, name)
+    assert public_pipeline.analyze_source is analyze_source
+    assert public_pipeline.media_type_for is media_type_for
+
+
+def test_analyze_source_uses_the_canonical_analyzer(monkeypatch: pytest.MonkeyPatch) -> None:
+    registry = make_registry(monkeypatch)
+
+    class Factory:
+        descriptor = make_descriptor("native-a")
+
+        @staticmethod
+        def __call__(config: BackendConfig) -> _WorkingAnalyzer:
+            return _WorkingAnalyzer()
+
+    registry.register("native-a", Factory())
+    analysis = analyze_source(make_source(), registry, media_type="text/plain")
+    assert analysis.page_count == 1
+    assert analysis.source_hash == "0" * 64
+
+
+def test_analyze_source_propagates_backend_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    registry = make_registry(monkeypatch)
+
+    class FailingFactory:
+        descriptor = make_descriptor("native-a")
+
+        @staticmethod
+        def __call__(config: BackendConfig) -> _WorkingAnalyzer:
+            raise BackendError("analyzer exploded")
+
+    registry.register("native-a", FailingFactory())
+    with pytest.raises(BackendError, match="analyzer exploded"):
+        analyze_source(make_source(), registry, media_type="text/plain")
+
+
+def make_registry(monkeypatch: pytest.MonkeyPatch) -> BackendRegistry:
+    """Fresh registry with entry-point discovery stubbed out (offline, isolated)."""
+    monkeypatch.setattr("parsecraft.backends.registry.entry_points", lambda **kwargs: [])
+    return BackendRegistry()
+
+
+def make_source(media_type: str | None = "text/plain") -> SourceDocument:
+    return SourceDocument(uri="mem://pipeline", media_type=media_type, content=b"data")
+
+
+def test_media_type_for_covers_extended_families(tmp_path: Path) -> None:
+    assert media_type_for(tmp_path / "script.py") == "text/plain"
+    assert media_type_for(tmp_path / "scan.PNG") == "image/png"
+    assert media_type_for(tmp_path / "page.tiff") == "image/tiff"
+    with pytest.raises(UnsupportedSourceError, match="unsupported source"):
+        media_type_for(tmp_path / "data.xyz")
+
+
+def test_media_types_values_are_claimed_by_registered_backends() -> None:
+    # Classifier ⇄ capability invariant: no MIME in the table may drift away
+    # from what installed backends actually declare.
+    claimed: set[str] = set()
+    for descriptor in default_registry.list_backends():
+        claimed.update(descriptor.capabilities.supported_formats)
+    unclaimed = set(MEDIA_TYPES.values()) - claimed
+    assert unclaimed == set()
+
+
+def test_choose_analyzer_prefers_native_then_name() -> None:
+    native = make_descriptor("native-z")
+    other = make_descriptor("aaa-first")
+    assert choose_analyzer([other, native], "text/plain") is native
+    with pytest.raises(NoAnalyzerError, match="no installed backend can analyze"):
+        choose_analyzer([native], "application/pdf")
+
+
+def make_descriptor(name: str, **kwargs: Any) -> BackendDescriptor:
+    return BackendDescriptor(name=name, version=_VERSION, capabilities=make_caps(**kwargs))
+
+
+def make_caps(
+    formats: tuple[str, ...] = ("text/plain",),
+    *,
+    ranges: bool = True,
+    multi: bool = True,
+    gpu: bool = False,
+    vram: float | None = None,
+    group: str | None = None,
+) -> BackendCapabilities:
+    return BackendCapabilities(
+        supported_formats=list(formats),
+        supports_page_ranges=ranges,
+        supports_multi_page=multi,
+        requires_gpu=gpu,
+        estimated_vram_gb=vram,
+        optional_dependency_group=group,
     )

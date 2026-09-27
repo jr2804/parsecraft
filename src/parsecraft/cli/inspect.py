@@ -7,9 +7,17 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict
 
 from parsecraft.backends import default_registry
+from parsecraft.backends.errors import BackendError
 from parsecraft.backends.protocol import AnalysisResult
 from parsecraft.backends.registry import BackendRegistry
 from parsecraft.cli import convert
+from parsecraft.pipeline.analysis import (
+    NoAnalyzerError,
+    UnsupportedSourceError,
+    analyze_source,
+    choose_analyzer,
+    media_type_for,
+)
 from parsecraft.routing import RoutingError, RoutingPlan, plan_route
 
 
@@ -32,9 +40,18 @@ def inspect_source(
     allow_ocr: bool | None = None,
 ) -> InspectPreview:
     """Analyze a source and preview its route without converting content."""
-    media_type = convert.media_type_for(path)
+    try:
+        media_type = media_type_for(path)
+    except UnsupportedSourceError as exc:
+        raise convert.ConvertError(str(exc), exit_code=2) from exc
     source = convert.read_source(path, media_type)
-    analysis = convert.analyze(registry, source, media_type)
+    try:
+        analyzer = choose_analyzer(registry.list_backends(), media_type)
+        analysis = analyze_source(source, registry, media_type=media_type)
+    except NoAnalyzerError as exc:
+        raise convert.ConvertError(str(exc), exit_code=2) from exc
+    except BackendError as exc:
+        raise convert.ConvertError(f"analysis with {analyzer.name!r} failed: {exc}") from exc
     if not analysis.signals:
         return InspectPreview(media_type=media_type, analysis=analysis, routing_error="analysis produced no page signals")
     constraints = convert.build_constraints(media_type, max_passes=max_passes, allow_ocr=allow_ocr)

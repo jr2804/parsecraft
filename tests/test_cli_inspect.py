@@ -12,6 +12,7 @@ from typer.testing import CliRunner, Result
 
 import parsecraft.cli.convert as convert_module
 from parsecraft.backends import BackendRegistry
+from parsecraft.backends.errors import BackendError
 from parsecraft.backends.protocol import (
     AnalysisResult,
     BackendCapabilities,
@@ -168,12 +169,6 @@ def test_cli_inspect_no_ocr(tmp_path: Path, offline_probe: None, monkeypatch: py
     assert result.exit_code == 0
 
 
-def _source_file(tmp_path: Path, name: str = "doc.txt", text: str = _LONG_TEXT) -> Path:
-    path = tmp_path / name
-    path.write_text(text, encoding="utf-8")
-    return path
-
-
 def test_cli_inspect_unsupported_suffix(tmp_path: Path, offline_probe: None, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(commands_module, "default_registry", _registry())
     path = tmp_path / "doc.xyz"
@@ -187,6 +182,43 @@ def _registry(**options: object) -> BackendRegistry:
     registry = BackendRegistry()
     registry.register(_descriptor().name, _StubFactory(_descriptor(), **options))
     return registry
+
+
+def test_cli_inspect_analysis_failure_maps_to_cli_error(tmp_path: Path, offline_probe: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    registry = BackendRegistry()
+
+    class FailingFactory:
+        descriptor = _descriptor()
+
+        @staticmethod
+        def __call__(config: BackendConfig) -> DocumentBackend:
+            raise BackendError("analysis exploded")
+
+    registry.register("native-text", FailingFactory())
+    monkeypatch.setattr(commands_module, "default_registry", registry)
+    result = runner.invoke(app, ["inspect", str(_source_file(tmp_path))])
+    assert result.exit_code == 1
+    assert "analysis with 'native-text' failed" in _text(result)
+
+
+def _source_file(tmp_path: Path, name: str = "doc.txt", text: str = _LONG_TEXT) -> Path:
+    path = tmp_path / name
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_cli_inspect_unclaimed_media_type_is_usage_error(tmp_path: Path, offline_probe: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Supported suffix, but nothing here claims image/png → NoAnalyzerError
+    # must map to exit 2 with the verbatim message.
+    monkeypatch.setattr("parsecraft.backends.registry.entry_points", lambda **kwargs: [])
+    registry = BackendRegistry()
+    registry.register(_descriptor().name, _StubFactory(_descriptor()))
+    monkeypatch.setattr(commands_module, "default_registry", registry)
+    path = tmp_path / "scan.png"
+    path.write_bytes(b"\x89PNG\r\n\x1a\n")
+    result = runner.invoke(app, ["inspect", str(path)])
+    assert result.exit_code == 2
+    assert "no installed backend can analyze image/png" in _text(result)
 
 
 def _descriptor(name: str = "native-text", *, group: str | None = None) -> BackendDescriptor:

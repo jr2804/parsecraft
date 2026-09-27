@@ -27,6 +27,7 @@ from parsecraft.backends.protocol import (
 from parsecraft.cli.app import app
 from parsecraft.environment import EnvironmentInfo
 from parsecraft.ir import ChunkKind, PageResult, PageSignal, StructuredChunk
+from parsecraft.pipeline.analysis import NoAnalyzerError, UnsupportedSourceError, choose_analyzer, media_type_for
 
 _LONG_TEXT = "A paragraph comfortably longer than the forty character routing threshold."
 
@@ -91,11 +92,11 @@ class _StubFactory:
 
 
 def test_media_type_for_supported_and_unsupported(tmp_path: Path) -> None:
-    assert convert_module.media_type_for(tmp_path / "a.TXT") == "text/plain"
-    assert convert_module.media_type_for(tmp_path / "a.md") == "text/markdown"
-    with pytest.raises(convert_module.ConvertError) as error:
-        convert_module.media_type_for(tmp_path / "a.xyz")
-    assert error.value.exit_code == 2
+    assert media_type_for(tmp_path / "a.TXT") == "text/plain"
+    assert media_type_for(tmp_path / "a.md") == "text/markdown"
+    with pytest.raises(UnsupportedSourceError) as error:
+        media_type_for(tmp_path / "a.xyz")
+    assert "unsupported source" in str(error.value)
 
 
 def test_read_source_reads_bytes_and_reports_missing(tmp_path: Path) -> None:
@@ -115,10 +116,10 @@ def test_analysis_backend_prefers_native_then_name_and_errors() -> None:
         _descriptor("native-text", ("text/plain",)),
         _descriptor("native-html", ("text/html",)),
     ]
-    assert convert_module.analysis_backend(descriptors, "text/plain").name == "native-text"
-    with pytest.raises(convert_module.ConvertError) as error:
-        convert_module.analysis_backend(descriptors, "application/pdf")
-    assert error.value.exit_code == 2
+    assert choose_analyzer(descriptors, "text/plain").name == "native-text"
+    with pytest.raises(NoAnalyzerError) as error:
+        choose_analyzer(descriptors, "application/pdf")
+    assert "no installed backend can analyze" in str(error.value)
 
 
 def test_build_constraints_from_probe(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -214,6 +215,18 @@ def test_convert_analysis_failure_fails(tmp_path: Path, registry: BackendRegistr
     result = runner.invoke(app, ["convert", str(_source_file(tmp_path))])
     assert result.exit_code == 1
     assert "analysis with 'native-text' failed" in _text(result)
+
+
+def test_convert_unclaimed_media_type_is_usage_error(tmp_path: Path, registry: BackendRegistry, monkeypatch: pytest.MonkeyPatch) -> None:
+    # PNG is a supported suffix, but no backend here claims image/png:
+    # the public NoAnalyzerError must map to exit 2 with the verbatim message.
+    monkeypatch.setattr("parsecraft.backends.registry.entry_points", lambda **kwargs: [])  # isolate: no real backends
+    path = tmp_path / "scan.png"
+    path.write_bytes(b"\x89PNG\r\n\x1a\n")
+    _register(registry, _descriptor("native-text", ("text/plain",)))
+    result = runner.invoke(app, ["convert", str(path)])
+    assert result.exit_code == 2
+    assert "no installed backend can analyze image/png" in _text(result)
 
 
 def _text(result: Result) -> str:

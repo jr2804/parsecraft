@@ -1,7 +1,7 @@
 """Run backend benchmarks over local documents (offline, deterministic).
 
 Each document is analyzed with the canonical analyzer (same deterministic
-rule as ``cli.convert.analysis_backend``: native first, then name order),
+rule as ``pipeline.analysis.choose_analyzer``: native first, then name order),
 then every eligible backend converts it once — measured with wall time,
 stdlib ``tracemalloc`` peak, chunk census, typed failures, and a
 text-coverage proxy against the analyzer's ``text_chars``.
@@ -33,8 +33,8 @@ from parsecraft.benchmark.models import (
     BenchmarkReport,
     BenchmarkSkip,
 )
-from parsecraft.cli import convert as cli_convert
 from parsecraft.ir.models import ChunkKind, FailureCode, PageRange
+from parsecraft.pipeline.analysis import MEDIA_TYPES, choose_analyzer
 from parsecraft.routing import RoutingConstraints, RoutingError, RoutingJudge, plan_route
 from parsecraft.routing.rules import is_hard_eligible
 
@@ -76,7 +76,7 @@ def _benchmark_document(
     document = path.name
     if not path.is_file():
         return [], BenchmarkSkip(document=document, reason="file not found")
-    media_type = cli_convert.MEDIA_TYPES.get(path.suffix.lower())
+    media_type = MEDIA_TYPES.get(path.suffix.lower())
     if media_type is None:
         return [], BenchmarkSkip(document=document, reason=f"unsupported source suffix {path.suffix!r}")
     try:
@@ -114,7 +114,7 @@ def _benchmark_document(
 
 
 def _analyze(source: SourceDocument, eligible: list[BackendDescriptor], registry: BackendRegistry) -> AnalysisResult:
-    descriptor = cli_convert.analysis_backend(eligible, source.media_type or "")
+    descriptor = choose_analyzer(eligible, source.media_type or "")
     backend = registry.create(descriptor.name, BackendConfig(name=descriptor.name))
     try:
         return backend.analyze(source)
