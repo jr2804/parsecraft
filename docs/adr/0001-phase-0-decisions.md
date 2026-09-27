@@ -103,7 +103,7 @@ capability at import time; enforced by an offline import test.
 
 | Profile | Contents |
 |---|---|
-| `core` | pydantic v2, pydantic-settings, platformdirs, tomlkit, charset-normalizer, **markdown-it-py** (see §11). No HTTP. |
+| `core` | pydantic v2, pydantic-settings, platformdirs, tomlkit, charset-normalizer, typer (CLI), **markdown-it-py** (see §11). No HTTP. |
 | `download` | `huggingface-hub` (all model-asset networking lives here) |
 | `web` | URL fetching/extraction (`httpx`, `trafilatura`) |
 | `pdf-lite` | `pymupdf` |

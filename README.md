@@ -77,8 +77,9 @@ source document → backend (analyze / convert) → typed IR → Markdown projec
   silently dropping a page.
 
 Continue with the [architecture overview](https://jr2804.github.io/parsecraft/architecture/overview/),
-the [IR model](https://jr2804.github.io/parsecraft/architecture/ir/), and the
-[backend authoring guide](https://jr2804.github.io/parsecraft/guides/backend-authoring/).
+the [IR model](https://jr2804.github.io/parsecraft/architecture/ir/), the
+[backend catalog](https://jr2804.github.io/parsecraft/reference/backends/), and
+the [backend authoring guide](https://jr2804.github.io/parsecraft/guides/backend-authoring/).
 
 ## Documentation
 
@@ -87,6 +88,7 @@ the [IR model](https://jr2804.github.io/parsecraft/architecture/ir/), and the
 - [Architecture](https://jr2804.github.io/parsecraft/architecture/overview/)
 - [Backends](https://jr2804.github.io/parsecraft/architecture/backends/)
 - [Write a backend](https://jr2804.github.io/parsecraft/guides/backend-authoring/)
+- [Backend catalog](https://jr2804.github.io/parsecraft/reference/backends/)
 - [CLI reference](https://jr2804.github.io/parsecraft/reference/cli/)
 - [API reference](https://jr2804.github.io/parsecraft/reference/api/)
 - [Development setup](https://jr2804.github.io/parsecraft/development/setup/)

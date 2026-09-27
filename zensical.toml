@@ -26,6 +26,7 @@ nav = [
   ] },
   { "Reference" = [
     { "CLI" = "reference/cli.md" },
+    { "Backends" = "reference/backends.md" },
     { "API" = "reference/api.md" },
   ] },
   { "Development" = [

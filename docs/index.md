@@ -17,6 +17,7 @@ hide:
 - [Backends](architecture/backends.md)
 - [Write a backend](guides/backend-authoring.md)
 - [CLI reference](reference/cli.md)
+- [Backend catalog](reference/backends.md)
 - [API reference](reference/api.md)
 - [Development setup](development/setup.md)
 - [CI and CD](development/ci-cd.md)

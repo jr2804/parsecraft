@@ -94,3 +94,9 @@ optional `ModelAssetDescriptor` (model id, revision, licences, acceptance flag,
 size, quantization).
 
 The registry `name` must match `^[a-z0-9][a-z0-9_-]*$`.
+
+## Related pages
+
+- [Backend catalog](../reference/backends.md) — in-package and external
+  backends, licences, and route selection.
+- [Write a backend](../guides/backend-authoring.md) — register your own.
