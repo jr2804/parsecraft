@@ -30,6 +30,7 @@ download = ["huggingface-hub>=0.34"]
 web = ["httpx>=0.27"]
 pdf-lite = ["pypdf>=5"]
 pdf = ["pymupdf>=1.24"]
+liteparse = ["liteparse>=2.14"]
 vllm = ["vllm>=0.11"]
 # OCR extras intentionally exclude PyMuPDF (AGPL): PDF input additionally needs
 # `parsecraft[pdf]`, keeping the copyleft choice explicit (ADR-0003).
@@ -71,6 +72,7 @@ native-text = "parsecraft.backends.native.text:factory"
 native-markdown = "parsecraft.backends.native.markdown:factory"
 native-html = "parsecraft.backends.native.html:factory"
 native-pdf = "parsecraft.backends.native.pdf:factory"
+liteparse = "parsecraft.backends.liteparse.liteparse:factory"
 ocr-ovis = "parsecraft.backends.ocr.ovis:factory"
 ocr-tele = "parsecraft.backends.ocr.tele:factory"
 ocr-unlimited = "parsecraft.backends.ocr.unlimited:factory"
