@@ -6,6 +6,7 @@
   <a href="#"><img alt="Python 3.13 | 3.14+" src="https://img.shields.io/badge/python-3.13%20%7C%203.14%2B-3776ab?logo=python"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
   <a href="https://github.com/jr2804/parsecraft/actions"><img alt="CI" src="https://github.com/jr2804/parsecraft/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://pypi.org/project/parsecraft/"><img alt="PyPI" src="https://img.shields.io/pypi/v/parsecraft.svg"></a>
 </p>
 
 ParseCraft turns a document into a typed intermediate representation (IR) of
@@ -25,16 +26,25 @@ engine, and concrete OCR/VLM backends arrive in later phases.
 | CLI (`parsecraft`, `parsecraft backends`) | Implemented |
 | Entry-point backend discovery | Implemented |
 | Document adapters, config engine, OCR/VLM backends | Planned |
-| PyPI distribution | Not published |
+| PyPI distribution | Published — first release `2026.9.2` |
 
 ## Requirements
 
 - Python 3.13 (GIL only — the free-threaded `3.13t` build is not supported)
 - Python 3.14 or newer, including free-threaded builds (`3.14t`)
-- [uv](https://docs.astral.sh/uv/) for dependency management
-- [mise](https://mise.jdx.dev/) for the project task runner
+- [uv](https://docs.astral.sh/uv/) (recommended) or pip to install the package
+- [mise](https://mise.jdx.dev/) for the project task runner (development only)
 
 ## Quick Start
+
+Install the released package:
+
+```bash
+uv add parsecraft      # or: pip install parsecraft
+uv run parsecraft backends
+```
+
+Or work from a source checkout:
 
 ```bash
 git clone https://github.com/jr2804/parsecraft.git

@@ -26,6 +26,10 @@ one-file-owns-each-definition pattern in `.agents/FILES.md`.
 
 ## Local Contracts
 
+- **No content tabs.** `mise run format-md` runs rumdl with `flavor = "gfm"`,
+  which reads `===` tab bodies as indented code and de-indents them, breaking
+  pymdownx tab grouping. Present alternatives as a lead-in sentence plus a
+  fenced block instead.
 - **README embedding.** `docs/index.md` includes the repository README via
   `--8<-- "README.md"` (pymdownx.snippets, base path = repo root,
   `check_paths = true`). Keep the directive working. Links in README that must

@@ -56,10 +56,10 @@ Rejected alternatives with reasons:
 
 Consequences of sign-off:
 
-1. **Done 2026-09-25:** private GitHub repo `github.com/jr2804/parsecraft`
-   created (user instruction changed the host from Codeberg to GitHub).
-2. Publish minimal `0.0.1` to claim the PyPI name (no pre-registration exists) —
-   **still awaiting explicit approval**; nothing published yet.
+1. **Done 2026-09-25:** GitHub repo `github.com/jr2804/parsecraft` created; made
+   public at release time (ADR-0002).
+2. **Done 2026-09-27:** first release `2026.9.2` published to PyPI, reserving
+   the distribution name (CalVer, not `0.0.1`).
 
 **CLI:** exactly one binary, `parsecraft`. No abbreviation (`pc` collides,
 `pcraft` unguessable); short-form ergonomics via documented shell alias if ever

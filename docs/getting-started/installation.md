@@ -18,11 +18,27 @@ title: Installation
 | CPython 3.14 | Supported, including the free-threaded `3.14t` build (CI: ubuntu, macos, windows) |
 | CPython 3.15-dev | Best-effort; CI allows this job to fail |
 
+## From PyPI
+
+First release: `2026.9.2`. Add the dependency with uv:
+
+```bash
+uv add parsecraft
+uv run parsecraft backends
+```
+
+Or with pip:
+
+```bash
+pip install parsecraft
+parsecraft backends
+```
+
+Current version on [PyPI](https://pypi.org/project/parsecraft/).
+
 ## From source
 
-ParseCraft is not published to PyPI yet. Install it from the repository.
-
-=== "uv"
+Use a checkout when contributing or testing unreleased changes. Clone and sync:
 
 ```bash
 git clone https://github.com/jr2804/parsecraft.git
@@ -31,7 +47,7 @@ uv sync --dev
 uv run parsecraft backends
 ```
 
-=== "mise"
+Or use mise, which also installs the pinned tool versions:
 
 ```bash
 git clone https://github.com/jr2804/parsecraft.git
