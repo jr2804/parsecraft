@@ -40,6 +40,8 @@ _SCRIPT = textwrap.dedent(
     import parsecraft.environment
     import parsecraft.environment.constraints
     import parsecraft.environment.probe
+    import parsecraft.providers
+    import parsecraft.providers.ollaya
 
     heavy = [
         m

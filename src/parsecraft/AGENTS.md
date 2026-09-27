@@ -24,6 +24,8 @@ Markdown as a deterministic projection.
   aggregate (see `pipeline/AGENTS.md`).
 - `environment/` — host probe (installed extras, GPU/VRAM) → `RoutingConstraints`
   bridge (see `environment/AGENTS.md`).
+- `providers/` — optional `RoutingJudge` provider implementations, resolved from a
+  `provider/model` string and imported lazily (see `providers/AGENTS.md`).
 - `cli/` — Typer CLI; commands are plain functions in `commands.py`,
   registered in `app.py` (never decorators in `commands.py`, never import
   `app` there — circular import breaks clean-sort).
@@ -52,3 +54,4 @@ Markdown as a deterministic projection.
 - `routing/AGENTS.md` — routing/auto-mode rules
 - `pipeline/AGENTS.md` — executor rules
 - `environment/AGENTS.md` — environment-probe rules
+- `providers/AGENTS.md` — routing-judge provider rules
