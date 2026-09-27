@@ -166,11 +166,38 @@ Offline mode comes from the detected host (`PARSECRAFT_OFFLINE`);
 `list`/`path`/`remove`/`clean` never touch the network.
 
 !!! note "Pinned manifests"
-    `models install` needs an `AssetPin` (files + SHA-256). The pin catalogue is
-    not published yet, so the default provider refuses with a typed error
-    (exit `1`) instead of guessing checksums; real installs land with bead
-    `pc-4u7.22`. Downloading also requires the `download` extra — without it the
-    error names the extra and the install command.
+    `models install` builds the `AssetPin` from the descriptor's pinned
+    `file_pins` (repo path + SHA-256 per file) and verifies every file through
+    `AssetManager.ensure`. A descriptor with no `file_pins` (a non-model
+    backend) produces a typed "no pinned manifest" error (exit `1`).
+    Downloading also requires the `download` extra — without it the error names
+    the extra and the install command.
+
+### `parsecraft benchmark`
+
+Benchmark every eligible backend over local documents and print a
+deterministic report (the harness omits wall-clock metadata).
+
+| Option | Default | Behaviour |
+| ------ | ------- | --------- |
+| `--json` | off | Print the JSON report instead of Markdown |
+| `--markdown` | on | Force the Markdown report (mutually exclusive with `--json`) |
+| `--output`, `-o DIR` | unset | Also write `benchmark.json` and `benchmark.md` into `DIR` |
+| `--max-passes N` | `1` | Fallback passes per page group |
+| `--no-ocr` | off | Forbid OCR backends |
+
+Documents are read locally; a missing or unsupported path becomes a `Skip`
+record rather than an error. Constraints come from the detected host
+(`constraints_from_environment`) with no format restriction, because the
+harness filters candidates by each document's own media type.
+
+```text
+$ parsecraft benchmark tests/downloads/report.txt
+# ParseCraft benchmark report
+
+package: `2026.9.9`
+...
+```
 
 ### `parsecraft config`
 
@@ -246,9 +273,10 @@ key.
 ## Source
 
 - `src/parsecraft/cli/app.py` — app, callback, command and group registration
-- `src/parsecraft/cli/commands.py` — `backends`, `convert`, `inspect`, `models_*`, `config_*`
+- `src/parsecraft/cli/commands.py` — `backends`, `convert`, `inspect`, `benchmark`, `models_*`, `config_*`
 - `src/parsecraft/cli/convert.py` — `convert_source`, `PreferredBackendJudge`, rendering
 - `src/parsecraft/cli/inspect.py` — `inspect_source`, preview rendering
+- `src/parsecraft/cli/benchmark.py` — harness wrapper + report writers
 - `src/parsecraft/cli/models.py` — asset catalogue, `PinProvider`, cache management
 - `src/parsecraft/cli/errors.py` — `CliError`
 - `src/parsecraft/cli/args.py` — `JsonFlag`, `ConfigFileOption`, `PARSECRAFT_JSON`

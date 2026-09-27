@@ -10,6 +10,7 @@ import typer
 
 from parsecraft.backends import default_registry
 from parsecraft.cli import args, config
+from parsecraft.cli import benchmark as benchmark_module
 from parsecraft.cli import inspect as inspect_module
 from parsecraft.cli import models as models_module
 from parsecraft.cli.convert import ConvertError, convert_source, render
@@ -179,3 +180,27 @@ def models_clean() -> None:
     """Delete every cached model revision."""
     removed = models_module.clean(models_module.manager())
     typer.echo(f"removed {removed} cached revision(s)")
+
+
+def benchmark(
+    paths: Annotated[list[Path], typer.Argument(exists=True, dir_okay=False, readable=True, help="Local documents to benchmark")],
+    *,
+    as_json: args.JsonFlag = False,
+    markdown: Annotated[bool, typer.Option("--markdown", help="Force the Markdown report (the default)")] = False,
+    output: Annotated[Path | None, typer.Option("--output", "-o", file_okay=False, help="Directory for benchmark.json and benchmark.md")] = None,
+    max_passes: Annotated[int, typer.Option("--max-passes", min=1, help="Fallback passes per page group")] = 1,
+    no_ocr: Annotated[bool, typer.Option("--no-ocr", help="Forbid OCR backends")] = False,
+) -> None:
+    """Benchmark eligible backends over local documents (offline)."""
+    if as_json and markdown:
+        typer.echo("error: --json and --markdown are mutually exclusive", err=True)
+        raise typer.Exit(code=2)
+    try:
+        report = benchmark_module.benchmark_report(paths, max_passes=max_passes, allow_ocr=False if no_ocr else None)
+        written = benchmark_module.write_reports(report, output) if output is not None else []
+    except CliError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=exc.exit_code) from exc
+    for path in written:
+        typer.echo(f"wrote {path}", err=True)
+    typer.echo(benchmark_module.render(report, as_json=as_json))

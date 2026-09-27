@@ -23,6 +23,7 @@ app = typer.Typer(
 app.command()(commands.backends)
 app.command()(commands.convert)
 app.command()(commands.inspect)
+app.command()(commands.benchmark)
 
 # `models` is a command group over the pinned model-asset cache.
 models_app = typer.Typer(

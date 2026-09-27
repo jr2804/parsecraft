@@ -123,7 +123,7 @@ def install(
         if not accept_license:
             raise CliError(f"license {descriptor.model_license!r} requires acceptance — re-run with --accept-license", exit_code=2)
         asset_manager.accept_license(descriptor)
-    pin = (_missing_pin if provider is None else provider)(descriptor)
+    pin = (default_pin_provider if provider is None else provider)(descriptor)
     try:
         return asset_manager.ensure(pin)
     except DownloaderUnavailableError as exc:
@@ -134,9 +134,15 @@ def install(
         raise CliError(str(exc)) from exc
 
 
-def _missing_pin(descriptor: ModelAssetDescriptor) -> AssetPin:
-    """Refuse to invent a manifest; the pin catalogue is bead pc-4u7.22."""
-    raise CliError(f"no pinned manifest for {descriptor.model_id!r} yet — the asset pin catalogue is not published (bead pc-4u7.22)")
+def default_pin_provider(descriptor: ModelAssetDescriptor) -> AssetPin:
+    """Build the integrity pin from the descriptor's pinned file manifest."""
+    if not descriptor.file_pins:
+        raise CliError(f"no pinned manifest for {descriptor.model_id!r} — this asset declares no file_pins")
+    return AssetPin(
+        descriptor=descriptor,
+        filenames=[file_pin.path for file_pin in descriptor.file_pins],
+        expected_sha256={file_pin.path: file_pin.sha256 for file_pin in descriptor.file_pins},
+    )
 
 
 def remove(descriptor: ModelAssetDescriptor, asset_manager: AssetManager) -> list[str]:

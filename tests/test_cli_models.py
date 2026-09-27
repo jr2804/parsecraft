@@ -20,7 +20,7 @@ from parsecraft.assets import (
     slug,
 )
 from parsecraft.backends import BackendRegistry
-from parsecraft.backends.protocol import BackendCapabilities, BackendConfig, BackendDescriptor, DocumentBackend, ModelAssetDescriptor
+from parsecraft.backends.protocol import AssetFilePin, BackendCapabilities, BackendConfig, BackendDescriptor, DocumentBackend, ModelAssetDescriptor
 from parsecraft.cli.app import app
 from parsecraft.environment import EnvironmentInfo
 
@@ -107,9 +107,25 @@ def test_install_rejects_offline(tmp_path: Path) -> None:
         models_module.install(_asset(), _manager(tmp_path, offline=True), confirmed=True, accept_license=False)
 
 
-def test_install_default_provider_refuses_to_fabricate(tmp_path: Path) -> None:
-    with pytest.raises(models_module.CliError, match="pc-4u7.22"):
+def test_install_default_provider_refuses_without_file_pins(tmp_path: Path) -> None:
+    with pytest.raises(models_module.CliError, match="no pinned manifest"):
         models_module.install(_asset(), _manager(tmp_path), confirmed=True, accept_license=False)
+
+
+def test_default_pin_provider_builds_from_file_pins() -> None:
+    asset = _asset(file_pins=(AssetFilePin(path="weights.bin", sha256=DIGEST, size=len(CONTENT)),))
+    pin = models_module.default_pin_provider(asset)
+    assert pin.filenames == ["weights.bin"]
+    assert pin.expected_sha256["weights.bin"] == DIGEST
+    with pytest.raises(models_module.CliError, match="no pinned manifest"):
+        models_module.default_pin_provider(_asset())
+
+
+def test_install_performs_real_pinned_download(tmp_path: Path) -> None:
+    asset = _asset(file_pins=(AssetFilePin(path="weights.bin", sha256=DIGEST, size=len(CONTENT)),))
+    paths = models_module.install(asset, _manager(tmp_path), confirmed=True, accept_license=False)
+    assert Path(paths[0]).is_file()
+    assert Path(paths[0]).read_bytes() == CONTENT
 
 
 def test_install_license_gate_and_success(tmp_path: Path) -> None:
@@ -300,6 +316,7 @@ def _asset(
     size_bytes: int | None = None,
     quantization: str | None = None,
     estimated_vram_gb: float | None = 1.0,
+    file_pins: tuple[AssetFilePin, ...] = (),
 ) -> ModelAssetDescriptor:
     return ModelAssetDescriptor(
         model_id=model_id,
@@ -311,6 +328,7 @@ def _asset(
         size_bytes=size_bytes,
         quantization=quantization,
         estimated_vram_gb=estimated_vram_gb,
+        file_pins=file_pins,
     )
 
 
