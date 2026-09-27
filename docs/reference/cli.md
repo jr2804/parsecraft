@@ -116,12 +116,10 @@ Exit codes: `0` success, `1` analysis or routing failure, `2` usage error
 (unsupported suffix, missing file, `--no-auto` without `--backend`, or a
 `--backend` that is not eligible for the source).
 
-!!! note "Format vocabulary"
-    Eligibility matches `RoutingConstraints.formats` against each backend's
-    `supported_formats`. The built-in native backends declare MIME types
-    (`text/plain`, `application/pdf`, ...), while the OCR descriptors declare
-    `pdf`/`png`/`jpeg`, so a scanned PDF cannot currently route to OCR through
-    `--auto`; the native path is unaffected.
+Eligibility matches `RoutingConstraints.formats` against each backend's
+`supported_formats`; both declare MIME media types (`text/plain`,
+`application/pdf`, `image/jpeg`, `image/png`), so a scanned PDF can route to
+OCR and a digital PDF to `native-pdf`.
 
 ### `parsecraft config`
 

@@ -38,7 +38,12 @@ QIANFAN_REVISION = "623bf5d20d446abdb36606aa4547cd0c18886fe5"
 QIANFAN_VRAM_GB = 4.0
 QIANFAN_EXTRA = "ocr-qianfan"
 
-OCR_FORMATS: tuple[str, ...] = ("jpeg", "pdf", "png")
+#: One MIME vocabulary for eligibility (native backends declare MIME too):
+#: `RoutingConstraints.formats` carries the source's media type, so extensions
+#: here would exclude every OCR backend from PDF/image sources (found while
+#: wiring `convert --auto`). Exactly the payloads `_common.count_pages` /
+#: `rasterize_page` accept — tiff/webp stay out until the impls handle them.
+OCR_FORMATS: tuple[str, ...] = ("application/pdf", "image/jpeg", "image/png")
 
 OVIS_ASSET = ModelAssetDescriptor(
     model_id=OVIS_MODEL_ID,

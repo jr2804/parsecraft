@@ -47,7 +47,13 @@ on 2026-09-27). The adapters are implemented but **not yet benchmarked** — GPU
 weights are pending. Each backend has its own extra
 (`pip install "parsecraft[ocr-ovis]"`), pulling `transformers`, `torch`,
 `pillow`, and `accelerate`. The OCR extras exclude PyMuPDF, so **PDF input
-additionally needs `parsecraft[pdf]`** (AGPL — see the warning above).
+additionally needs `parsecraft[pdf]`** (AGPL — see the warning above). All OCR
+backends accept `application/pdf`, `image/jpeg`, and `image/png`.
+
+Every backend declares `supported_formats` as **MIME types** — one
+vocabulary shared with `RoutingConstraints.formats`, which is built from the
+source's media type. The OCR backends declare `application/pdf`,
+`image/png`, and `image/jpeg` (the payloads their page-access layer accepts).
 
 | Backend | Extra | Input | Model / licence | Strengths | Weaknesses | Availability |
 | ------- | ----- | ----- | --------------- | --------- | ---------- | ------------ |

@@ -337,7 +337,7 @@ def test_factory_descriptor_matches_the_plan_table(
     assert capabilities.optional_dependency_group == extra
     assert capabilities.supports_page_ranges is True
     assert capabilities.supports_multi_page is multi_page
-    assert capabilities.supported_formats == ["jpeg", "pdf", "png"]
+    assert capabilities.supported_formats == ["application/pdf", "image/jpeg", "image/png"]
     assert module.DESCRIPTOR is descriptor
 
 
@@ -477,6 +477,14 @@ def test_count_pages_is_one_for_images_and_uses_the_pdf_engine(pdf_engine: _Pymu
 def test_count_pages_rejects_unsupported_payload() -> None:
     with pytest.raises(BackendError, match="expected a PDF or a PNG/JPEG image"):
         _common.count_pages(SourceDocument(uri="file:///doc.txt", content=b"plain text"))
+
+
+def test_declared_formats_match_the_page_access_layer() -> None:
+    """Single MIME vocabulary: declared == what count_pages/rasterize accept."""
+    assert set(_models.OCR_FORMATS) == {"application/pdf", "image/jpeg", "image/png"}
+    jpeg = SourceDocument(uri="file:///scan.jpg", content=b"\xff\xd8\xff\xe0jpeg-payload")
+    assert _common.count_pages(jpeg) == 1  # JPEG magic, no PDF engine needed
+    assert _common.rasterize_page(jpeg, 1) == jpeg.content
 
 
 def test_rasterize_page_passes_images_through_and_maps_pdf_indices(pdf_engine: _PymupdfStub) -> None:
