@@ -33,10 +33,38 @@ pdf = ["pymupdf>=1.24"]
 vllm = ["vllm>=0.11"]
 # OCR extras intentionally exclude PyMuPDF (AGPL): PDF input additionally needs
 # `parsecraft[pdf]`, keeping the copyleft choice explicit (ADR-0003).
-ocr-ovis = ["transformers>=4.56", "torch>=2.5", "pillow>=10.4", "accelerate>=0.34"]
-ocr-tele = ["transformers>=4.56", "torch>=2.5", "pillow>=10.4", "accelerate>=0.34"]
-ocr-unlimited = ["transformers>=4.56", "torch>=2.5", "pillow>=10.4", "accelerate>=0.34"]
-ocr-qianfan = ["transformers>=4.56", "torch>=2.5", "pillow>=10.4", "accelerate>=0.34"]
+#
+# Pins are GPU-smoke-verified (RTX A2000 8 GB, 2026-09-27, `mise run test-gpu`).
+# The model cards pin DIFFERENT transformers majors, so the OCR extras are
+# MUTUALLY EXCLUSIVE — install exactly one per environment; a combined install
+# (e.g. `[ocr-ovis,ocr-tele]`) cannot resolve. For GPU use, install torch and
+# torchvision from the PyTorch CUDA index first (they are CPU-only on PyPI for
+# Windows). `vllm` paths are Linux/WSL2-only and were not validated here.
+ocr-ovis = ["transformers>=5.0", "torch>=2.5", "torchvision", "pillow>=10.4", "accelerate>=0.34"]
+ocr-qianfan = ["transformers>=5.0", "torch>=2.5", "torchvision", "pillow>=10.4", "accelerate>=0.34"]
+ocr-tele = ["transformers==4.57.1", "torch>=2.5", "pillow>=10.4", "accelerate>=0.34"]
+ocr-unlimited = [
+    "transformers==4.57.1",
+    "torch>=2.5",
+    "pillow>=10.4",
+    "accelerate>=0.34",
+    "einops",
+    "addict",
+    "easydict",
+    "matplotlib",
+    "requests",
+]
+
+[tool.uv]
+# The OCR extras pin different transformers majors (per model card), so they are
+# mutually exclusive rather than jointly installable — declare it so `uv` can
+# still resolve a universal lock.
+conflicts = [
+  [{ extra = "ocr-ovis" }, { extra = "ocr-tele" }],
+  [{ extra = "ocr-ovis" }, { extra = "ocr-unlimited" }],
+  [{ extra = "ocr-qianfan" }, { extra = "ocr-tele" }],
+  [{ extra = "ocr-qianfan" }, { extra = "ocr-unlimited" }],
+]
 
 [project.entry-points."parsecraft.backends"]
 native-text = "parsecraft.backends.native.text:factory"

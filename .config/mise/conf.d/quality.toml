@@ -6,6 +6,11 @@ run = "uv run pytest --cov=parsecraft --cov-report=term-missing --cov-report=htm
 description = "Corpus tier: opt-in network + cached public documents (15 min cold-cache budget)"
 run = "uv run pytest -m corpus --run-corpus --run-downloads"
 
+[tasks.test-gpu]
+description = "GPU tier: OCR adapters on real weights (opt-in; needs an isolated .venv-gpu)"
+run = ".venv-gpu/bin/python -m pytest tests/test_backends_ocr_gpu.py -m gpu --run-gpu"
+run_windows = ".venv-gpu/Scripts/python -m pytest tests/test_backends_ocr_gpu.py -m gpu --run-gpu"
+
 [tasks.all]
 description = "Run all quality checks"
 depends = [
