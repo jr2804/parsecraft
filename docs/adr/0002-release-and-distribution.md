@@ -32,7 +32,11 @@ distinct from `repo_url`.
 - PEP 440 normalizes `2026.09.1` → `2026.9.1` in wheel metadata; the git tag keeps
   the zero-padded form. Cosmetic; do not string-compare the two.
 - `uv-dynamic-versioning` (dunamai) derives the package version from the tag;
-  `fallback-version = "0.0.0"`.
+  `fallback-version = "0.0.0"`. dunamai's default tag pattern expects a `v`
+  prefix, so `[tool.uv-dynamic-versioning] pattern` is set explicitly to the
+  CalVer form `^(?P<base>\d+\.\d+\.\d+)$`. Without it, bare tags are ignored
+  and the build falls back to a local version (`0.0.0.postN.dev0+<hash>`) that
+  PyPI rejects (HTTP 400).
 
 Every push to `main` produces a release, including docs-only pushes. That is
 accepted: the tag is the release record and the pipeline is idempotent.

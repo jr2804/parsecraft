@@ -53,6 +53,10 @@ source = "uv-dynamic-versioning"
 
 [tool.uv-dynamic-versioning]
 fallback-version = "0.0.0"
+# CalVer tags are bare `YYYY.MM.N`; dunamai's default pattern expects a `v`
+# prefix, so declare the CalVer form explicitly. Without this, bare tags are
+# ignored and the build falls back to a local version PyPI rejects.
+pattern = '^(?P<base>\d+\.\d+\.\d+)$'
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
