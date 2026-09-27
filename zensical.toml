@@ -1,6 +1,6 @@
 [project]
 site_name = "ParseCraft"
-site_description = "Document intelligence: convert any document into typed structured chunks, with Markdown as a deterministic projection"
+site_description = "Document intelligence: align existing converters, parsers, and OCR/VLM models behind one workflow and one typed output format"
 site_author = "Jan.Reimes"
 site_url = "https://jr2804.github.io/parsecraft/"
 repo_url = "https://github.com/jr2804/parsecraft"

@@ -15,7 +15,7 @@ __all__ = [
 ]
 
 __title__ = "parsecraft"
-__description__ = "Document intelligence: convert any document into typed structured chunks, with Markdown as a deterministic projection"
+__description__ = "Document intelligence: align existing converters, parsers, and OCR/VLM models behind one workflow and one typed output format"
 __author__ = "Jan.Reimes"
 __email__ = "Jan.Reimes@head-acoustics.com"
 __license__ = "MIT"

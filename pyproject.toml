@@ -1,7 +1,7 @@
 [project]
 name = "parsecraft"
 dynamic = ["version"]
-description = "Document intelligence: convert any document into typed structured chunks, with Markdown as a deterministic projection"
+description = "Document intelligence: align existing converters, parsers, and OCR/VLM models behind one workflow and one typed output format"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.13"
