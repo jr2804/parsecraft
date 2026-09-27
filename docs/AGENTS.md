@@ -13,6 +13,7 @@ file adds only what is local to `docs/`.
 - `getting-started/` — tutorials (installation, quickstart).
 - `architecture/` — explanation (overview, IR, backends).
 - `guides/` — problem-oriented how-to guides.
+- `development/` — setup, CI/CD, tech stack, and AI dev features.
 - `reference/` — API fact source (`api.md`, mkdocstrings) and CLI facts
   (`cli.md`).
 - `adr/` — architecture decision records; **reserved for pc-1** — do not edit.

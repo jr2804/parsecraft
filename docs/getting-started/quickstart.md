@@ -6,7 +6,6 @@ title: Quickstart
 
 ```bash
 uv run parsecraft                    # help (no_args_is_help)
-uv run parsecraft default            # welcome message
 uv run parsecraft backends           # registered backends
 uv run parsecraft backends --json    # machine-readable descriptors
 uv run parsecraft --version          # package version

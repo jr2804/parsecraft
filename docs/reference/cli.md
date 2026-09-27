@@ -26,19 +26,6 @@ run without an install).
 
 ## Commands
 
-`parsecraft config` is a command group; run `parsecraft config --help` to list
-its subcommands.
-
-### `parsecraft default`
-
-Print the welcome message.
-
-```text
-$ parsecraft default
-Welcome to ParseCraft!
-Use --help to see available commands.
-```
-
 ### `parsecraft backends`
 
 List registered backends. Discovery runs lazily on first use.
@@ -165,5 +152,5 @@ key.
 ## Source
 
 - `src/parsecraft/cli/app.py` — app, callback, command registration
-- `src/parsecraft/cli/commands.py` — `default`, `backends`, `config_check`, `config_show`
+- `src/parsecraft/cli/commands.py` — `backends`, `config_check`, `config_show`
 - `src/parsecraft/cli/args.py` — `JsonFlag`, `ConfigFileOption`, `PARSECRAFT_JSON`

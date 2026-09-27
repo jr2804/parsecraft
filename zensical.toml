@@ -29,11 +29,16 @@ nav = [
     { "API" = "reference/api.md" },
   ] },
   { "Development" = [
+    { "Setup" = "development/setup.md" },
+    { "CI/CD" = "development/ci-cd.md" },
+    { "Tech stack" = "development/tech-stack.md" },
+    { "AI dev features" = "development/ai-dev-features.md" },
     { "Contributing" = "contributing.md" },
     { "Code of Conduct" = "code_of_conduct.md" },
     { "Architecture decisions" = [
       { "ADR-0001 — Phase 0 decisions" = "adr/0001-phase-0-decisions.md" },
       { "ADR-0002 — Release and distribution" = "adr/0002-release-and-distribution.md" },
+      { "ADR-0003 — Optional AGPL PyMuPDF" = "adr/0003-optional-agpl-pymupdf.md" },
     ] },
   ] },
 ]
