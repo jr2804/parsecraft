@@ -1,0 +1,166 @@
+# Public test-document manifest — ADR-0001 §8 (fixtures policy).
+#
+# Policy: NO document binaries are committed. This file records where real,
+# permissively licensed documents live, why they are suitable, and the
+# documented local step to obtain them into the self-ignored pytest cache
+# (`tests/test-cache/downloads/`). The corpus tier fetches them on demand:
+#   uv run pytest -m corpus --run-corpus --run-downloads
+#   (or: mise run test-corpus)
+# so `mise test` never touches the network.
+#
+# Research + HTTP verification date: 2026-09-27 (all urls below returned
+# 200 except the ITU landing page, which blocks automated clients with
+# HTTP 500 — hence `manual = true`, acquisition stays a human step).
+#
+# Corpus fields (Phase 4 auto-mode seam — these are DATA the routing harness
+# asserts against; the harness itself is deliberately not implemented yet):
+#   difficulty  = simple | medium | complex (complexity spread across corpus)
+#   pages       = page count where known, else omitted
+#   approx_size = pinned artifact size in bytes (exact for downloaded entries)
+#   features    = any of images, figures, equations, tables, code
+#   sha256      = pinned content hash; the content-addressed cache keys on it
+#
+# Drift semantics: a hash mismatch means upstream changed the artifact.
+# Re-pin deliberately after review (benchmark inputs must not move silently).
+#
+# Fields: id (unique slug), format (must be scaffoldable), media_type,
+# url (https), license, license_url, why (why suitable as a fixture),
+# filename (target name inside the cache dir), download_step (single-line
+# shell command writing into tests/test-cache/downloads/), manual
+# (true = human-acquired, never automated, never committed).
+
+[[sources]]
+id = "gutenberg-pride-prejudice"
+format = "txt"
+media_type = "text/plain"
+url = "https://www.gutenberg.org/cache/epub/1342/pg1342.txt"
+license = "Public domain in the USA (Project Gutenberg)"
+license_url = "https://www.gutenberg.org/license"
+why = "700 KB of long-form prose with chapter structure — simplest tier: reading order, section boundaries, repeated cached reads"
+filename = "pg1342.txt"
+download_step = "curl -fL -A parsecraft-tests -o tests/test-cache/downloads/pg1342.txt https://www.gutenberg.org/cache/epub/1342/pg1342.txt"
+difficulty = "simple"
+approx_size = 772386
+features = []
+sha256 = "3f6bb9d6f78e0293b56acd4714dd68cb7d6d1d293402031ce9d5a216bcaf9d75"
+
+[[sources]]
+id = "nasa-exoplanet-catalog"
+format = "csv"
+media_type = "text/csv"
+url = "https://exoplanetarchive.ipac.caltech.edu/TAP/sync?query=select+top+200+pl_name,pl_bmassj,pl_orbper,pl_rade+from+ps&format=csv"
+license = "US Government work (NASA/IPAC) — 17 U.S.C. §105, not copyrighted in the US"
+license_url = "https://www.copyright.gov/title17/"
+why = "smallest specimen: numeric CSV with quoted fields and empty cells from a live archive query — delimiter and missing-value handling"
+filename = "exoplanets.csv"
+download_step = "curl -fL -A parsecraft-tests -o tests/test-cache/downloads/exoplanets.csv 'https://exoplanetarchive.ipac.caltech.edu/TAP/sync?query=select+top+200+pl_name,pl_bmassj,pl_orbper,pl_rade+from+ps&format=csv'"
+difficulty = "simple"
+approx_size = 7754
+features = ["tables"]
+sha256 = "8dd850a1c8ef07d84d25472a3dc9a5c629e133fb29dd972de713680dcf4fd088"
+
+[[sources]]
+id = "rfc5322"
+format = "txt"
+media_type = "text/plain"
+url = "https://www.rfc-editor.org/rfc/rfc5322.txt"
+license = "IETF Trust TLP 2.0 (BSD-style, BCP 78)"
+license_url = "https://trustee.ietf.org/license/"
+why = "120 KB of strictly structured ASCII message syntax with folding rules — plain-text structure without layout features"
+filename = "rfc5322.txt"
+download_step = "curl -fL -A parsecraft-tests -o tests/test-cache/downloads/rfc5322.txt https://www.rfc-editor.org/rfc/rfc5322.txt"
+difficulty = "medium"
+approx_size = 122322
+features = []
+sha256 = "cb459acca15a2aa895863eaeff6f1d5b9c4ca15578ae3e3706f757787a385969"
+
+[[sources]]
+id = "commonmark-spec"
+format = "md"
+media_type = "text/markdown"
+url = "https://raw.githubusercontent.com/commonmark/commonmark-spec/master/spec.txt"
+license = "CC BY-SA 4.0 (CommonMark specification)"
+license_url = "https://creativecommons.org/licenses/by-sa/4.0/"
+why = "canonical CommonMark corpus (200 KB) dense with fenced code blocks and examples — reference input for the Markdown-to-IR path"
+filename = "commonmark-spec.md"
+download_step = "curl -fL -A parsecraft-tests -o tests/test-cache/downloads/commonmark-spec.md https://raw.githubusercontent.com/commonmark/commonmark-spec/master/spec.txt"
+difficulty = "medium"
+approx_size = 206108
+features = ["code"]
+sha256 = "43fad3e0ac5190a3b0bc6a41f7b1a853201a26ec2e6b74871f5d96239a8c34cf"
+
+[[sources]]
+id = "wikidata-entity-q42"
+format = "json"
+media_type = "application/json"
+url = "https://www.wikidata.org/wiki/Special:EntityData/Q42.json"
+license = "CC0 1.0 (Wikidata)"
+license_url = "https://creativecommons.org/publicdomain/zero/1.0/"
+why = "deeply nested real-world JSON entity graph with aliases, claims and references — structural JSON without license caveats"
+filename = "wikidata-q42.json"
+download_step = "curl -fL -A parsecraft-tests -o tests/test-cache/downloads/wikidata-q42.json https://www.wikidata.org/wiki/Special:EntityData/Q42.json"
+difficulty = "medium"
+approx_size = 321005
+features = []
+sha256 = "49d2edd625009e0d4e9d81311ad5708b6fc1685c93143e78ea6567210ddefe82"
+
+[[sources]]
+id = "whatwg-html-standard"
+format = "html"
+media_type = "text/html"
+url = "https://html.spec.whatwg.org/multipage/"
+license = "CC BY 4.0 (WHATWG)"
+license_url = "https://creativecommons.org/licenses/by/4.0/"
+why = "real-world spec HTML with dense markup and hundreds of inline code spans — low end of the images degree (single img element)"
+filename = "whatwg-html.html"
+download_step = "curl -fL -A parsecraft-tests -o tests/test-cache/downloads/whatwg-html.html https://html.spec.whatwg.org/multipage/"
+difficulty = "complex"
+approx_size = 154743
+features = ["code", "images"]
+sha256 = "9a521d16331ff65b01e242c281887e59b91ce364fd9ea6af4f184720ca1c3d2c"
+
+[[sources]]
+id = "wikipedia-calculus"
+format = "html"
+media_type = "text/html"
+url = "https://en.wikipedia.org/wiki/Calculus"
+license = "CC BY-SA 4.0 (Wikipedia)"
+license_url = "https://en.wikipedia.org/wiki/Wikipedia:Copyrights"
+why = "800 KB real-world article carrying 32 rendered equations, 17 tables and 62 images — the corpus' equations + tables + images specimen"
+filename = "wikipedia-calculus.html"
+download_step = "curl -fL -A parsecraft-tests -o tests/test-cache/downloads/wikipedia-calculus.html https://en.wikipedia.org/wiki/Calculus"
+difficulty = "complex"
+approx_size = 814337
+features = ["equations", "images", "tables"]
+sha256 = "7c5ae217385f6fb5f40dcf6db71b514d0c06a2ed233833e9e51f665e7fa7ea72"
+
+[[sources]]
+id = "nist-sp-800-53r5"
+format = "pdf"
+media_type = "application/pdf"
+url = "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-53r5.pdf"
+license = "US Government work (NIST) — 17 U.S.C. §105, not copyrighted in the US"
+license_url = "https://www.copyright.gov/title17/"
+why = "492-page real PDF (6 MB, 498 embedded images, 61 detected tables) — headline PDF backend fixture (ITU-T P.863 stand-in)"
+filename = "nist-sp-800-53r5.pdf"
+download_step = "curl -fL -A parsecraft-tests -o tests/test-cache/downloads/nist-sp-800-53r5.pdf https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-53r5.pdf"
+difficulty = "complex"
+pages = 492
+approx_size = 6073678
+features = ["images", "tables"]
+sha256 = "fc63bcd61715d0181dd8e85998b1e6201ae3515fc6626102101cab1841e11ec6"
+
+[[sources]]
+id = "itu-t-p863"
+format = "pdf"
+media_type = "application/pdf"
+url = "https://www.itu.int/rec/T-REC-P.863"
+license = "ITU copyright — all rights reserved, no redistribution rights"
+license_url = "https://www.itu.int/en/about/copyright/Pages/default.aspx"
+why = "ADR-0001 §6 headline benchmark (113 pages, equations/figures/tables expected) — licensed local copy only, never committed, never auto-downloaded"
+filename = "itu-t-p863.pdf"
+download_step = "cp /path/to/your/licensed/P863.pdf tests/test-cache/downloads/itu-t-p863.pdf"
+difficulty = "complex"
+pages = 113
+features = ["equations", "figures", "tables"]
+manual = true
