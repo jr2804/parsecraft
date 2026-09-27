@@ -212,6 +212,17 @@ class Diagnostic(BaseModel):
     message: str
 
 
+class PageSignal(BaseModel):
+    """Deterministic per-page analysis signal (planner input state)."""
+
+    page_number: int = Field(ge=1)
+    has_native_text: bool
+    text_chars: int = Field(ge=0)
+    image_count: int = Field(ge=0)
+    blank: bool
+    replacement_char_ratio: float | None = Field(default=None, ge=0, le=1)
+
+
 class PageResult(BaseModel):
     """All extracted content of one page, in reading order."""
 

@@ -15,6 +15,7 @@ Discovery contract:
 
 from __future__ import annotations
 
+import hashlib
 from importlib.metadata import entry_points
 
 from parsecraft.backends.errors import (
@@ -77,6 +78,22 @@ class BackendRegistry:
         if factory is None:
             raise BackendNotFoundError(name)
         return factory.descriptor
+
+    def supported_formats(self) -> list[str]:
+        """Sorted union of every registered backend's supported formats."""
+        formats = {fmt for descriptor in self.list_backends() for fmt in descriptor.capabilities.supported_formats}
+        return sorted(formats)
+
+    def fingerprint(self) -> str:
+        """Deterministic identity of the registered backend set — a cache key.
+
+        Derived from each backend's name, version, and supported formats:
+        properties of the *installed backend set*, never host hardware. Two
+        registries with the same backend set yield the same fingerprint on any
+        machine; changing any backend's identity or formats changes it.
+        """
+        canonical = "\n".join(f"{d.name}@{d.version}|{','.join(sorted(d.capabilities.supported_formats))}" for d in self.list_backends())
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
     def create(self, name: str, config: BackendConfig | None = None) -> DocumentBackend:
         """Instantiate backend ``name`` — the first heavy-import boundary."""

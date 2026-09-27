@@ -17,6 +17,7 @@ from parsecraft.ir.models import (
     Diagnostic,
     PageRange,
     PageResult,
+    PageSignal,
     PassFailure,
 )
 
@@ -60,6 +61,7 @@ class BackendDescriptor(BaseModel):
     """What the registry hands out: identity + capabilities, no code."""
 
     name: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]*$")
+    version: str = Field(default="0.0.0", min_length=1)
     capabilities: BackendCapabilities
 
     # `factory` is deliberately NOT a field: the registry binds descriptor to
@@ -72,17 +74,6 @@ class BackendConfig(BaseModel):
 
     name: str = Field(min_length=1)
     options: dict[str, str | int | float | bool] = Field(default_factory=dict)
-
-
-class PageSignal(BaseModel):
-    """Deterministic per-page analysis signal."""
-
-    page_number: int = Field(ge=1)
-    has_native_text: bool
-    text_chars: int = Field(ge=0)
-    image_count: int = Field(ge=0)
-    blank: bool
-    replacement_char_ratio: float | None = Field(default=None, ge=0, le=1)
 
 
 class AnalysisResult(BaseModel):

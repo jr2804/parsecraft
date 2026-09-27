@@ -111,6 +111,35 @@ def test_list_backends_is_sorted_and_deterministic() -> None:
     assert [d.name for d in registry.list_backends()] == ["fake", "gpu-one"]
 
 
+def test_supported_formats_unions_registered_backends(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_entry_points(monkeypatch, [])
+    registry = BackendRegistry()
+    registry.register("gpu-one", GpuFactory())
+    registry.register("fake", FakeFactory())
+    assert registry.supported_formats() == ["pdf", "txt"]
+
+
+def test_supported_formats_empty_registry(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_entry_points(monkeypatch, [])
+    assert BackendRegistry().supported_formats() == []
+
+
+def test_fingerprint_is_deterministic_and_set_sensitive(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_entry_points(monkeypatch, [])
+    base = BackendRegistry()
+    base.register("fake", FakeFactory())
+    same = BackendRegistry()
+    same.register("fake", FakeFactory())
+    assert base.fingerprint() == same.fingerprint()
+    base.register("gpu-one", GpuFactory())
+    assert base.fingerprint() != same.fingerprint()
+
+
+def test_descriptor_version_defaults() -> None:
+    descriptor = BackendDescriptor(name="x", capabilities=BackendCapabilities())
+    assert descriptor.version == "0.0.0"
+
+
 def test_duplicate_explicit_registration_is_rejected() -> None:
     registry = BackendRegistry()
     registry.register("fake", FakeFactory())
@@ -293,7 +322,7 @@ def test_descriptor_serializes_without_factory() -> None:
     descriptor = FakeFactory.descriptor
     dumped = descriptor.model_dump(mode="json")
     assert dumped["name"] == "fake"
-    assert set(dumped) == {"name", "capabilities"}
+    assert set(dumped) == {"name", "version", "capabilities"}
 
 
 # ── Process-wide registry ──────────────────────────────────────────────────────
