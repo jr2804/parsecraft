@@ -25,7 +25,7 @@ from tests.fixtures.documents import FORMATS
 
 MANIFEST_PATH = Path(__file__).with_name("sources.toml")
 
-_DOWNLOADS_DIR = "tests/test-cache/downloads"
+_DOWNLOADS_DIR = "tests/downloads"
 _SHA256_PATTERN = r"^[0-9a-f]{64}$"
 
 

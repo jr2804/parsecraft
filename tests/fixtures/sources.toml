@@ -2,8 +2,9 @@
 #
 # Policy: NO document binaries are committed. This file records where real,
 # permissively licensed documents live, why they are suitable, and the
-# documented local step to obtain them into the self-ignored pytest cache
-# (`tests/test-cache/downloads/`). The corpus tier fetches them on demand:
+# documented local step to obtain them into the self-ignored ``tests/downloads/``
+# staging directory (project-owned; NEVER the pytest cache, which pytest
+# manages). The corpus tier fetches them on demand:
 #   uv run pytest -m corpus --run-corpus --run-downloads
 #   (or: mise run test-corpus)
 # so `mise test` never touches the network.
@@ -27,7 +28,7 @@
 # Fields: id (unique slug), format (must be scaffoldable), media_type,
 # url (https), license, license_url, why (why suitable as a fixture),
 # filename (target name inside the cache dir), download_step (single-line
-# shell command writing into tests/test-cache/downloads/), manual
+# shell command writing into tests/downloads/), manual
 # (true = human-acquired, never automated, never committed).
 
 [[sources]]
@@ -39,7 +40,7 @@ license = "Public domain in the USA (Project Gutenberg)"
 license_url = "https://www.gutenberg.org/license"
 why = "700 KB of long-form prose with chapter structure — simplest tier: reading order, section boundaries, repeated cached reads"
 filename = "pg1342.txt"
-download_step = "curl -fL -A parsecraft-tests -o tests/test-cache/downloads/pg1342.txt https://www.gutenberg.org/cache/epub/1342/pg1342.txt"
+download_step = "curl -fL -A parsecraft-tests -o tests/downloads/pg1342.txt https://www.gutenberg.org/cache/epub/1342/pg1342.txt"
 difficulty = "simple"
 approx_size = 772386
 features = []
@@ -54,7 +55,7 @@ license = "US Government work (NASA/IPAC) — 17 U.S.C. §105, not copyrighted i
 license_url = "https://www.copyright.gov/title17/"
 why = "smallest specimen: numeric CSV with quoted fields and empty cells from a live archive query — delimiter and missing-value handling"
 filename = "exoplanets.csv"
-download_step = "curl -fL -A parsecraft-tests -o tests/test-cache/downloads/exoplanets.csv 'https://exoplanetarchive.ipac.caltech.edu/TAP/sync?query=select+top+200+pl_name,pl_bmassj,pl_orbper,pl_rade+from+ps&format=csv'"
+download_step = "curl -fL -A parsecraft-tests -o tests/downloads/exoplanets.csv 'https://exoplanetarchive.ipac.caltech.edu/TAP/sync?query=select+top+200+pl_name,pl_bmassj,pl_orbper,pl_rade+from+ps&format=csv'"
 difficulty = "simple"
 approx_size = 7754
 features = ["tables"]
@@ -69,7 +70,7 @@ license = "IETF Trust TLP 2.0 (BSD-style, BCP 78)"
 license_url = "https://trustee.ietf.org/license/"
 why = "120 KB of strictly structured ASCII message syntax with folding rules — plain-text structure without layout features"
 filename = "rfc5322.txt"
-download_step = "curl -fL -A parsecraft-tests -o tests/test-cache/downloads/rfc5322.txt https://www.rfc-editor.org/rfc/rfc5322.txt"
+download_step = "curl -fL -A parsecraft-tests -o tests/downloads/rfc5322.txt https://www.rfc-editor.org/rfc/rfc5322.txt"
 difficulty = "medium"
 approx_size = 122322
 features = []
@@ -84,7 +85,7 @@ license = "CC BY-SA 4.0 (CommonMark specification)"
 license_url = "https://creativecommons.org/licenses/by-sa/4.0/"
 why = "canonical CommonMark corpus (200 KB) dense with fenced code blocks and examples — reference input for the Markdown-to-IR path"
 filename = "commonmark-spec.md"
-download_step = "curl -fL -A parsecraft-tests -o tests/test-cache/downloads/commonmark-spec.md https://raw.githubusercontent.com/commonmark/commonmark-spec/master/spec.txt"
+download_step = "curl -fL -A parsecraft-tests -o tests/downloads/commonmark-spec.md https://raw.githubusercontent.com/commonmark/commonmark-spec/master/spec.txt"
 difficulty = "medium"
 approx_size = 206108
 features = ["code"]
@@ -99,7 +100,7 @@ license = "CC0 1.0 (Wikidata)"
 license_url = "https://creativecommons.org/publicdomain/zero/1.0/"
 why = "deeply nested real-world JSON entity graph with aliases, claims and references — structural JSON without license caveats"
 filename = "wikidata-q42.json"
-download_step = "curl -fL -A parsecraft-tests -o tests/test-cache/downloads/wikidata-q42.json https://www.wikidata.org/wiki/Special:EntityData/Q42.json"
+download_step = "curl -fL -A parsecraft-tests -o tests/downloads/wikidata-q42.json https://www.wikidata.org/wiki/Special:EntityData/Q42.json"
 difficulty = "medium"
 approx_size = 321005
 features = []
@@ -114,7 +115,7 @@ license = "CC BY 4.0 (WHATWG)"
 license_url = "https://creativecommons.org/licenses/by/4.0/"
 why = "real-world spec HTML with dense markup and hundreds of inline code spans — low end of the images degree (single img element)"
 filename = "whatwg-html.html"
-download_step = "curl -fL -A parsecraft-tests -o tests/test-cache/downloads/whatwg-html.html https://html.spec.whatwg.org/multipage/"
+download_step = "curl -fL -A parsecraft-tests -o tests/downloads/whatwg-html.html https://html.spec.whatwg.org/multipage/"
 difficulty = "complex"
 approx_size = 154743
 features = ["code", "images"]
@@ -129,7 +130,7 @@ license = "CC BY-SA 4.0 (Wikipedia)"
 license_url = "https://en.wikipedia.org/wiki/Wikipedia:Copyrights"
 why = "800 KB real-world article carrying 32 rendered equations, 17 tables and 62 images — the corpus' equations + tables + images specimen"
 filename = "wikipedia-calculus.html"
-download_step = "curl -fL -A parsecraft-tests -o tests/test-cache/downloads/wikipedia-calculus.html https://en.wikipedia.org/wiki/Calculus"
+download_step = "curl -fL -A parsecraft-tests -o tests/downloads/wikipedia-calculus.html https://en.wikipedia.org/wiki/Calculus"
 difficulty = "complex"
 approx_size = 814337
 features = ["equations", "images", "tables"]
@@ -144,7 +145,7 @@ license = "US Government work (NIST) — 17 U.S.C. §105, not copyrighted in the
 license_url = "https://www.copyright.gov/title17/"
 why = "492-page real PDF (6 MB, 498 embedded images, 61 detected tables) — headline PDF backend fixture (ITU-T P.863 stand-in)"
 filename = "nist-sp-800-53r5.pdf"
-download_step = "curl -fL -A parsecraft-tests -o tests/test-cache/downloads/nist-sp-800-53r5.pdf https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-53r5.pdf"
+download_step = "curl -fL -A parsecraft-tests -o tests/downloads/nist-sp-800-53r5.pdf https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-53r5.pdf"
 difficulty = "complex"
 pages = 492
 approx_size = 6073678
@@ -160,7 +161,7 @@ license = "ITU copyright — all rights reserved, no redistribution rights"
 license_url = "https://www.itu.int/en/about/copyright/Pages/default.aspx"
 why = "ADR-0001 §6 headline benchmark: the official ITU-T P.863 (03/2018) Recommendation PDF (80 pages, equations/figures/tables). Licensed local copy only — never committed, never auto-downloaded; extracted from the official ITU ZIP."
 filename = "itu-t-p863.pdf"
-download_step = "curl -fL -o tests/test-cache/downloads/itu-p863.zip 'https://www.itu.int/rec/dologin.asp?lang=e&id=T-REC-P.863-201803-I!!ZIP-E&type=items' && uv run python -c \"import zipfile,pathlib;pathlib.Path('tests/test-cache/downloads/itu-t-p863.pdf').write_bytes(zipfile.ZipFile('tests/test-cache/downloads/itu-p863.zip').read('ITU-T_P_863__03_2018_.pdf'))\""
+download_step = "curl -fL -o tests/downloads/itu-p863.zip 'https://www.itu.int/rec/dologin.asp?lang=e&id=T-REC-P.863-201803-I!!ZIP-E&type=items' && uv run python -c \"import zipfile,pathlib;pathlib.Path('tests/downloads/itu-t-p863.pdf').write_bytes(zipfile.ZipFile('tests/downloads/itu-p863.zip').read('ITU-T_P_863__03_2018_.pdf'))\""
 difficulty = "complex"
 pages = 80
 approx_size = 2243491
@@ -177,7 +178,7 @@ license = "ETSI copyright — free download, redistribution requires ETSI permis
 license_url = "https://www.etsi.org/legal-notice"
 why = "68-page ETSI Technical Specification TS 103 558 V1.3.1 (objective listening-effort assessment): 48 figures, ~79 tables and ~28 equations — the complex standard tier alongside ITU-T P.863, licensed local copy only"
 filename = "etsi-ts-103558.pdf"
-download_step = "curl -fL -A parsecraft-tests -o tests/test-cache/downloads/etsi-ts-103558.pdf https://www.etsi.org/deliver/etsi_ts/103500_103599/103558/01.03.01_60/ts_103558v010301p.pdf"
+download_step = "curl -fL -A parsecraft-tests -o tests/downloads/etsi-ts-103558.pdf https://www.etsi.org/deliver/etsi_ts/103500_103599/103558/01.03.01_60/ts_103558v010301p.pdf"
 difficulty = "complex"
 pages = 68
 approx_size = 2829194

@@ -44,9 +44,17 @@ def subdir() -> str:
 
 
 @pytest.fixture(scope="session")
-def downloads_dir(request: pytest.FixtureRequest) -> Path:
-    """Content-addressed corpus cache in the pytest cache — never committed."""
-    return Path(request.config.cache.mkdir("downloads"))
+def downloads_dir() -> Path:
+    """Content-addressed staging directory for real corpus documents.
+
+    Deliberately NOT ``cache_dir`` (``tests/test-cache``): that folder is
+    pytest-owned and must never be written to directly. Corpus documents are
+    large, long-lived artifacts fetched by the corpus tier or staged by hand,
+    so they live in this project-owned, gitignored directory instead.
+    """
+    path = _test_dir / "downloads"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:

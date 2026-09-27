@@ -97,7 +97,7 @@ fail_under = 100
 show_missing = true
 
 [tool.codespell]
-skip = "*.git,*.svg,*.lock,*.min.js,*.min.css,*/test-cache/*"
+skip = "*.git,*.svg,*.lock,*.min.js,*.min.css,*/test-cache/*,*/downloads/*"
 check-hidden = true
 ignore-words-list = "crate,ser,fpr,nd,fo,ba,te"
 ignore-regex = "https?://|\b[A-Z]+\b"

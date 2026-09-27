@@ -32,7 +32,7 @@ from tests.fixtures.sources import (
 )
 
 _MANIFEST = load_sources()
-_DOWNLOADS_DIR_HINT = "tests/test-cache/downloads"
+_DOWNLOADS_DIR_HINT = "tests/downloads"
 
 #: Hard ceiling for a cold-cache corpus refresh (ADR-0001 §6 headline: 15 min).
 _CORPUS_BUDGET_S = 900.0
