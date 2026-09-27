@@ -40,6 +40,20 @@ identical plan.
   (preferred model → native before OCR → lowest VRAM → name). A Jev /
   System-One judge is a FUTURE optional extra implementing `RoutingJudge`;
   this package must never import Jev/System-One.
+- Judge resolution lives in `judge_providers.py`:
+  `resolve_judge(spec: str | RoutingJudge | None) -> RoutingJudge` —
+  `None` → `DeterministicJudge`, instance → passthrough, else parse
+  `provider/model[:variant]` (`parse_judge_spec` → `JudgeSpec` in
+  `judge.py`) and dispatch. Loaders register via
+  `register_judge_provider(name, loader)` (last wins; explicit beats the
+  lazy path); unresolved providers lazy-load
+  `parsecraft.providers.<provider>.load_judge(spec)` through
+  `import_module` at resolve time only — never at module import, never
+  inline (csort), never network. Typed errors: `JudgeSpecError` (malformed
+  spec), `JudgeProviderUnavailableError` (names the provider extra to
+  install), `JudgeProviderLoadError` (loader failed / non-judge return).
+  Resolution only produces a judge — `plan_route`'s `_validate_order`
+  remains the sole eligibility enforcement point.
 - Determinism: backends sorted before use, signals sorted by page number,
   `primary` tie-break by name; no dict/set iteration leaks into output order.
 

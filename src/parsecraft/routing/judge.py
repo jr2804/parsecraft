@@ -1,16 +1,20 @@
-"""The judge seam and its deterministic default.
+"""The judge seam, its deterministic default, and provider spec types.
 
 A judge only RE-RANKS candidates the planner already deemed eligible; it
 cannot add candidates or override hard constraints. ``DeterministicJudge``
-is the default: preferred model first, native before OCR, lowest VRAM,
-stable name order. A Jev/System-One judge would be a future optional extra
-implementing :class:`RoutingJudge` — this package never imports one.
+is the default. Provider-prefixed model strings (``ollaya/laya:typed-decisions``)
+resolve to judges via :mod:`parsecraft.routing.judge_providers` — provider
+modules import only at resolve time; this package never imports Jev/
+System-One (a Jev adapter is a future optional extra implementing
+:class:`RoutingJudge`).
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Protocol, override, runtime_checkable
+
+from pydantic import BaseModel, Field
 
 from parsecraft.backends.protocol import BackendDescriptor
 from parsecraft.routing.models import Intent
@@ -41,6 +45,18 @@ class DeterministicJudge(RoutingJudge):
     def rank(self, intent: Intent, candidates: Sequence[BackendDescriptor]) -> Sequence[str]:
         ordered = sorted(candidates, key=lambda descriptor: _sort_key(descriptor, intent))
         return [descriptor.name for descriptor in ordered]
+
+
+class JudgeSpec(BaseModel):
+    """Parsed ``provider/model[:variant]`` judge-spec string (config/CLI input)."""
+
+    provider: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]*$")
+    model: str = Field(min_length=1)
+    variant: str | None = Field(default=None, min_length=1)
+
+
+#: What a registered judge provider receives and must return.
+JudgeProviderLoader = Callable[[JudgeSpec], RoutingJudge]
 
 
 def _sort_key(descriptor: BackendDescriptor, intent: Intent) -> tuple[int, float, str]:
