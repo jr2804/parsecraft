@@ -106,13 +106,30 @@ class VllmOutput(Protocol):
 class VllmEngine(Protocol):
     """vLLM engine surface used by the OCR adapters (stub-friendly seam)."""
 
+    def get_tokenizer(self) -> ChatTemplateSource:
+        """The engine's tokenizer — renders chat templates for multimodal prompts."""
+        ...
+
     def generate(self, requests: list[dict[str, object]], sampling: object) -> list[VllmOutput]:
         """Generate text for one batch of multimodal prompts."""
         ...
 
 
+class ChatTemplateSource(Protocol):
+    """Tokenizer/processor surface needed to render a model's chat template."""
+
+    def apply_chat_template(self, conversation: list[dict[str, object]], **options: object) -> str:
+        """Render a conversation to a templated prompt string."""
+        ...
+
+
 class ImageTextPipeline(Protocol):
     """transformers ``image-text-to-text`` pipeline surface (stub-friendly seam)."""
+
+    @property
+    def tokenizer(self) -> ChatTemplateSource:
+        """The pipeline's tokenizer — renders chat templates."""
+        ...
 
     def __call__(self, *, text: str, images: object, **generation: object) -> object:
         """Transcribe one page image under ``text``."""
@@ -358,6 +375,7 @@ def load_transformers_pipeline(
     *,
     model_id: str,
     model_revision: str,
+    trust_remote_code: bool = False,
 ) -> ImageTextPipeline:
     """Build the image-to-text pipeline; load failures become typed BackendErrors."""
     try:
@@ -366,19 +384,60 @@ def load_transformers_pipeline(
             model=model_id,
             revision=model_revision,
             device_map="auto",
-            torch_dtype="auto",
+            dtype="auto",  # transformers>=5 removed torch_dtype; the >=4.56 floor accepts dtype
+            trust_remote_code=trust_remote_code,
         )
     except Exception as exc:  # model/stack load boundary — typed, never raw
         msg = f"failed to load model {model_id!r} at revision {model_revision[:12]}: {type(exc).__name__}: {exc}"
         raise BackendError(msg) from exc
 
 
-def transformers_transcriber(pipe: ImageTextPipeline, *, prompt: str) -> Transcriber:
-    """Bind a prompt to a transformers pipeline: image bytes → page text."""
+def chat_prompt(
+    source: ChatTemplateSource,
+    *,
+    user_text: str,
+    system: str | None = None,
+    enable_thinking: bool | None = None,
+) -> str:
+    """Render the model's chat prompt with its image slot — the shape models require.
+
+    A raw prompt yields ``Image features and image tokens do not match, tokens: 0``
+    (verified live on OvisOCR2): the processor only inserts image tokens when the
+    templated conversation carries the image content part. ``enable_thinking=False``
+    matches templates exposing a thinking switch (qwen3_5, per the OvisOCR2 card);
+    templates without it raise :class:`TypeError` and are retried plain.
+    """
+    messages: list[dict[str, object]] = []
+    if system is not None:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": [{"type": "image"}, {"type": "text", "text": user_text}]})
+    if enable_thinking is None:
+        return source.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    try:
+        return source.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+            enable_thinking=enable_thinking,
+        )
+    except TypeError:
+        return source.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+
+
+def transformers_transcriber(pipe: ImageTextPipeline, *, prompt: str, image_extra: str) -> Transcriber:
+    """Bind an (already chat-templated) prompt to a pipeline: image bytes → page text.
+
+    The pipeline's image loader accepts URLs, base64, paths, or PIL images —
+    but NOT raw bytes (verified against transformers 5.17) — so each raster is
+    decoded to a PIL image first.
+    """
 
     def transcribe(image: bytes, max_new_tokens: int | None) -> str:
         generation: dict[str, object] = {} if max_new_tokens is None else {"max_new_tokens": max_new_tokens}
-        return extract_generated(pipe(text=prompt, images=image, **generation))
+        text = extract_generated(pipe(text=prompt, images=pil_image(image, extra=image_extra), **generation))
+        # The pipeline echoes the templated prompt inside generated_text (verified
+        # live on OvisOCR2 + transformers 5.17); removeprefix is a no-op if absent.
+        return text.removeprefix(prompt)
 
     return transcribe
 

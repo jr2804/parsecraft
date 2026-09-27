@@ -13,6 +13,7 @@ from transformers import pipeline  # ty: ignore[unresolved-import] — extra not
 from parsecraft.backends.ocr._common import (
     Transcriber,
     analyze_source,
+    chat_prompt,
     convert_pages,
     load_transformers_pipeline,
     load_vllm,
@@ -40,8 +41,10 @@ from parsecraft.backends.protocol import (
     SourceDocument,
 )
 
-#: Adapter prompt: verbatim page transcription in layout order.
-PROMPT = "OCR this document page exactly as laid out, top to bottom in reading order. Do not summarise or reorder; keep original line and column structure."
+#: Card-verified prompt (TeleOCR README): general text extraction.
+PROMPT = "Please output the text content from the image."
+#: Card-verified system message (TeleOCR README `infer`).
+SYSTEM = "You are a helpful assistant."
 
 
 class _TeleBackend:
@@ -78,10 +81,11 @@ def create(config: BackendConfig) -> DocumentBackend:
     if runtime_choice(config) == "vllm":
         vllm_module = load_vllm()
         engine = vllm_module.LLM(model=TELE_MODEL_ID, revision=TELE_REVISION)
+        templated = chat_prompt(engine.get_tokenizer(), user_text=PROMPT, system=SYSTEM)
         transcriber = vllm_transcriber(
             engine,
             module=vllm_module,
-            prompt=PROMPT,
+            prompt=templated,
             image_extra=TELE_EXTRA,
         )
     else:
@@ -89,6 +93,11 @@ def create(config: BackendConfig) -> DocumentBackend:
             pipeline,
             model_id=TELE_MODEL_ID,
             model_revision=TELE_REVISION,
+            # The repo ships custom modeling (modeling_naviocr.py via auto_map) so
+            # head_dim=128 is honored — stock qwen2_5_vl code cannot load these
+            # weights (verified live on transformers 4.57.1 and 5.17).
+            trust_remote_code=True,
         )
-        transcriber = transformers_transcriber(pipe, prompt=PROMPT)
+        templated = chat_prompt(pipe.tokenizer, user_text=PROMPT, system=SYSTEM)
+        transcriber = transformers_transcriber(pipe, prompt=templated, image_extra=TELE_EXTRA)
     return _TeleBackend(config, transcriber)

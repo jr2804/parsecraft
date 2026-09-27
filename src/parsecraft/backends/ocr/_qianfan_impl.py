@@ -14,6 +14,7 @@ from transformers import pipeline  # ty: ignore[unresolved-import] — extra not
 from parsecraft.backends.ocr._common import (
     Transcriber,
     analyze_source,
+    chat_prompt,
     convert_pages,
     load_transformers_pipeline,
     load_vllm,
@@ -41,8 +42,8 @@ from parsecraft.backends.protocol import (
     SourceDocument,
 )
 
-#: Adapter prompt: Layout-as-Thought — plan the layout, then transcribe regions.
-PROMPT = "Layout-as-Thought: first outline the regions of this page (headers, columns, tables, figures), then transcribe each region fully in reading order."
+#: Card-verified prompt (Qianfan-OCR README).
+PROMPT = "Parse this document to Markdown."
 
 
 class _QianfanBackend:
@@ -79,10 +80,11 @@ def create(config: BackendConfig) -> DocumentBackend:
     if runtime_choice(config) == "vllm":
         vllm_module = load_vllm()
         engine = vllm_module.LLM(model=QIANFAN_MODEL_ID, revision=QIANFAN_REVISION)
+        templated = chat_prompt(engine.get_tokenizer(), user_text=PROMPT)
         transcriber = vllm_transcriber(
             engine,
             module=vllm_module,
-            prompt=PROMPT,
+            prompt=templated,
             image_extra=QIANFAN_EXTRA,
         )
     else:
@@ -91,5 +93,6 @@ def create(config: BackendConfig) -> DocumentBackend:
             model_id=QIANFAN_MODEL_ID,
             model_revision=QIANFAN_REVISION,
         )
-        transcriber = transformers_transcriber(pipe, prompt=PROMPT)
+        templated = chat_prompt(pipe.tokenizer, user_text=PROMPT)
+        transcriber = transformers_transcriber(pipe, prompt=templated, image_extra=QIANFAN_EXTRA)
     return _QianfanBackend(config, transcriber)

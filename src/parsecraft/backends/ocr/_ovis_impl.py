@@ -13,6 +13,7 @@ from transformers import pipeline  # ty: ignore[unresolved-import] — extra not
 from parsecraft.backends.ocr._common import (
     Transcriber,
     analyze_source,
+    chat_prompt,
     convert_pages,
     load_transformers_pipeline,
     load_vllm,
@@ -40,8 +41,14 @@ from parsecraft.backends.protocol import (
     SourceDocument,
 )
 
-#: Adapter prompt: full-page transcription in reading order, tables as Markdown.
-PROMPT = "Transcribe every text region of this document page in reading order. Preserve the layout structure; render tables as Markdown."
+#: Card-verified prompt (OvisOCR2 README): Markdown extraction with bbox image tags.
+PROMPT = (
+    "\nExtract all readable content from the image in natural human reading order and output the result "
+    "as a single Markdown document. For charts or images, represent them using an HTML image tag: "
+    '<img src="images/bbox_{left}_{top}_{right}_{bottom}.jpg" />, where left, top, right, bottom are bounding '
+    "box coordinates scaled to [0, 1000). Format formulas as LaTeX. Format tables as HTML: <table>...</table>. "
+    "Transcribe all other text as standard Markdown. Preserve the original text without translation or paraphrasing."
+)
 
 
 class _OvisBackend:
@@ -78,10 +85,11 @@ def create(config: BackendConfig) -> DocumentBackend:
     if runtime_choice(config) == "vllm":
         vllm_module = load_vllm()
         engine = vllm_module.LLM(model=OVIS_MODEL_ID, revision=OVIS_REVISION)
+        templated = chat_prompt(engine.get_tokenizer(), user_text=PROMPT, enable_thinking=False)
         transcriber = vllm_transcriber(
             engine,
             module=vllm_module,
-            prompt=PROMPT,
+            prompt=templated,
             image_extra=OVIS_EXTRA,
         )
     else:
@@ -90,5 +98,6 @@ def create(config: BackendConfig) -> DocumentBackend:
             model_id=OVIS_MODEL_ID,
             model_revision=OVIS_REVISION,
         )
-        transcriber = transformers_transcriber(pipe, prompt=PROMPT)
+        templated = chat_prompt(pipe.tokenizer, user_text=PROMPT, enable_thinking=False)
+        transcriber = transformers_transcriber(pipe, prompt=templated, image_extra=OVIS_EXTRA)
     return _OvisBackend(config, transcriber)
