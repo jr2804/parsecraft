@@ -36,7 +36,7 @@ The native backends are registered through
 | Backend | Extra | Formats | Upstream / licence | Strengths | Weaknesses | Availability |
 | ------- | ----- | ------- | ------------------ | --------- | ---------- | ------------ |
 | `pandoc` | `pandoc` (`pypandoc` 1.17, MIT) | docx, odt, epub, rtf, LaTeX, reStructuredText, HTML, and many more | [pandoc.org](https://pandoc.org/) — **GPL-2.0-or-later** | Broadest format coverage | Requires the external Pandoc binary; copyleft gate | Planned |
-| `liteparse` | `liteparse` (`liteparse` 2.14.7, Apache-2.0) | pdf, docx, pptx, xlsx, html, images | [`run-llama/liteparse`](https://github.com/run-llama/liteparse) — Apache-2.0 | Broad and permissive; no copyleft gate | Larger extra dependency surface | Planned |
+| `liteparse` | `parsecraft[liteparse]` (`liteparse` 2.14.7, Apache-2.0) | `application/pdf`, `image/jpeg`, `image/png`, `image/tiff` | [`run-llama/liteparse`](https://github.com/run-llama/liteparse) — Apache-2.0 | Broad and permissive; no copyleft gate | Office/ODF formats require a system LibreOffice; `.html` is not supported; larger extra dependency surface | Available |
 | `docling` | `docling` (`docling` 2.130.0, MIT) | pdf, docx, pptx, xlsx, html, images | [`docling`](https://pypi.org/project/docling/) — MIT | Layout, tables, and reading order | Heavy dependency graph; ran >1 h on a 113-page PDF without finishing | Planned |
 
 ## OCR / document-VLM (GPU)
@@ -72,7 +72,7 @@ Model licences apply to the weights; the ParseCraft adapter code is MIT.
 | Scanned pages or camera photos | `ocr-tele`, `ocr-ovis` | No native text; geometry-aware, formula-capable |
 | Multi-page dense tables | `ocr-unlimited` | Long-horizon multi-page handling |
 | Formulas and equations | `ocr-ovis` | Formula-aware extraction |
-| Broad office formats (docx, pptx, xlsx) | `pandoc`, `liteparse` | Convert to a readable format first |
+| Broad office formats (docx, pptx, xlsx) | `pandoc` | Convert to a readable format first |
 | Layout-heavy, reading order matters | `docling` | Layout, tables, and reading order |
 
 Native extraction runs before OCR. OCR is selective and expensive: it is used
