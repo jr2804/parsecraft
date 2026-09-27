@@ -96,8 +96,12 @@ parsecraft convert SOURCE [OPTIONS]
 | `--json` | off | Emit the IR as JSON instead of the Markdown projection |
 
 Output is the Markdown projection (`parsecraft.ir.markdown.to_markdown`) or the
-`DocumentResult` as JSON (`--json`). Supported suffixes: `.txt`, `.md`,
-`.markdown`, `.html`, `.htm`, `.pdf`.
+`DocumentResult` as JSON (`--json`). Supported suffixes come from the public
+`parsecraft.pipeline.MEDIA_TYPES` map: the text family (`.txt`, `.text`, `.md`,
+`.markdown`, `.html`, `.htm`, `.rst`, `.tex`, `.log`, `.ini`, `.cfg`, `.toml`,
+`.sh`, `.py`, `.c`, `.cc`, `.cpp`, `.h`, `.hpp`) plus `.pdf`, `.jpg`, `.jpeg`,
+`.png`, `.tif`, and `.tiff`. `.csv`, `.json`, and `.xml` are deliberately
+unsupported (no backend claims those media types).
 
 ```text
 $ parsecraft convert report.txt
