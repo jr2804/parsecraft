@@ -26,6 +26,8 @@ Markdown as a deterministic projection.
   bridge (see `environment/AGENTS.md`).
 - `providers/` — optional `RoutingJudge` provider implementations, resolved from a
   `provider/model` string and imported lazily (see `providers/AGENTS.md`).
+- `benchmark/` — reproducible backend benchmarks over real documents (see
+  `benchmark/AGENTS.md`).
 - `cli/` — Typer CLI; commands are plain functions in `commands.py`,
   registered in `app.py` (never decorators in `commands.py`, never import
   `app` there — circular import breaks clean-sort).
@@ -55,3 +57,4 @@ Markdown as a deterministic projection.
 - `pipeline/AGENTS.md` — executor rules
 - `environment/AGENTS.md` — environment-probe rules
 - `providers/AGENTS.md` — routing-judge provider rules
+- `benchmark/AGENTS.md` — benchmark-harness rules
