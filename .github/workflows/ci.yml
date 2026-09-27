@@ -83,6 +83,10 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     continue-on-error: ${{ matrix.python-version == '3.15-dev' }}
+    env:
+      # The dev toolset (e.g. repowise -> lancedb) has no free-threaded wheels;
+      # the test job only needs uv + Python, so skip mise tool installation.
+      MISE_AUTO_INSTALL: "0"
 
     steps:
     - name: Checkout
@@ -107,7 +111,7 @@ jobs:
     - name: Setup mise
       uses: jdx/mise-action@v2
       with:
-        install: true
+        install: false
 
     - name: Install dependencies
       run: mise dev
