@@ -71,7 +71,7 @@ def test_every_downloadable_source_is_pinned() -> None:
 
 def test_page_counts_are_recorded_where_known() -> None:
     with_pages = {source.id: source.pages for source in _MANIFEST.sources if source.pages is not None}
-    assert with_pages == {"nist-sp-800-53r5": 492, "itu-t-p863": 113}
+    assert with_pages == {"nist-sp-800-53r5": 492, "itu-t-p863": 80, "etsi-ts-103558": 68}
 
 
 def test_every_source_declares_https_license_and_reason() -> None:
@@ -99,9 +99,21 @@ def test_manual_sources_are_excluded_from_automation() -> None:
 
 
 def test_unpinned_source_has_no_cache_key() -> None:
-    manual = next(source for source in _MANIFEST.sources if source.manual)
+    unpinned = DocumentSource(
+        id="unpinned-example",
+        format="pdf",
+        media_type="application/pdf",
+        url="https://example.com/a.pdf",
+        license="example licence placeholder text",
+        license_url="https://example.com/license",
+        why="documents that an unpinned source has no content-addressed cache key",
+        filename="a.pdf",
+        download_step=f"cp /path/to/a.pdf {_DOWNLOADS_DIR_HINT}/a.pdf",
+        difficulty=Difficulty.COMPLEX,
+        manual=True,
+    )
     with pytest.raises(ValueError, match="no pinned sha256"):
-        _ = manual.cache_name
+        _ = unpinned.cache_name
 
 
 def test_unknown_format_is_rejected() -> None:

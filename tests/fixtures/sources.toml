@@ -9,8 +9,9 @@
 # so `mise test` never touches the network.
 #
 # Research + HTTP verification date: 2026-09-27 (all urls below returned
-# 200 except the ITU landing page, which blocks automated clients with
-# HTTP 500 — hence `manual = true`, acquisition stays a human step).
+# 200; the ITU benchmark stays `manual = true` for *licensing* reasons — ITU
+# content is all-rights-reserved / no redistribution, so acquisition stays a
+# human step even though the official download URL works programmatically).
 #
 # Corpus fields (Phase 4 auto-mode seam — these are DATA the routing harness
 # asserts against; the harness itself is deliberately not implemented yet):
@@ -154,13 +155,32 @@ sha256 = "fc63bcd61715d0181dd8e85998b1e6201ae3515fc6626102101cab1841e11ec6"
 id = "itu-t-p863"
 format = "pdf"
 media_type = "application/pdf"
-url = "https://www.itu.int/rec/T-REC-P.863"
+url = "https://www.itu.int/rec/dologin.asp?lang=e&id=T-REC-P.863-201803-I!!ZIP-E&type=items"
 license = "ITU copyright — all rights reserved, no redistribution rights"
 license_url = "https://www.itu.int/en/about/copyright/Pages/default.aspx"
-why = "ADR-0001 §6 headline benchmark (113 pages, equations/figures/tables expected) — licensed local copy only, never committed, never auto-downloaded"
+why = "ADR-0001 §6 headline benchmark: the official ITU-T P.863 (03/2018) Recommendation PDF (80 pages, equations/figures/tables). Licensed local copy only — never committed, never auto-downloaded; extracted from the official ITU ZIP."
 filename = "itu-t-p863.pdf"
-download_step = "cp /path/to/your/licensed/P863.pdf tests/test-cache/downloads/itu-t-p863.pdf"
+download_step = "curl -fL -o tests/test-cache/downloads/itu-p863.zip 'https://www.itu.int/rec/dologin.asp?lang=e&id=T-REC-P.863-201803-I!!ZIP-E&type=items' && uv run python -c \"import zipfile,pathlib;pathlib.Path('tests/test-cache/downloads/itu-t-p863.pdf').write_bytes(zipfile.ZipFile('tests/test-cache/downloads/itu-p863.zip').read('ITU-T_P_863__03_2018_.pdf'))\""
 difficulty = "complex"
-pages = 113
+pages = 80
+approx_size = 2243491
 features = ["equations", "figures", "tables"]
+sha256 = "f19653a061f3506ddfc2bf2801e6a6a57f8435177d9b992be860322dc63e2418"
+manual = true
+
+[[sources]]
+id = "etsi-ts-103558"
+format = "pdf"
+media_type = "application/pdf"
+url = "https://www.etsi.org/deliver/etsi_ts/103500_103599/103558/01.03.01_60/ts_103558v010301p.pdf"
+license = "ETSI copyright — free download, redistribution requires ETSI permission"
+license_url = "https://www.etsi.org/legal-notice"
+why = "68-page ETSI Technical Specification TS 103 558 V1.3.1 (objective listening-effort assessment): 48 figures, ~79 tables and ~28 equations — the complex standard tier alongside ITU-T P.863, licensed local copy only"
+filename = "etsi-ts-103558.pdf"
+download_step = "curl -fL -A parsecraft-tests -o tests/test-cache/downloads/etsi-ts-103558.pdf https://www.etsi.org/deliver/etsi_ts/103500_103599/103558/01.03.01_60/ts_103558v010301p.pdf"
+difficulty = "complex"
+pages = 68
+approx_size = 2829194
+features = ["equations", "figures", "images", "tables"]
+sha256 = "98977d783f46449f7aba89c5c8a8348b981cf55938fa9ec7d71009e6d4fa9770"
 manual = true
