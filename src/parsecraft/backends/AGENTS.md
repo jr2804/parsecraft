@@ -25,9 +25,15 @@ registration + Python entry points) without editing this package.
   callers (CLI) MUST surface those — silent omission is a bug.
 - Explicit `register()` beats an entry point of the same name (shadowed entry
   point is never loaded).
-- Entry-point modules stay light: heavy imports (vLLM, Transformers, model
-  code) happen only inside `factory(config)` — proven by
-  `tests/test_example_backend.py` against `examples/third_party_backend/`.
+- Entry-point modules stay light. A backend with heavy or optional dependencies
+  keeps them in a **separate implementation module** imported only at
+  instantiation via `importlib.import_module(...)` — never an inline `import`,
+  which `csort` (`hoist_inline_imports`) hoists to module level and breaks.
+  Dependency-free backends may import their implementation at module top level.
+- Built-in backends live under `backends/<family>/<name>.py` with a light
+  `factory` object (descriptor + `__call__`) declared in `pyproject.toml` under
+  `[project.entry-points."parsecraft.backends"]`. Each optional dependency gets
+  its own extra.
 - `BackendDescriptor` is pure data (no factory field); the registry binds
   descriptor↔factory internally.
 - `ConversionRequest` carries all bounds (page range, timeout, cancellation,
