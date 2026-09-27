@@ -132,9 +132,9 @@ why = "800 KB real-world article carrying 32 rendered equations, 17 tables and 6
 filename = "wikipedia-calculus.html"
 download_step = "curl -fL -A parsecraft-tests -o tests/downloads/wikipedia-calculus.html https://en.wikipedia.org/wiki/Calculus"
 difficulty = "complex"
-approx_size = 814337
+approx_size = 818796
 features = ["equations", "images", "tables"]
-sha256 = "7c5ae217385f6fb5f40dcf6db71b514d0c06a2ed233833e9e51f665e7fa7ea72"
+sha256 = "95d6585a83268d2c61061949b37daa4ccd3ed17f6a32f4171bf2dfeb3405e10b"
 
 [[sources]]
 id = "nist-sp-800-53r5"
