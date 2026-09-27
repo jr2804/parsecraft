@@ -45,6 +45,10 @@ tests, and keep the 100% coverage gate green.
   - `corpus` — slow tier, skipped unless `pytest --run-corpus`; runs via
     `mise run test-corpus`; hard budget **15 min on a cold cache**
     (pinned by `test_corpus_cold_cache_refresh_stays_within_budget`).
+  - `gpu` — skipped unless `pytest --run-gpu`; runs inside the isolated
+    `.venv-gpu` (torch/transformers live only there, never in `.venv`);
+    heavy deps load via `importlib.import_module` inside test bodies so the
+    default run never touches them.
   - Corpus downloads live under `tests/downloads/`. Pinned sources cache
     content-addressed (`sha256-filename`) and fail loudly on drift; re-pin
     deliberately after review. Live endpoints are marked `mutable = true`:

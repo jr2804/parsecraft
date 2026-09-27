@@ -10,8 +10,10 @@ from tests.fixtures.documents import DocumentFactory
 
 _NETWORK_MARKER = "network"
 _CORPUS_MARKER = "corpus"
+_GPU_MARKER = "gpu"
 _RUN_DOWNLOADS = "--run-downloads"
 _RUN_CORPUS = "--run-corpus"
+_RUN_GPU = "--run-gpu"
 
 _test_dir = Path(__file__).parent
 
@@ -71,6 +73,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=False,
         help=f"run the slow '{_CORPUS_MARKER}' tier (implies {_RUN_DOWNLOADS}; cold cache ≤ 15 min)",
     )
+    parser.addoption(
+        _RUN_GPU,
+        action="store_true",
+        default=False,
+        help=f"run the '{_GPU_MARKER}' tier (CUDA host + isolated .venv-gpu; also allows network for weight downloads)",
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -83,16 +91,24 @@ def pytest_configure(config: pytest.Config) -> None:
         "markers",
         f"{_CORPUS_MARKER}: slow corpus tier; skipped unless {_RUN_CORPUS} is passed",
     )
+    config.addinivalue_line(
+        "markers",
+        f"{_GPU_MARKER}: needs a CUDA host and the isolated .venv-gpu; skipped unless {_RUN_GPU} is passed",
+    )
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     """Skip network/corpus tests unless opted in, so ``mise test`` stays offline and fast."""
-    network_allowed = config.getoption(_RUN_DOWNLOADS) or config.getoption(_RUN_CORPUS)
+    network_allowed = config.getoption(_RUN_DOWNLOADS) or config.getoption(_RUN_CORPUS) or config.getoption(_RUN_GPU)
     corpus_allowed = config.getoption(_RUN_CORPUS)
+    gpu_allowed = config.getoption(_RUN_GPU)
     skip_network = pytest.mark.skip(reason=f"network tests are opt-in: pass {_RUN_DOWNLOADS}")
     skip_corpus = pytest.mark.skip(reason=f"corpus tier is opt-in: pass {_RUN_CORPUS}")
+    skip_gpu = pytest.mark.skip(reason=f"gpu tier is opt-in: pass {_RUN_GPU} (CUDA host + .venv-gpu)")
     for item in items:
         if _NETWORK_MARKER in item.keywords and not network_allowed:
             item.add_marker(skip_network)
         if _CORPUS_MARKER in item.keywords and not corpus_allowed:
             item.add_marker(skip_corpus)
+        if _GPU_MARKER in item.keywords and not gpu_allowed:
+            item.add_marker(skip_gpu)

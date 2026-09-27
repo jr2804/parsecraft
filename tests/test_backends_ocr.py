@@ -152,7 +152,11 @@ class _VllmOutputStub:
 class _EngineStub:
     def __init__(self) -> None:
         self.calls: list[tuple[list[dict[str, object]], _SamplingParamsStub]] = []
+        self.tokenizer = _ChatTemplateStub()
         self.text = "vllm stub page text"
+
+    def get_tokenizer(self) -> _ChatTemplateStub:
+        return self.tokenizer
 
     def generate(
         self,
@@ -181,6 +185,7 @@ class _VllmStub:
 class _FakePipeline:
     def __init__(self, state: _TransformersStub) -> None:
         self._state = state
+        self.tokenizer = state.chat_template
         self.calls: list[dict[str, object]] = []
 
     def __call__(self, *, text: str, images: object, **generation: object) -> object:
@@ -194,22 +199,41 @@ class _FakePipeline:
 
 
 class _FakeLongHorizonModel:
-    """Offline stand-in for Unlimited-OCR's ``infer_multi()`` surface."""
+    """Offline stand-in for Unlimited-OCR's card ``infer_multi()`` surface."""
 
     def __init__(self) -> None:
-        self.calls: list[tuple[int, str, int | None]] = []
-        self.images: list[list[object]] = []
-        self.results: list[list[str]] = []
+        self.calls: list[tuple[int, str, int]] = []
+        self.settings: list[tuple[int, int, int]] = []
+        self.output_dir_existed: list[bool] = []
+        self.raw_outputs: list[object] = []
         self.error: Exception | None = None
 
-    def infer_multi(self, *, images: list[object], prompt: str, max_new_tokens: int | None) -> list[str]:
-        self.calls.append((len(images), prompt, max_new_tokens))
-        self.images.append(list(images))
+    def eval(self) -> _FakeLongHorizonModel:
+        """Mirrors ``torch.nn.Module.eval()`` (returns self)."""
+        return self
+
+    def infer_multi(
+        self,
+        tokenizer: object,
+        *,
+        prompt: str,
+        image_files: list[str],
+        output_path: str,
+        image_size: int,
+        max_length: int,
+        no_repeat_ngram_size: int,
+        ngram_window: int,
+    ) -> tuple[object, int]:
+        self.calls.append((len(image_files), prompt, max_length))
+        self.settings.append((image_size, no_repeat_ngram_size, ngram_window))
+        self.output_dir_existed.append(Path(output_path).is_dir())
         if self.error is not None:
             raise self.error
-        if self.results:
-            return self.results.pop(0)
-        return [f"stub multi {index}" for index in range(len(images))]
+        if self.raw_outputs:
+            raw = self.raw_outputs.pop(0) if len(self.raw_outputs) > 1 else self.raw_outputs[0]
+        else:
+            raw = "<PAGE>" + "\n<PAGE>".join(f"stub multi {index}" for index in range(len(image_files)))
+        return raw, 0
 
 
 class _AutoModelStub:
@@ -221,6 +245,32 @@ class _AutoModelStub:
         if self._state.load_error is not None:
             raise self._state.load_error
         return self._state.model
+
+
+class _AutoTokenizerStub:
+    def __init__(self, state: _TransformersStub) -> None:
+        self._state = state
+
+    def from_pretrained(self, model_id: str, **kwargs: object) -> _ChatTemplateStub:
+        self._state.tokenizer_load_calls.append({"model_id": model_id, **kwargs})
+        if self._state.tokenizer_error is not None:
+            raise self._state.tokenizer_error
+        return self._state.chat_template
+
+
+class _ChatTemplateStub:
+    """Offline stand-in for ``tokenizer.apply_chat_template(...)``."""
+
+    def __init__(self, *, accepts_thinking: bool = True) -> None:
+        self.accepts_thinking = accepts_thinking
+        self.calls: list[tuple[list[dict[str, object]], dict[str, object]]] = []
+
+    def apply_chat_template(self, conversation: list[dict[str, object]], **options: object) -> str:
+        self.calls.append((list(conversation), dict(options)))  # record every attempt, incl. rejected ones
+        if "enable_thinking" in options and not self.accepts_thinking:
+            msg = "apply_chat_template() got an unexpected keyword argument 'enable_thinking'"
+            raise TypeError(msg)
+        return "TEMPLATED_PROMPT"
 
 
 class _TransformersStub:
@@ -235,7 +285,11 @@ class _TransformersStub:
         self.load_error: Exception | None = None
         self.last_pipeline: _FakePipeline | None = None
         self.model = _FakeLongHorizonModel()
-        self.AutoModelForImageTextToText = _AutoModelStub(self)
+        self.AutoModel = _AutoModelStub(self)
+        self.AutoTokenizer = _AutoTokenizerStub(self)
+        self.tokenizer_load_calls: list[dict[str, object]] = []
+        self.tokenizer_error: Exception | None = None
+        self.chat_template = _ChatTemplateStub()
 
     def pipeline(self, **kwargs: object) -> _FakePipeline:
         self.pipeline_calls.append(dict(kwargs))
@@ -738,7 +792,17 @@ def test_load_transformers_pipeline_passes_pinned_revision() -> None:
     assert captured["model"] == "org/model"
     assert captured["revision"] == "abc123"
     assert captured["device_map"] == "auto"
-    assert captured["torch_dtype"] == "auto"
+    assert captured["dtype"] == "auto"
+    assert captured["trust_remote_code"] is False
+
+    captured.clear()
+    _common.load_transformers_pipeline(
+        _factory,
+        model_id="org/model",
+        model_revision="abc123",
+        trust_remote_code=True,
+    )
+    assert captured["trust_remote_code"] is True
 
 
 def test_load_transformers_pipeline_maps_load_errors() -> None:
@@ -751,14 +815,55 @@ def test_load_transformers_pipeline_maps_load_errors() -> None:
     assert "CUDA out of memory" in str(excinfo.value)
 
 
-def test_transformers_transcriber_binds_prompt_and_budget() -> None:
-    pipe = _FakePipeline(_TransformersStub())
-    transcriber = _common.transformers_transcriber(pipe, prompt="PAGE PROMPT")
-    assert transcriber(_PNG, None) == "stub page text"
-    assert transcriber(_PNG, 256) == "stub page text"
-    assert pipe.calls[0] == {"text": "PAGE PROMPT", "images": _PNG}
+def test_transformers_transcriber_strips_the_echoed_prompt_and_binds_budget(pil: _PilImageStub) -> None:
+    state = _TransformersStub()
+    state.pipeline_outputs = [
+        [{"generated_text": "PROMPT\nANSWER"}],
+        [{"generated_text": "plain answer"}],
+    ]
+    pipe = _FakePipeline(state)
+    # Templated prompts end on their own line (add_generation_prompt=True), so the
+    # echo and the answer share that boundary — verified live on transformers 5.17.
+    transcriber = _common.transformers_transcriber(pipe, prompt="PROMPT\n", image_extra="ocr-ovis")
+    assert transcriber(_PNG, None) == "ANSWER"
+    assert transcriber(_PNG, 256) == "plain answer"  # no prefix → unchanged
+    # transformers rejects raw bytes — the transcriber decodes to PIL first:
+    first_image = pipe.calls[0]["images"]
+    assert isinstance(first_image, _ImageStub)
+    assert first_image.payload == _PNG
+    assert pipe.calls[0] == {"text": "PROMPT\n", "images": first_image}
     assert "max_new_tokens" not in pipe.calls[0]
     assert pipe.calls[1]["max_new_tokens"] == 256
+
+
+def test_chat_prompt_builds_the_image_slot_and_options() -> None:
+    tokenizer = _ChatTemplateStub()
+    prompt = _common.chat_prompt(tokenizer, user_text="READ THIS", system="Be brief.", enable_thinking=False)
+    assert prompt == "TEMPLATED_PROMPT"
+    conversation, options = tokenizer.calls[0]
+    assert [message["role"] for message in conversation] == ["system", "user"]
+    assert options == {"tokenize": False, "add_generation_prompt": True, "enable_thinking": False}
+    content = conversation[1]["content"]
+    assert isinstance(content, list)
+    assert content[0] == {"type": "image"}
+    text_part = content[1]
+    assert isinstance(text_part, dict)
+    assert text_part["text"] == "READ THIS"
+
+
+def test_chat_prompt_falls_back_when_template_has_no_thinking_switch() -> None:
+    tokenizer = _ChatTemplateStub(accepts_thinking=False)
+    prompt = _common.chat_prompt(tokenizer, user_text="READ", enable_thinking=False)
+    assert prompt == "TEMPLATED_PROMPT"
+    assert len(tokenizer.calls) == 2  # rejected once, retried without the kwarg
+    assert "enable_thinking" not in tokenizer.calls[1][1]
+
+
+def test_chat_prompt_without_thinking_flag_calls_once() -> None:
+    tokenizer = _ChatTemplateStub()
+    _common.chat_prompt(tokenizer, user_text="READ")
+    assert len(tokenizer.calls) == 1
+    assert "enable_thinking" not in tokenizer.calls[0][1]
 
 
 def test_vllm_transcriber_drives_the_engine(vllm_stub: _VllmStub, pil: _PilImageStub) -> None:
@@ -810,21 +915,24 @@ def test_extract_generated_rejects_garbage(result: object) -> None:
 
 
 @pytest.mark.parametrize(
-    ("module", "impl_module", "name", "prompt_prefix"),
+    ("module", "impl_module", "name", "prompt_prefix", "thinking", "trust_remote_code"),
     [
-        (ovis, "parsecraft.backends.ocr._ovis_impl", "ocr-ovis", "Transcribe every text region"),
-        (tele, "parsecraft.backends.ocr._tele_impl", "ocr-tele", "OCR this document page exactly"),
-        (qianfan, "parsecraft.backends.ocr._qianfan_impl", "ocr-qianfan", "Layout-as-Thought"),
+        (ovis, "parsecraft.backends.ocr._ovis_impl", "ocr-ovis", "Extract all readable content", False, False),
+        (tele, "parsecraft.backends.ocr._tele_impl", "ocr-tele", "Please output the text content", None, True),
+        (qianfan, "parsecraft.backends.ocr._qianfan_impl", "ocr-qianfan", "Parse this document to Markdown", None, False),
     ],
 )
 def test_pipeline_backends_convert_under_the_stub(
     module: FactoryModule,
     impl_loader: Callable[[str, _TransformersStub], ModuleType],
     pdf_engine: _PymupdfStub,
+    pil: _PilImageStub,
     *,
     impl_module: str,
     name: str,
     prompt_prefix: str,
+    thinking: bool | None,
+    trust_remote_code: bool,
 ) -> None:
     pdf_engine.page_count = 3
     state = _TransformersStub()
@@ -849,11 +957,24 @@ def test_pipeline_backends_convert_under_the_stub(
     pipe = state.last_pipeline
     assert pipe is not None
     first_call = pipe.calls[0]
-    text = first_call["text"]
-    assert isinstance(text, str)
-    assert text.startswith(prompt_prefix)
+    # The transcriber receives the CHAT-TEMPLATED prompt, never the raw card prompt:
+    assert first_call["text"] == "TEMPLATED_PROMPT"
     assert first_call["max_new_tokens"] == 64
+
+    conversation, options = state.chat_template.calls[0]
+    assert options["tokenize"] is False
+    assert options["add_generation_prompt"] is True
+    assert options.get("enable_thinking") is thinking
+    content = conversation[-1]["content"]
+    assert isinstance(content, list)
+    assert content[0] == {"type": "image"}
+    text_part = content[1]
+    assert isinstance(text_part, dict)
+    user_text = text_part["text"]
+    assert isinstance(user_text, str)
+    assert user_text.strip().startswith(prompt_prefix)
     assert state.pipeline_calls[0]["revision"] == _revision_of(module)
+    assert state.pipeline_calls[0]["trust_remote_code"] is trust_remote_code
 
 
 @pytest.mark.parametrize(
@@ -881,6 +1002,9 @@ def test_pipeline_backends_support_the_vllm_runtime(
     assert result.pages[0].blocks[0].content == "vllm stub page text"
     assert len(vllm_stub.llm_calls) == 1
     assert vllm_stub.llm_calls[0]["revision"] == revision
+    # vLLM gets the same chat-templated prompt (card: apply_chat_template first):
+    requests, _sampling = vllm_stub.engine.calls[0]
+    assert requests[0]["prompt"] == "TEMPLATED_PROMPT"
 
 
 @pytest.fixture
@@ -937,7 +1061,6 @@ def test_per_page_pipeline_failure_becomes_a_typed_failure(
 def test_unlimited_batches_pages_through_infer_multi(
     impl_loader: Callable[[str, _TransformersStub], ModuleType],
     pdf_engine: _PymupdfStub,
-    pil: _PilImageStub,
 ) -> None:
     pdf_engine.page_count = 6
     state = _TransformersStub()
@@ -950,14 +1073,15 @@ def test_unlimited_batches_pages_through_infer_multi(
     assert result.failures == []
     # Page 1 batches pages 1-4; pages 2-4 hit the cache; page 5 batches 5-6; page 6 hits it.
     assert [count for count, _prompt, _cap in state.model.calls] == [4, 2]
+    assert state.model.calls[0][1] == "<image>Multi page parsing."
     assert state.model.calls[0][2] == 99
-    assert state.model.calls[0][1].startswith("Transcribe this document page completely")
+    assert state.model.settings == [(1024, 35, 1024), (1024, 35, 1024)]
+    assert state.model.output_dir_existed == [True, True]
 
 
 def test_unlimited_respects_the_batch_size_option(
     impl_loader: Callable[[str, _TransformersStub], ModuleType],
     pdf_engine: _PymupdfStub,
-    pil: _PilImageStub,
 ) -> None:
     pdf_engine.page_count = 3
     state = _TransformersStub()
@@ -971,7 +1095,6 @@ def test_unlimited_respects_the_batch_size_option(
 def test_unlimited_rejects_an_invalid_batch_size(
     impl_loader: Callable[[str, _TransformersStub], ModuleType],
     pdf_engine: _PymupdfStub,
-    pil: _PilImageStub,
 ) -> None:
     pdf_engine.page_count = 3
     state = _TransformersStub()
@@ -1004,19 +1127,82 @@ def test_unlimited_reports_model_load_errors(
 def test_unlimited_result_count_mismatch_is_a_typed_failure(
     impl_loader: Callable[[str, _TransformersStub], ModuleType],
     pdf_engine: _PymupdfStub,
-    pil: _PilImageStub,
 ) -> None:
     pdf_engine.page_count = 3
     state = _TransformersStub()
     impl = impl_loader("parsecraft.backends.ocr._unlimited_impl", state)
     backend = impl.create(BackendConfig(name="ocr-unlimited"))
-    state.model.results = [["only one"]]
+    state.model.raw_outputs = ["<PAGE>only-one", "<PAGE>two-a<PAGE>two-b"]
     result = backend.convert(_request(_PDF_SOURCE))
     # Page 1's batch came back short (typed failure), pages 2-3 recover in a new batch.
     assert [page.page_number for page in result.pages] == [2, 3]
     failure = result.failures[0]
     assert failure.code is FailureCode.BACKEND_ERROR
-    assert "infer_multi returned 1 results for 3 pages" in failure.detail
+    assert "infer_multi returned 1 page segments for 3 pages" in failure.detail
+
+
+def test_unlimited_loads_with_trust_remote_code_and_card_settings(
+    impl_loader: Callable[[str, _TransformersStub], ModuleType],
+) -> None:
+    state = _TransformersStub()
+    impl = impl_loader("parsecraft.backends.ocr._unlimited_impl", state)
+    impl.create(BackendConfig(name="ocr-unlimited"))
+    load = state.load_calls[0]
+    assert load["trust_remote_code"] is True
+    assert load["dtype"] == "bfloat16"
+    assert load["use_safetensors"] is True
+    assert load["revision"] == _models.UNLIMITED_REVISION
+    tokenizer_load = state.tokenizer_load_calls[0]
+    assert tokenizer_load["trust_remote_code"] is True
+    assert tokenizer_load["revision"] == _models.UNLIMITED_REVISION
+
+
+def test_unlimited_single_page_without_separator_is_accepted(
+    impl_loader: Callable[[str, _TransformersStub], ModuleType],
+    pdf_engine: _PymupdfStub,
+) -> None:
+    pdf_engine.page_count = 1
+    state = _TransformersStub()
+    impl = impl_loader("parsecraft.backends.ocr._unlimited_impl", state)
+    backend = impl.create(BackendConfig(name="ocr-unlimited", options={"max_pages_per_call": 1}))
+    state.model.raw_outputs = ["plain text, no separator"]
+    result = backend.convert(_request(_PDF_SOURCE))
+    assert [page.page_number for page in result.pages] == [1]
+    assert result.pages[0].blocks[0].content == "plain text, no separator"
+    assert result.failures == []
+
+
+def test_unlimited_missing_separators_fail_typed_per_batch(
+    impl_loader: Callable[[str, _TransformersStub], ModuleType],
+    pdf_engine: _PymupdfStub,
+) -> None:
+    pdf_engine.page_count = 3
+    state = _TransformersStub()
+    impl = impl_loader("parsecraft.backends.ocr._unlimited_impl", state)
+    backend = impl.create(BackendConfig(name="ocr-unlimited"))
+    state.model.raw_outputs = ["nothing here", "solo"]
+    result = backend.convert(_request(_PDF_SOURCE))
+    failure = result.failures[0]
+    assert failure.code is FailureCode.BACKEND_ERROR
+    assert "infer_multi returned 0 page segments for 3 pages" in failure.detail
+    # Page 3 ends up alone (batch of one) and the bare text is accepted:
+    assert [page.page_number for page in result.pages] == [3]
+
+
+def test_unlimited_non_string_output_is_a_typed_failure(
+    impl_loader: Callable[[str, _TransformersStub], ModuleType],
+    pdf_engine: _PymupdfStub,
+) -> None:
+    pdf_engine.page_count = 3
+    state = _TransformersStub()
+    impl = impl_loader("parsecraft.backends.ocr._unlimited_impl", state)
+    backend = impl.create(BackendConfig(name="ocr-unlimited"))
+    state.model.raw_outputs = [42]
+    result = backend.convert(_request(_PDF_SOURCE))
+    assert result.pages == []
+    failure = result.failures[0]
+    assert failure.code is FailureCode.BACKEND_ERROR
+    assert "infer_multi returned int, expected str" in failure.detail
 
 
 @pytest.fixture
@@ -1025,22 +1211,6 @@ def pil(monkeypatch: pytest.MonkeyPatch) -> _PilImageStub:
     image_module = _PilImageStub()
     monkeypatch.setitem(sys.modules, "PIL.Image", image_module)
     return image_module
-
-
-def test_unlimited_without_pillow_fails_per_page_in_a_typed_way(
-    impl_loader: Callable[[str, _TransformersStub], ModuleType],
-    pdf_engine: _PymupdfStub,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    pdf_engine.page_count = 1
-    monkeypatch.setitem(sys.modules, "PIL.Image", None)  # forces ImportError on import
-    state = _TransformersStub()
-    impl = impl_loader("parsecraft.backends.ocr._unlimited_impl", state)
-    backend = impl.create(BackendConfig(name="ocr-unlimited"))
-    result = backend.convert(_request(_PDF_SOURCE))
-    assert result.pages == []
-    assert result.failures[0].code is FailureCode.BACKEND_ERROR
-    assert "pip install 'parsecraft[ocr-unlimited]'" in result.failures[0].detail
 
 
 # ── Fixtures ────────────────────────────────────────────────────────────────────
