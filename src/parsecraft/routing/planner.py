@@ -53,6 +53,8 @@ def plan_route(
         if not family:
             raise NoEligibleBackendError(intent, "intent family empty after hard constraints")
         if intent is Intent.NATIVE and all(is_ocr(descriptor) for descriptor in family):
+            # NATIVE-intent pages must never silently route to OCR: the format
+            # needs a native-capable lead backend (see routing/AGENTS.md).
             raise NoEligibleBackendError(intent, "no native backend covers the source format")
         order = list(active_judge.rank(intent, family))
         _validate_order(order, family, intent)
