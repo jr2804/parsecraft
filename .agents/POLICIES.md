@@ -38,6 +38,9 @@ Universal defaults. Project-specific standards live in child AGENTS.md.
   params/imports before finishing.
 - **Duplication vs. abstraction** — prefer duplication over wrong premature
   abstraction.
+- **No forward-referenced default arguments** — `csort` stepdown reorders
+  functions, so a default value must never name a function defined later; use
+  `= None` and resolve in the body (call-time lookup is order-safe).
 - No new code-quality tooling by default — opt in per project.
 
 ## Completion checklist
