@@ -18,6 +18,8 @@ Markdown as a deterministic projection.
   `assets/AGENTS.md`).
 - `adapters/` — input adapters that converge sources into the IR (see
   `adapters/AGENTS.md`).
+- `routing/` — deterministic auto-mode planner: analysis signals → intent →
+  eligible backend candidates, with an injectable judge (see `routing/AGENTS.md`).
 - `cli/` — Typer CLI; commands are plain functions in `commands.py`,
   registered in `app.py` (never decorators in `commands.py`, never import
   `app` there — circular import breaks clean-sort).
@@ -43,3 +45,4 @@ Markdown as a deterministic projection.
 - `config/AGENTS.md` — configuration engine rules
 - `assets/AGENTS.md` — asset-manager rules
 - `adapters/AGENTS.md` — input-adapter rules
+- `routing/AGENTS.md` — routing/auto-mode rules
