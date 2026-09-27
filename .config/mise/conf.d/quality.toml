@@ -11,6 +11,10 @@ description = "GPU tier: OCR adapters on real weights (opt-in; needs an isolated
 run = ".venv-gpu/bin/python -m pytest tests/test_backends_ocr_gpu.py -m gpu --run-gpu"
 run_windows = ".venv-gpu/Scripts/python -m pytest tests/test_backends_ocr_gpu.py -m gpu --run-gpu"
 
+[tasks.test-judge]
+description = "Judge tier: live ollaya daemon answers (opt-in; offline by default)"
+run = "uv run pytest -m judge --run-judge"
+
 [tasks.all]
 description = "Run all quality checks"
 depends = [

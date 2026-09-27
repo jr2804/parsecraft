@@ -11,9 +11,11 @@ from tests.fixtures.documents import DocumentFactory
 _NETWORK_MARKER = "network"
 _CORPUS_MARKER = "corpus"
 _GPU_MARKER = "gpu"
+_JUDGE_MARKER = "judge"
 _RUN_DOWNLOADS = "--run-downloads"
 _RUN_CORPUS = "--run-corpus"
 _RUN_GPU = "--run-gpu"
+_RUN_JUDGE = "--run-judge"
 
 _test_dir = Path(__file__).parent
 
@@ -79,6 +81,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=False,
         help=f"run the '{_GPU_MARKER}' tier (CUDA host + isolated .venv-gpu; also allows network for weight downloads)",
     )
+    parser.addoption(
+        _RUN_JUDGE,
+        action="store_true",
+        default=False,
+        help=f"run the '{_JUDGE_MARKER}' tier (a live judge daemon at OLLAYA_BASE_URL)",
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -95,6 +103,10 @@ def pytest_configure(config: pytest.Config) -> None:
         "markers",
         f"{_GPU_MARKER}: needs a CUDA host and the isolated .venv-gpu; skipped unless {_RUN_GPU} is passed",
     )
+    config.addinivalue_line(
+        "markers",
+        f"{_JUDGE_MARKER}: needs a live judge daemon; skipped unless {_RUN_JUDGE} is passed",
+    )
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
@@ -102,9 +114,11 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     network_allowed = config.getoption(_RUN_DOWNLOADS) or config.getoption(_RUN_CORPUS) or config.getoption(_RUN_GPU)
     corpus_allowed = config.getoption(_RUN_CORPUS)
     gpu_allowed = config.getoption(_RUN_GPU)
+    judge_allowed = config.getoption(_RUN_JUDGE)
     skip_network = pytest.mark.skip(reason=f"network tests are opt-in: pass {_RUN_DOWNLOADS}")
     skip_corpus = pytest.mark.skip(reason=f"corpus tier is opt-in: pass {_RUN_CORPUS}")
     skip_gpu = pytest.mark.skip(reason=f"gpu tier is opt-in: pass {_RUN_GPU} (CUDA host + .venv-gpu)")
+    skip_judge = pytest.mark.skip(reason=f"judge tier is opt-in: pass {_RUN_JUDGE} (live daemon)")
     for item in items:
         if _NETWORK_MARKER in item.keywords and not network_allowed:
             item.add_marker(skip_network)
@@ -112,3 +126,5 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
             item.add_marker(skip_corpus)
         if _GPU_MARKER in item.keywords and not gpu_allowed:
             item.add_marker(skip_gpu)
+        if _JUDGE_MARKER in item.keywords and not judge_allowed:
+            item.add_marker(skip_judge)
