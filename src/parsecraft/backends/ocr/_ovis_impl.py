@@ -17,6 +17,7 @@ from parsecraft.backends.ocr._common import (
     convert_pages,
     load_transformers_pipeline,
     load_vllm,
+    model_source_and_revision,
     rasterize_page,
     runtime_choice,
     transformers_transcriber,
@@ -27,9 +28,7 @@ from parsecraft.backends.ocr._models import (
     OVIS_ASSET,
     OVIS_CAPABILITIES,
     OVIS_EXTRA,
-    OVIS_MODEL_ID,
     OVIS_NAME,
-    OVIS_REVISION,
 )
 from parsecraft.backends.protocol import (
     AnalysisResult,
@@ -82,9 +81,13 @@ class _OvisBackend:
 
 def create(config: BackendConfig) -> DocumentBackend:
     """Build the backend — the sanctioned heavy-import boundary."""
+    source, revision = model_source_and_revision(OVIS_ASSET, config)
     if runtime_choice(config) == "vllm":
         vllm_module = load_vllm()
-        engine = vllm_module.LLM(model=OVIS_MODEL_ID, revision=OVIS_REVISION)
+        engine_kwargs: dict[str, object] = {"model": source}
+        if revision is not None:
+            engine_kwargs["revision"] = revision
+        engine = vllm_module.LLM(**engine_kwargs)
         templated = chat_prompt(engine.get_tokenizer(), user_text=PROMPT, enable_thinking=False)
         transcriber = vllm_transcriber(
             engine,
@@ -95,8 +98,8 @@ def create(config: BackendConfig) -> DocumentBackend:
     else:
         pipe = load_transformers_pipeline(
             pipeline,
-            model_id=OVIS_MODEL_ID,
-            model_revision=OVIS_REVISION,
+            model_source=source,
+            model_revision=revision,
         )
         templated = chat_prompt(pipe.tokenizer, user_text=PROMPT, enable_thinking=False)
         transcriber = transformers_transcriber(pipe, prompt=templated, image_extra=OVIS_EXTRA)

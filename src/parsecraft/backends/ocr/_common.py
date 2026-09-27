@@ -17,6 +17,8 @@ from pathlib import Path
 from types import ModuleType
 from typing import Protocol, cast, runtime_checkable
 
+from parsecraft.assets.manager import AssetManager
+from parsecraft.assets.models import AssetPin
 from parsecraft.backends.errors import BackendError
 from parsecraft.backends.protocol import (
     AnalysisResult,
@@ -160,6 +162,39 @@ def runtime_choice(config: BackendConfig) -> str:
 def load_vllm() -> ModuleType:
     """Import the optional vLLM runtime for ``runtime = "vllm"`` backends."""
     return optional_module("vllm", extra="vllm", purpose="runtime='vllm'")
+
+
+def model_source_and_revision(descriptor: ModelAssetDescriptor, config: BackendConfig) -> tuple[str, str | None]:
+    """Managed local dir when assets are ensured; else hub id + pinned revision."""
+    local_dir = ensure_assets(descriptor, config)
+    if local_dir is not None:
+        return local_dir, None
+    return descriptor.model_id, descriptor.model_revision
+
+
+def ensure_assets(descriptor: ModelAssetDescriptor, config: BackendConfig) -> str | None:
+    """Acquire a pinned model through :class:`AssetManager`; return its local dir.
+
+    Order of operations is the manager's (offline gate → license acceptance →
+    disk check → resumable download → checksum verification). ``config.options``
+    may set ``offline`` (boolean) to force the offline gate. An unpinned
+    descriptor keeps the legacy hub path (``None``) — integrity data is never
+    fabricated.
+    """
+    if not descriptor.file_pins:
+        return None
+    offline = config.options.get("offline", False)
+    if not isinstance(offline, bool):
+        msg = f"offline option must be a boolean, got {type(offline).__name__}"
+        raise BackendError(msg)
+    pin = AssetPin(
+        descriptor=descriptor,
+        filenames=[file_pin.path for file_pin in descriptor.file_pins],
+        expected_sha256={file_pin.path: file_pin.sha256 for file_pin in descriptor.file_pins},
+    )
+    manager = AssetManager(offline=offline)
+    manager.ensure(pin)
+    return str(manager.revision_dir(descriptor.model_id, descriptor.model_revision))
 
 
 def rasterize_page(source: SourceDocument, page_number: int) -> bytes:
@@ -373,22 +408,30 @@ def source_bytes(source: SourceDocument) -> bytes:
 def load_transformers_pipeline(
     factory: Callable[..., ImageTextPipeline],
     *,
-    model_id: str,
-    model_revision: str,
+    model_source: str,
+    model_revision: str | None,
     trust_remote_code: bool = False,
 ) -> ImageTextPipeline:
-    """Build the image-to-text pipeline; load failures become typed BackendErrors."""
+    """Build the image-to-text pipeline; load failures become typed BackendErrors.
+
+    ``model_source`` is a managed local directory (revision omitted — the
+    files were pinned and verified by :func:`ensure_assets`) or a hub id
+    together with its pinned ``model_revision``.
+    """
+    kwargs: dict[str, object] = {
+        "task": "image-text-to-text",
+        "model": model_source,
+        "device_map": "auto",
+        "dtype": "auto",  # transformers>=5 removed torch_dtype; the >=4.56 floor accepts dtype
+        "trust_remote_code": trust_remote_code,
+    }
+    if model_revision is not None:
+        kwargs["revision"] = model_revision
     try:
-        return factory(
-            task="image-text-to-text",
-            model=model_id,
-            revision=model_revision,
-            device_map="auto",
-            dtype="auto",  # transformers>=5 removed torch_dtype; the >=4.56 floor accepts dtype
-            trust_remote_code=trust_remote_code,
-        )
+        return factory(**kwargs)
     except Exception as exc:  # model/stack load boundary — typed, never raw
-        msg = f"failed to load model {model_id!r} at revision {model_revision[:12]}: {type(exc).__name__}: {exc}"
+        where = f" at revision {model_revision[:12]}" if model_revision is not None else ""
+        msg = f"failed to load model {model_source!r}{where}: {type(exc).__name__}: {exc}"
         raise BackendError(msg) from exc
 
 

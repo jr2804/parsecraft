@@ -1,0 +1,77 @@
+[
+  {
+    "path": "added_tokens.json",
+    "sha256": "df52ebcc0d08ca9d9110a6e323b7a6ed4478aff1a4c23b08fa2823737731bf0c",
+    "size": 26115
+  },
+  {
+    "path": "chat_template.jinja",
+    "sha256": "645f5920e77aaad66fa68e2744728ef3f75f982265c399cf8439a48ac776e2be",
+    "size": 3592
+  },
+  {
+    "path": "config.json",
+    "sha256": "038026e7011e3a575c29f8c5c2cbaa151ab329a2c59461c8f1b51bd5f43a4a1b",
+    "size": 1983
+  },
+  {
+    "path": "generation_config.json",
+    "sha256": "b17e2c6813e1f5e4de267a4c7697b46f69ba7ba95643c8253ad671fab7d7271c",
+    "size": 121
+  },
+  {
+    "path": "merges.txt",
+    "sha256": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5",
+    "size": 1671853
+  },
+  {
+    "path": "model-00001-of-00002.safetensors",
+    "sha256": "e2a59915dd6a1c51ccb11be3addf4585fcf0840ac4f63f8e9fb629db58f8db6e",
+    "size": 4979120456
+  },
+  {
+    "path": "model-00002-of-00002.safetensors",
+    "sha256": "96805d61fbb9523fd27a09ab40451d04da09e9ba4b102341eac0184d8f82a0b1",
+    "size": 4503788440
+  },
+  {
+    "path": "model.safetensors.index.json",
+    "sha256": "8ac669bb58b00ff50fcae251c0002e0a2aaefbe7f1e90523d9af1c21807f0242",
+    "size": 68445
+  },
+  {
+    "path": "preprocessor_config.json",
+    "sha256": "4b47e61791af154ba0f46b332c97a3077b44e30443b7a2297394da012a52fb7e",
+    "size": 662
+  },
+  {
+    "path": "processor_config.json",
+    "sha256": "d5665e6cc31622020ed730196f9b7ddca6ab047f6e3501ea7ac8cd760ccae971",
+    "size": 179
+  },
+  {
+    "path": "special_tokens_map.json",
+    "sha256": "98e23555b0863690619b0414d458b4bc5f8c2f431c3492e22a6d2f15dcd46053",
+    "size": 1314
+  },
+  {
+    "path": "tokenizer.json",
+    "sha256": "29d2b7ab0e0ecc235df0d7d87fc3ac9b90826605e42117898c653e436c97fd03",
+    "size": 11615171
+  },
+  {
+    "path": "tokenizer_config.json",
+    "sha256": "65b1f6f2889a2485db34117e167a21e06f4a0b80fb7c1d4f59342a794c95876a",
+    "size": 187656
+  },
+  {
+    "path": "video_preprocessor_config.json",
+    "sha256": "b7f9c784a27f30ddb3fc78fca353ab6ce982c2a263b702e2547302e8c1e0087a",
+    "size": 1345
+  },
+  {
+    "path": "vocab.json",
+    "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+    "size": 2776833
+  }
+]

@@ -30,6 +30,14 @@ class SourceDocument(BaseModel):
     content: bytes | None = None
 
 
+class AssetFilePin(BaseModel):
+    """One pinned file of a model asset: repo path, sha256, size in bytes."""
+
+    path: str = Field(min_length=1)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    size: int | None = Field(default=None, ge=0)
+
+
 class ModelAssetDescriptor(BaseModel):
     """Pinned model-asset metadata (license + reproducibility contract)."""
 
@@ -43,11 +51,16 @@ class ModelAssetDescriptor(BaseModel):
     size_bytes: int | None = Field(default=None, ge=0)
     quantization: str | None = None
     estimated_vram_gb: float | None = Field(default=None, ge=0)
+    #: Per-file integrity manifest for downloads (empty until pinned).
+    file_pins: tuple[AssetFilePin, ...] = ()
 
 
 class BackendCapabilities(BaseModel):
     """Static, import-free facts about a backend."""
 
+    #: MIME media types this backend can parse — a *capability* statement, not a
+    #: file-discovery list. Walking a filesystem needs extension→MIME mapping,
+    #: which is lossy and OS-dependent and therefore the consumer's job.
     supported_formats: list[str] = Field(default_factory=list)
     supports_page_ranges: bool = True
     supports_multi_page: bool = True

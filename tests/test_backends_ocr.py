@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import json
 import re
 import sys
 import time
@@ -19,12 +20,16 @@ from types import ModuleType
 from typing import Protocol, cast
 
 import pytest
+from pydantic import ValidationError
 
+from parsecraft.assets.errors import OfflineModeError
+from parsecraft.assets.models import AssetPin
 from parsecraft.backends import registry as registry_module
 from parsecraft.backends.errors import BackendError
 from parsecraft.backends.ocr import _common, _models, ovis, qianfan, tele, unlimited
 from parsecraft.backends.ocr._common import VllmCompletion, VllmOutput
 from parsecraft.backends.protocol import (
+    AssetFilePin,
     BackendConfig,
     BackendDescriptor,
     BackendFactory,
@@ -53,6 +58,14 @@ _ASSETS: tuple[tuple[FactoryModule, ModelAssetDescriptor, str, str], ...] = (
     (tele, _models.TELE_ASSET, "StarDoc-AI/TeleOCR", "apache-2.0"),
     (unlimited, _models.UNLIMITED_ASSET, "baidu/Unlimited-OCR", "MIT"),
     (qianfan, _models.QIANFAN_ASSET, "baidu/Qianfan-OCR", "apache-2.0"),
+)
+
+
+_PINNED_ASSETS = (
+    (_models.OVIS_ASSET, "ovis"),
+    (_models.TELE_ASSET, "tele"),
+    (_models.UNLIMITED_ASSET, "unlimited"),
+    (_models.QIANFAN_ASSET, "qianfan"),
 )
 
 
@@ -303,6 +316,31 @@ class _SentinelBackend:
     """What a fake impl's create() returns — identity-checked only."""
 
     name = "sentinel"
+
+
+# ── Asset-manager wiring (pc-4u7.21) and the pin catalogue (pc-4u7.22) ──────────
+
+
+class _AssetManagerSpy:
+    """Recording AssetManager stand-in — no network can happen in offline tests."""
+
+    instances: list[_AssetManagerSpy] = []
+    error: Exception | None = None
+
+    def __init__(self, *, offline: bool = False) -> None:
+        self.offline = offline
+        self.pins: list[AssetPin] = []
+        type(self).instances.append(self)
+
+    def ensure(self, pin: AssetPin) -> list[str]:
+        self.pins.append(pin)
+        if _AssetManagerSpy.error is not None:
+            raise _AssetManagerSpy.error
+        return [f"fake-assets/{name}" for name in pin.filenames]
+
+    @staticmethod
+    def revision_dir(model_id: str, revision: str) -> Path:
+        return Path("fake-assets") / model_id.replace("/", "--") / revision[:12]
 
 
 # ── Descriptors and model assets (light, no stubs) ──────────────────────────────
@@ -792,7 +830,7 @@ def test_load_transformers_pipeline_passes_pinned_revision() -> None:
 
     pipe = _common.load_transformers_pipeline(
         _factory,
-        model_id="org/model",
+        model_source="org/model",
         model_revision="abc123",
     )
     assert isinstance(pipe, _FakePipeline)
@@ -806,11 +844,20 @@ def test_load_transformers_pipeline_passes_pinned_revision() -> None:
     captured.clear()
     _common.load_transformers_pipeline(
         _factory,
-        model_id="org/model",
+        model_source="org/model",
         model_revision="abc123",
         trust_remote_code=True,
     )
     assert captured["trust_remote_code"] is True
+
+    # Managed local dir: no hub revision may leak into the load kwargs.
+    captured.clear()
+    _common.load_transformers_pipeline(
+        _factory,
+        model_source="fake-assets/org--model",
+        model_revision=None,
+    )
+    assert "revision" not in captured
 
 
 def test_load_transformers_pipeline_maps_load_errors() -> None:
@@ -819,7 +866,7 @@ def test_load_transformers_pipeline_maps_load_errors() -> None:
         raise RuntimeError(msg)
 
     with pytest.raises(BackendError, match="failed to load model 'org/model'") as excinfo:
-        _common.load_transformers_pipeline(_factory, model_id="org/model", model_revision="abc")
+        _common.load_transformers_pipeline(_factory, model_source="org/model", model_revision="abc")
     assert "CUDA out of memory" in str(excinfo.value)
 
 
@@ -981,16 +1028,19 @@ def test_pipeline_backends_convert_under_the_stub(
     user_text = text_part["text"]
     assert isinstance(user_text, str)
     assert user_text.strip().startswith(prompt_prefix)
-    assert state.pipeline_calls[0]["revision"] == _revision_of(module)
-    assert state.pipeline_calls[0]["trust_remote_code"] is trust_remote_code
+    # Assets are managed: the pipeline loads the verified LOCAL dir, no hub revision.
+    pipeline_call = state.pipeline_calls[0]
+    assert str(pipeline_call["model"]).startswith("fake-assets")
+    assert "revision" not in pipeline_call
+    assert pipeline_call["trust_remote_code"] is trust_remote_code
 
 
 @pytest.mark.parametrize(
-    ("impl_module", "revision"),
+    "impl_module",
     [
-        ("parsecraft.backends.ocr._ovis_impl", _models.OVIS_REVISION),
-        ("parsecraft.backends.ocr._tele_impl", _models.TELE_REVISION),
-        ("parsecraft.backends.ocr._qianfan_impl", _models.QIANFAN_REVISION),
+        "parsecraft.backends.ocr._ovis_impl",
+        "parsecraft.backends.ocr._tele_impl",
+        "parsecraft.backends.ocr._qianfan_impl",
     ],
 )
 def test_pipeline_backends_support_the_vllm_runtime(
@@ -1000,7 +1050,6 @@ def test_pipeline_backends_support_the_vllm_runtime(
     vllm_stub: _VllmStub,
     *,
     impl_module: str,
-    revision: str,
 ) -> None:
     pdf_engine.page_count = 1
     impl = impl_loader(impl_module, _TransformersStub())
@@ -1009,23 +1058,12 @@ def test_pipeline_backends_support_the_vllm_runtime(
     result = backend.convert(_request(_PDF_SOURCE))
     assert result.pages[0].blocks[0].content == "vllm stub page text"
     assert len(vllm_stub.llm_calls) == 1
-    assert vllm_stub.llm_calls[0]["revision"] == revision
+    engine_call = vllm_stub.llm_calls[0]
+    assert str(engine_call["model"]).startswith("fake-assets")
+    assert "revision" not in engine_call
     # vLLM gets the same chat-templated prompt (card: apply_chat_template first):
     requests, _sampling = vllm_stub.engine.calls[0]
     assert requests[0]["prompt"] == "TEMPLATED_PROMPT"
-
-
-@pytest.fixture
-def vllm_stub(monkeypatch: pytest.MonkeyPatch) -> _VllmStub:
-    """Install the vLLM runtime stub for ``runtime='vllm'`` paths."""
-    stub = _VllmStub()
-    monkeypatch.setitem(sys.modules, "vllm", stub)
-    return stub
-
-
-def _revision_of(module: FactoryModule) -> str | None:
-    asset = module.factory.descriptor.capabilities.model_asset
-    return None if asset is None else asset.model_revision
 
 
 def test_pipeline_load_failure_is_a_typed_error(
@@ -1034,7 +1072,7 @@ def test_pipeline_load_failure_is_a_typed_error(
     state = _TransformersStub()
     state.pipeline_error = RuntimeError("no GPU")
     impl = impl_loader("parsecraft.backends.ocr._ovis_impl", state)
-    with pytest.raises(BackendError, match="failed to load model 'ATH-MaaS/OvisOCR2'"):
+    with pytest.raises(BackendError, match="failed to load model"):
         impl.create(BackendConfig(name="ocr-ovis"))
 
 
@@ -1159,10 +1197,11 @@ def test_unlimited_loads_with_trust_remote_code_and_card_settings(
     assert load["trust_remote_code"] is True
     assert load["dtype"] == "bfloat16"
     assert load["use_safetensors"] is True
-    assert load["revision"] == _models.UNLIMITED_REVISION
+    assert str(load["model_id"]).startswith("fake-assets")
+    assert "revision" not in load
     tokenizer_load = state.tokenizer_load_calls[0]
     assert tokenizer_load["trust_remote_code"] is True
-    assert tokenizer_load["revision"] == _models.UNLIMITED_REVISION
+    assert "revision" not in tokenizer_load
 
 
 def test_unlimited_single_page_without_separator_is_accepted(
@@ -1232,23 +1271,6 @@ def pdf_engine(monkeypatch: pytest.MonkeyPatch) -> _PymupdfStub:
     return engine
 
 
-@pytest.fixture
-def impl_loader(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[[str, _TransformersStub], ModuleType]]:
-    """Import heavy impl modules against a stub ``transformers``, cleaning up after."""
-    loaded: list[str] = []
-
-    def _load(module_name: str, transformers: _TransformersStub) -> ModuleType:
-        monkeypatch.setitem(sys.modules, "transformers", transformers)
-        sys.modules.pop(module_name, None)  # force a fresh top-level import
-        module = importlib.import_module(module_name)
-        loaded.append(module_name)
-        return module
-
-    yield _load
-    for module_name in loaded:
-        sys.modules.pop(module_name, None)
-
-
 def _request(
     source: SourceDocument,
     *,
@@ -1267,3 +1289,164 @@ def _request(
         max_output_chars=max_output_chars,
         max_context_tokens=max_context_tokens,
     )
+
+
+@pytest.fixture(autouse=True)
+def managed_assets(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Route every test in this file through a fake AssetManager (offline by construction)."""
+    _AssetManagerSpy.instances.clear()
+    _AssetManagerSpy.error = None
+    monkeypatch.setattr(_common, "AssetManager", _AssetManagerSpy)
+    yield
+    _AssetManagerSpy.instances.clear()
+    _AssetManagerSpy.error = None
+
+
+def test_ensure_assets_maps_descriptor_pins_onto_an_asset_pin() -> None:
+    local = _common.ensure_assets(_models.OVIS_ASSET, BackendConfig(name="ocr-ovis"))
+    assert local is not None
+    assert local.startswith("fake-assets")
+    spy = _AssetManagerSpy.instances[-1]
+    assert spy.offline is False
+    pin = spy.pins[0]
+    assert pin.descriptor is _models.OVIS_ASSET
+    assert pin.filenames == [file_pin.path for file_pin in _models.OVIS_ASSET.file_pins]
+    assert pin.expected_sha256 == {file_pin.path: file_pin.sha256 for file_pin in _models.OVIS_ASSET.file_pins}
+
+
+def test_unpinned_descriptor_keeps_the_legacy_hub_path() -> None:
+    unpinned = _models.OVIS_ASSET.model_copy(update={"file_pins": ()})
+    local = _common.ensure_assets(unpinned, BackendConfig(name="ocr-ovis"))
+    assert local is None
+    assert _AssetManagerSpy.instances == []  # the manager is never even constructed
+
+
+def test_offline_option_is_validated_and_forwarded() -> None:
+    local = _common.ensure_assets(
+        _models.OVIS_ASSET,
+        BackendConfig(name="ocr-ovis", options={"offline": True}),
+    )
+    assert local is not None
+    assert _AssetManagerSpy.instances[-1].offline is True
+    with pytest.raises(BackendError, match="must be a boolean"):
+        _common.ensure_assets(
+            _models.OVIS_ASSET,
+            BackendConfig(name="ocr-ovis", options={"offline": "yes"}),
+        )
+
+
+def test_asset_manager_failures_propagate_typed() -> None:
+    _AssetManagerSpy.error = OfflineModeError("m", "rev", "offline mode and files not cached")
+    with pytest.raises(OfflineModeError):
+        _common.ensure_assets(_models.OVIS_ASSET, BackendConfig(name="ocr-ovis"))
+
+
+def test_model_source_falls_back_to_hub_with_the_pinned_revision() -> None:
+    unpinned = _models.OVIS_ASSET.model_copy(update={"file_pins": ()})
+    source, revision = _common.model_source_and_revision(unpinned, BackendConfig(name="ocr-ovis"))
+    assert (source, revision) == (_models.OVIS_MODEL_ID, _models.OVIS_REVISION)
+
+
+@pytest.mark.parametrize(("asset", "recorded"), _PINNED_ASSETS)
+def test_file_pins_match_the_recorded_hf_tree(asset: ModelAssetDescriptor, recorded: str) -> None:
+    """Pins must equal the recorded HF tree API response (offline transcription check)."""
+    raw = json.loads(Path(f"tests/fixtures/hf_tree/hf_tree_{recorded}.json").read_text(encoding="utf-8"))
+    expected = [(entry["path"], entry["sha256"], entry["size"]) for entry in raw]
+    assert [(pin.path, pin.sha256, pin.size) for pin in asset.file_pins] == expected
+
+
+@pytest.mark.parametrize(("asset", "_recorded"), _PINNED_ASSETS)
+def test_file_pins_are_flat_verified_runtime_files(asset: ModelAssetDescriptor, _recorded: str) -> None:
+    paths = [pin.path for pin in asset.file_pins]
+    assert paths, "every pinned model needs a non-empty file manifest"
+    assert len(paths) == len(set(paths))
+    for pin in asset.file_pins:
+        assert "/" not in pin.path  # flat layout: from_pretrained(local_dir) finds every file
+        assert re.fullmatch(r"[0-9a-f]{64}", pin.sha256)
+        assert pin.size is not None
+        assert pin.size > 0
+        assert not pin.path.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".pdf", ".md"))
+
+
+def test_asset_file_pin_rejects_a_bad_sha256() -> None:
+    with pytest.raises(ValidationError, match="pattern"):
+        AssetFilePin(path="config.json", sha256="not-a-hash", size=12)
+
+
+# ── Hub fallback: unpinned descriptors keep id + revision on every load path ─────
+
+
+@pytest.mark.parametrize(
+    ("asset_attr", "impl_module", "expected_id", "expected_revision"),
+    [
+        ("OVIS_ASSET", "parsecraft.backends.ocr._ovis_impl", _models.OVIS_MODEL_ID, _models.OVIS_REVISION),
+        ("TELE_ASSET", "parsecraft.backends.ocr._tele_impl", _models.TELE_MODEL_ID, _models.TELE_REVISION),
+        (
+            "QIANFAN_ASSET",
+            "parsecraft.backends.ocr._qianfan_impl",
+            _models.QIANFAN_MODEL_ID,
+            _models.QIANFAN_REVISION,
+        ),
+    ],
+)
+def test_unpinned_descriptors_keep_the_hub_revision_on_the_vllm_path(
+    impl_loader: Callable[[str, _TransformersStub], ModuleType],
+    vllm_stub: _VllmStub,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    asset_attr: str,
+    impl_module: str,
+    expected_id: str,
+    expected_revision: str,
+) -> None:
+    impl = impl_loader(impl_module, _TransformersStub())
+    asset = getattr(_models, asset_attr)
+    monkeypatch.setattr(impl, asset_attr, asset.model_copy(update={"file_pins": ()}))
+    impl.create(BackendConfig(name="ocr-ovis", options={"runtime": "vllm"}))
+    engine_call = vllm_stub.llm_calls[0]
+    assert engine_call["model"] == expected_id
+    assert engine_call["revision"] == expected_revision
+
+
+@pytest.fixture
+def vllm_stub(monkeypatch: pytest.MonkeyPatch) -> _VllmStub:
+    """Install the vLLM runtime stub for ``runtime='vllm'`` paths."""
+    stub = _VllmStub()
+    monkeypatch.setitem(sys.modules, "vllm", stub)
+    return stub
+
+
+def test_unpinned_unlimited_descriptor_keeps_the_hub_revision(
+    impl_loader: Callable[[str, _TransformersStub], ModuleType],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _TransformersStub()
+    impl = impl_loader("parsecraft.backends.ocr._unlimited_impl", state)
+    monkeypatch.setattr(
+        impl,
+        "UNLIMITED_ASSET",
+        _models.UNLIMITED_ASSET.model_copy(update={"file_pins": ()}),
+    )
+    impl.create(BackendConfig(name="ocr-unlimited"))
+    load = state.load_calls[0]
+    assert load["model_id"] == _models.UNLIMITED_MODEL_ID
+    assert load["revision"] == _models.UNLIMITED_REVISION
+    tokenizer_load = state.tokenizer_load_calls[0]
+    assert tokenizer_load["revision"] == _models.UNLIMITED_REVISION
+
+
+@pytest.fixture
+def impl_loader(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[[str, _TransformersStub], ModuleType]]:
+    """Import heavy impl modules against a stub ``transformers``, cleaning up after."""
+    loaded: list[str] = []
+
+    def _load(module_name: str, transformers: _TransformersStub) -> ModuleType:
+        monkeypatch.setitem(sys.modules, "transformers", transformers)
+        sys.modules.pop(module_name, None)  # force a fresh top-level import
+        module = importlib.import_module(module_name)
+        loaded.append(module_name)
+        return module
+
+    yield _load
+    for module_name in loaded:
+        sys.modules.pop(module_name, None)

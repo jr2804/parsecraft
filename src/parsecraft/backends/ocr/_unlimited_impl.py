@@ -31,6 +31,7 @@ from parsecraft.backends.ocr._common import (
     analyze_source,
     convert_pages,
     count_pages,
+    model_source_and_revision,
     rasterize_page,
     runtime_choice,
 )
@@ -39,9 +40,7 @@ from parsecraft.backends.ocr._models import (
     UNLIMITED_ASSET,
     UNLIMITED_CAPABILITIES,
     UNLIMITED_MAX_PAGES_PER_CALL,
-    UNLIMITED_MODEL_ID,
     UNLIMITED_NAME,
-    UNLIMITED_REVISION,
 )
 from parsecraft.backends.protocol import (
     AnalysisResult,
@@ -174,27 +173,32 @@ def create(config: BackendConfig) -> DocumentBackend:
     if runtime_choice(config) == "vllm":
         msg = f"backend {UNLIMITED_NAME!r} supports runtime='transformers' only (infer_multi long-horizon API)"
         raise BackendError(msg)
-    return _UnlimitedBackend(config, *_load())
+    return _UnlimitedBackend(config, *_load(config))
 
 
-def _load() -> tuple[LongHorizonModel, object]:
-    """Load the pinned model + tokenizer; load failures become typed BackendErrors."""
+def _load(config: BackendConfig) -> tuple[LongHorizonModel, object]:
+    """Load the pinned model + tokenizer; load failures become typed BackendErrors.
+
+    Assets arrive through ``AssetManager`` (managed local dir, no implicit hub
+    fetch); an unpinned descriptor falls back to the hub id + pinned revision.
+    """
+    source, revision = model_source_and_revision(UNLIMITED_ASSET, config)
+    model_kwargs: dict[str, object] = {
+        "trust_remote_code": True,
+        "use_safetensors": True,
+        "dtype": "bfloat16",
+        "device_map": "auto",
+    }
+    tokenizer_kwargs: dict[str, object] = {"trust_remote_code": True}
+    if revision is not None:
+        model_kwargs["revision"] = revision
+        tokenizer_kwargs["revision"] = revision
     try:
-        model = AutoModel.from_pretrained(
-            UNLIMITED_MODEL_ID,
-            revision=UNLIMITED_REVISION,
-            trust_remote_code=True,
-            use_safetensors=True,
-            dtype="bfloat16",
-            device_map="auto",
-        )
+        model = AutoModel.from_pretrained(source, **model_kwargs)
         model.eval()
-        tokenizer = AutoTokenizer.from_pretrained(
-            UNLIMITED_MODEL_ID,
-            revision=UNLIMITED_REVISION,
-            trust_remote_code=True,
-        )
+        tokenizer = AutoTokenizer.from_pretrained(source, **tokenizer_kwargs)
     except Exception as exc:  # model/stack load boundary — typed, never raw
-        msg = f"failed to load model {UNLIMITED_MODEL_ID!r} at revision {UNLIMITED_REVISION[:12]}: {type(exc).__name__}: {exc}"
+        where = f" at revision {revision[:12]}" if revision is not None else ""
+        msg = f"failed to load model {source!r}{where}: {type(exc).__name__}: {exc}"
         raise BackendError(msg) from exc
     return model, tokenizer

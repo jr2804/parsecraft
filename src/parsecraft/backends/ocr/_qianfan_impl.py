@@ -18,6 +18,7 @@ from parsecraft.backends.ocr._common import (
     convert_pages,
     load_transformers_pipeline,
     load_vllm,
+    model_source_and_revision,
     rasterize_page,
     runtime_choice,
     transformers_transcriber,
@@ -28,9 +29,7 @@ from parsecraft.backends.ocr._models import (
     QIANFAN_ASSET,
     QIANFAN_CAPABILITIES,
     QIANFAN_EXTRA,
-    QIANFAN_MODEL_ID,
     QIANFAN_NAME,
-    QIANFAN_REVISION,
 )
 from parsecraft.backends.protocol import (
     AnalysisResult,
@@ -77,9 +76,13 @@ class _QianfanBackend:
 
 def create(config: BackendConfig) -> DocumentBackend:
     """Build the backend — the sanctioned heavy-import boundary."""
+    source, revision = model_source_and_revision(QIANFAN_ASSET, config)
     if runtime_choice(config) == "vllm":
         vllm_module = load_vllm()
-        engine = vllm_module.LLM(model=QIANFAN_MODEL_ID, revision=QIANFAN_REVISION)
+        engine_kwargs: dict[str, object] = {"model": source}
+        if revision is not None:
+            engine_kwargs["revision"] = revision
+        engine = vllm_module.LLM(**engine_kwargs)
         templated = chat_prompt(engine.get_tokenizer(), user_text=PROMPT)
         transcriber = vllm_transcriber(
             engine,
@@ -90,8 +93,8 @@ def create(config: BackendConfig) -> DocumentBackend:
     else:
         pipe = load_transformers_pipeline(
             pipeline,
-            model_id=QIANFAN_MODEL_ID,
-            model_revision=QIANFAN_REVISION,
+            model_source=source,
+            model_revision=revision,
         )
         templated = chat_prompt(pipe.tokenizer, user_text=PROMPT)
         transcriber = transformers_transcriber(pipe, prompt=templated, image_extra=QIANFAN_EXTRA)

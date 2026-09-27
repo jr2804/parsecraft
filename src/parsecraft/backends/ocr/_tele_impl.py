@@ -17,6 +17,7 @@ from parsecraft.backends.ocr._common import (
     convert_pages,
     load_transformers_pipeline,
     load_vllm,
+    model_source_and_revision,
     rasterize_page,
     runtime_choice,
     transformers_transcriber,
@@ -27,9 +28,7 @@ from parsecraft.backends.ocr._models import (
     TELE_ASSET,
     TELE_CAPABILITIES,
     TELE_EXTRA,
-    TELE_MODEL_ID,
     TELE_NAME,
-    TELE_REVISION,
 )
 from parsecraft.backends.protocol import (
     AnalysisResult,
@@ -78,9 +77,13 @@ class _TeleBackend:
 
 def create(config: BackendConfig) -> DocumentBackend:
     """Build the backend — the sanctioned heavy-import boundary."""
+    source, revision = model_source_and_revision(TELE_ASSET, config)
     if runtime_choice(config) == "vllm":
         vllm_module = load_vllm()
-        engine = vllm_module.LLM(model=TELE_MODEL_ID, revision=TELE_REVISION)
+        engine_kwargs: dict[str, object] = {"model": source}
+        if revision is not None:
+            engine_kwargs["revision"] = revision
+        engine = vllm_module.LLM(**engine_kwargs)
         templated = chat_prompt(engine.get_tokenizer(), user_text=PROMPT, system=SYSTEM)
         transcriber = vllm_transcriber(
             engine,
@@ -91,8 +94,8 @@ def create(config: BackendConfig) -> DocumentBackend:
     else:
         pipe = load_transformers_pipeline(
             pipeline,
-            model_id=TELE_MODEL_ID,
-            model_revision=TELE_REVISION,
+            model_source=source,
+            model_revision=revision,
             # The repo ships custom modeling (modeling_naviocr.py via auto_map) so
             # head_dim=128 is honored — stock qwen2_5_vl code cannot load these
             # weights (verified live on transformers 4.57.1 and 5.17).
