@@ -373,22 +373,6 @@ def fail_timeout(request: ConversionRequest, name: str) -> BackendResult:
     return BackendResult(backend=BackendRef(name=name, version=_VERSION), pages=[], failures=[failure], elapsed_s=5.1)
 
 
-def make_analysis(pages: int, *, blank_pages: tuple[int, ...] = ()) -> AnalysisResult:
-    signals = [make_signal(page, text_chars=5 if page in blank_pages else 500, blank=page in blank_pages) for page in range(1, pages + 1)]
-    return AnalysisResult(source_hash="0" * 64, page_count=pages, signals=signals, diagnostics=[])
-
-
-def make_signal(page: int, *, text_chars: int = 500, blank: bool = False) -> PageSignal:
-    return PageSignal(
-        page_number=page,
-        has_native_text=not blank,
-        text_chars=text_chars,
-        image_count=0,
-        blank=blank,
-        replacement_char_ratio=None,
-    )
-
-
 def normalized(result: PipelineResult) -> dict[str, Any]:
     """Determinism view: runtime timing/timestamps wiped, structure kept."""
     data = result.model_dump(mode="json")
@@ -550,16 +534,6 @@ def test_analyze_source_propagates_backend_errors(monkeypatch: pytest.MonkeyPatc
         analyze_source(make_source(), registry, media_type="text/plain")
 
 
-def make_registry(monkeypatch: pytest.MonkeyPatch) -> BackendRegistry:
-    """Fresh registry with entry-point discovery stubbed out (offline, isolated)."""
-    monkeypatch.setattr("parsecraft.backends.registry.entry_points", lambda **kwargs: [])
-    return BackendRegistry()
-
-
-def make_source(media_type: str | None = "text/plain") -> SourceDocument:
-    return SourceDocument(uri="mem://pipeline", media_type=media_type, content=b"data")
-
-
 def test_media_type_for_covers_extended_families(tmp_path: Path) -> None:
     assert media_type_for(tmp_path / "script.py") == "text/plain"
     assert media_type_for(tmp_path / "scan.PNG") == "image/png"
@@ -584,6 +558,126 @@ def test_choose_analyzer_prefers_native_then_name() -> None:
     assert choose_analyzer([other, native], "text/plain") is native
     with pytest.raises(NoAnalyzerError, match="no installed backend can analyze"):
         choose_analyzer([native], "application/pdf")
+
+
+def test_choose_analyzer_none_keeps_historical_behaviour() -> None:
+    claimers = _claimers()
+    assert choose_analyzer(claimers, "image/png") is choose_analyzer(claimers, "image/png", installed_extras=None)
+    # native-first then name, regardless of extras
+    assert choose_analyzer(claimers, "image/png").name == "native-a"
+
+
+def test_choose_analyzer_prefers_installed_extra_over_name_order() -> None:
+    claimers = [make_descriptor("liteparse", formats=("image/png",), group="liteparse"), make_descriptor("ocr-z", formats=("image/png",), group="ocr-z")]
+    # name order alone would pick liteparse; availability flips it
+    assert choose_analyzer(claimers, "image/png").name == "liteparse"
+    chosen = choose_analyzer(claimers, "image/png", installed_extras={"ocr-z"})
+    assert chosen.name == "ocr-z"
+
+
+def test_choose_analyzer_prefers_dependency_free_over_extra_claimers() -> None:
+    claimers = [
+        make_descriptor("liteparse", formats=("image/png",), group="liteparse"),
+        make_descriptor("native-a", formats=("image/png",)),
+    ]
+    # no extras installed: the dependency-free native analyzer must win
+    chosen = choose_analyzer(claimers, "image/png", installed_extras=set())
+    assert chosen.name == "native-a"
+
+
+def test_choose_analyzer_all_unavailable_falls_back_to_name_order() -> None:
+    claimers = [
+        make_descriptor("liteparse", formats=("image/png",), group="liteparse"),
+        make_descriptor("ocr-z", formats=("image/png",), group="ocr-z"),
+        make_descriptor("native-b", formats=("image/png",), group="missing-extra"),
+    ]
+    chosen = choose_analyzer(claimers, "image/png", installed_extras=set())
+    assert chosen.name == "native-b"  # fallback pool, same native-first-then-name key
+
+
+def test_choose_analyzer_is_deterministic_across_input_order() -> None:
+    claimers = _claimers()
+    expected = choose_analyzer(claimers, "image/png", installed_extras={"ocr-z"}).name
+    assert choose_analyzer(list(reversed(claimers)), "image/png", installed_extras={"ocr-z"}).name == expected
+    fallback = choose_analyzer(claimers, "image/png", installed_extras=set()).name
+    assert choose_analyzer(list(reversed(claimers)), "image/png", installed_extras=set()).name == fallback
+
+
+def test_choose_analyzer_still_raises_no_analyzer_with_extras() -> None:
+    with pytest.raises(NoAnalyzerError):
+        choose_analyzer(_claimers(), "application/pdf", installed_extras={"ocr-z"})
+
+
+# ── availability-aware analyzer selection (pc-4u7.27) ──────────────────────
+
+
+def _claimers() -> list[BackendDescriptor]:
+    return [
+        make_descriptor("liteparse", formats=("image/png",), group="liteparse"),
+        make_descriptor("ocr-z", formats=("image/png",), group="ocr-z"),
+        make_descriptor("native-a", formats=("image/png",), group="missing-extra"),
+    ]
+
+
+def test_analyze_source_threads_installed_extras(monkeypatch: pytest.MonkeyPatch) -> None:
+    registry = make_registry(monkeypatch)
+
+    class ImageAnalyzer:
+        def __init__(self, name: str, pages: int) -> None:
+            self.name = name
+            self.capabilities = make_descriptor(name, formats=("image/png",), group="ocr-z" if name == "ocr-z" else "liteparse").capabilities
+            self._pages = pages
+
+        def analyze(self, source: SourceDocument) -> AnalysisResult:
+            return make_analysis(self._pages)
+
+        @staticmethod
+        def convert(request: ConversionRequest) -> BackendResult:
+            raise AssertionError("analyze_source must not convert")
+
+    class Factory:
+        descriptor = make_descriptor("liteparse", formats=("image/png",), group="liteparse")
+
+        def __init__(self, name: str, pages: int) -> None:
+            self.descriptor = make_descriptor(name, formats=("image/png",), group="ocr-z" if name == "ocr-z" else "liteparse")
+            self._pages = pages
+
+        def __call__(self, config: BackendConfig) -> ImageAnalyzer:
+            return ImageAnalyzer(self.descriptor.name, self._pages)
+
+    registry.register("liteparse", Factory("liteparse", 1))
+    registry.register("ocr-z", Factory("ocr-z", 2))
+
+    picked = analyze_source(make_source(), registry, media_type="image/png", installed_extras={"ocr-z"})
+    assert picked.page_count == 2  # ocr-z is available and was preferred
+    default = analyze_source(make_source(), registry, media_type="image/png")
+    assert default.page_count == 1  # None → historical name order → liteparse
+
+
+def make_analysis(pages: int, *, blank_pages: tuple[int, ...] = ()) -> AnalysisResult:
+    signals = [make_signal(page, text_chars=5 if page in blank_pages else 500, blank=page in blank_pages) for page in range(1, pages + 1)]
+    return AnalysisResult(source_hash="0" * 64, page_count=pages, signals=signals, diagnostics=[])
+
+
+def make_signal(page: int, *, text_chars: int = 500, blank: bool = False) -> PageSignal:
+    return PageSignal(
+        page_number=page,
+        has_native_text=not blank,
+        text_chars=text_chars,
+        image_count=0,
+        blank=blank,
+        replacement_char_ratio=None,
+    )
+
+
+def make_registry(monkeypatch: pytest.MonkeyPatch) -> BackendRegistry:
+    """Fresh registry with entry-point discovery stubbed out (offline, isolated)."""
+    monkeypatch.setattr("parsecraft.backends.registry.entry_points", lambda **kwargs: [])
+    return BackendRegistry()
+
+
+def make_source(media_type: str | None = "text/plain") -> SourceDocument:
+    return SourceDocument(uri="mem://pipeline", media_type=media_type, content=b"data")
 
 
 def make_descriptor(name: str, **kwargs: Any) -> BackendDescriptor:
