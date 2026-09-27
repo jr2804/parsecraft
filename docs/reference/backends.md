@@ -75,18 +75,17 @@ missing or unusable.
 
 ## Auto mode
 
-`auto` mode selects a route from per-page signals. `analyze()` first produces
-deterministic signals — native text present, text characters, replacement-character
-ratio, image count, blank pages — without converting content. A bounded candidate
-set is then handed to an optional System One / Jev judgment step that picks among
-eligible backends.
+`auto` mode is decided by `parsecraft.routing`. `analyze()` produces per-page
+signals, one rule table classifies each page into an `Intent`, eligibility rules
+filter the catalog, and `plan_route()` returns a `RoutingPlan` with ordered
+fallbacks. Planning is deterministic, pure, and offline.
 
-Hard constraints stay code-owned. VRAM budget, batch size, maximum passes,
-installed backends, and timeouts are never negotiated by the model: Jev selects
-among eligible candidates only and cannot override a VRAM or dependency
-violation. When Jev is unavailable, deterministic planning still produces a
-route. Acceptance targets and the per-pass budget are fixed in
-[ADR-0001](../adr/0001-phase-0-decisions.md).
+Hard constraints stay code-owned: installed extras, VRAM budget, format
+coverage, `max_passes`, `allow_ocr`, and `offline` are enforced before any judge
+sees a candidate, and a `NATIVE` page requires at least one eligible non-OCR
+backend. An optional `RoutingJudge` may re-rank eligible candidates only;
+`DeterministicJudge` is the default, and a judge cannot override a constraint. A
+Jev / System One-backed judge is a planned optional extra.
 
-Auto mode is **Phase 4** and not implemented yet. It is tracked by bead `pc-5ub`
-(corpus-driven auto-mode routing harness).
+See [Routing and auto mode](../architecture/routing.md) and
+[ADR-0004](../adr/0004-routing-and-auto-mode.md). Tracking bead: `pc-5ub`.

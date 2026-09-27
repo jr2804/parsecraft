@@ -31,6 +31,13 @@ one-file-owns-each-definition pattern in `.agents/FILES.md`.
   which reads `===` tab bodies as indented code and de-indents them, breaking
   pymdownx tab grouping. Present alternatives as a lead-in sentence plus a
   fenced block instead.
+- **superfences `custom_fences`.** Any
+  `[project.markdown_extensions.pymdownx.superfences]` entry in `zensical.toml`
+  replaces Zensical's defaults. Re-declare the `mermaid` fence
+  (`name = "mermaid"`, `class = "mermaid"`) and keep the `python` fence
+  (`validator = "markdown_exec.validator"`,
+  `format = "markdown_exec.formatter"`). Dropping the mermaid fence makes every
+  diagram build as a plain code block, silently.
 - **README embedding.** `docs/index.md` includes the repository README via
   `--8<-- "README.md"` (pymdownx.snippets, base path = repo root,
   `check_paths = true`). Keep the directive working. Links in README that must
@@ -56,6 +63,7 @@ one-file-owns-each-definition pattern in `.agents/FILES.md`.
   prose): `.agents/skills/project-docs/SKILL.md` and its `references/`.
 - README review: `.agents/skills/good-readme/SKILL.md`.
 - Diagrams are Mermaid fences in the page; no generated assets are committed.
+  Superfences must re-declare the mermaid fence — see Local Contracts.
 - `docs/getting-started/quickstart.py` is executed in-page by markdown-exec.
   Run it with `uv run python docs/getting-started/quickstart.py` before editing.
 - Keep pages scannable; split a page rather than nesting past `###`.

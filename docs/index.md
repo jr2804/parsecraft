@@ -15,6 +15,7 @@ hide:
 - [Architecture overview](architecture/overview.md)
 - [Intermediate representation](architecture/ir.md)
 - [Backends](architecture/backends.md)
+- [Routing and auto mode](architecture/routing.md)
 - [Write a backend](guides/backend-authoring.md)
 - [CLI reference](reference/cli.md)
 - [Backend catalog](reference/backends.md)

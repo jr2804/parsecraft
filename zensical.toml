@@ -20,6 +20,7 @@ nav = [
     { "Overview" = "architecture/overview.md" },
     { "Intermediate representation" = "architecture/ir.md" },
     { "Backends" = "architecture/backends.md" },
+    { "Routing and auto mode" = "architecture/routing.md" },
   ] },
   { "Guides" = [
     { "Write a backend" = "guides/backend-authoring.md" },
@@ -40,6 +41,7 @@ nav = [
       { "ADR-0001 — Phase 0 decisions" = "adr/0001-phase-0-decisions.md" },
       { "ADR-0002 — Release and distribution" = "adr/0002-release-and-distribution.md" },
       { "ADR-0003 — Optional AGPL PyMuPDF" = "adr/0003-optional-agpl-pymupdf.md" },
+      { "ADR-0004 — Routing and auto mode" = "adr/0004-routing-and-auto-mode.md" },
     ] },
   ] },
 ]
@@ -149,6 +151,11 @@ emoji_index = "zensical.extensions.emoji.twemoji"
 [project.markdown_extensions.pymdownx.snippets]
 check_paths = true
 [project.markdown_extensions.pymdownx.superfences]
+# Declaring superfences replaces Zensical's default custom_fences, so the
+# mermaid fence must be re-declared here next to the markdown-exec python fence.
+[[project.markdown_extensions.pymdownx.superfences.custom_fences]]
+name = "mermaid"
+class = "mermaid"
 [[project.markdown_extensions.pymdownx.superfences.custom_fences]]
 name = "python"
 class = "python"
