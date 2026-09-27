@@ -22,6 +22,20 @@ app = typer.Typer(
 # `app.command()(commands.your_command)`.
 app.command()(commands.backends)
 app.command()(commands.convert)
+app.command()(commands.inspect)
+
+# `models` is a command group over the pinned model-asset cache.
+models_app = typer.Typer(
+    name="models",
+    help="Inspect and manage the pinned model-asset cache.",
+    no_args_is_help=True,
+)
+models_app.command(name="list")(commands.models_list)
+models_app.command(name="install")(commands.models_install)
+models_app.command(name="remove")(commands.models_remove)
+models_app.command(name="clean")(commands.models_clean)
+models_app.command(name="path")(commands.models_path)
+app.add_typer(models_app, name="models")
 
 # `config` is a command group. The sub-app is built here (registration home),
 # while the commands themselves stay plain functions in commands.py.

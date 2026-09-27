@@ -121,6 +121,57 @@ Eligibility matches `RoutingConstraints.formats` against each backend's
 `application/pdf`, `image/jpeg`, `image/png`), so a scanned PDF can route to
 OCR and a digital PDF to `native-pdf`.
 
+### `parsecraft inspect`
+
+Analyze a source with the cheapest analysis backend and preview the route
+without converting content (same backend selection as `convert`).
+
+| Option | Default | Behaviour |
+| ------ | ------- | --------- |
+| `--json` | off | Emit the analysis and routing preview as JSON |
+| `--max-passes N` | `1` | Fallback passes for the previewed plan |
+| `--no-ocr` | off | Forbid OCR backends in the preview |
+
+Output lists the media type, source hash, page count, every page signal
+(`chars`, `images`, `blank`, `replacement`), any diagnostics, and the routing
+preview (`primary`, then per-page `intent`/`chosen`/`candidates` and reason).
+When no backend is eligible the line reads `routing: unavailable — <error>` and
+the command still exits `0`, because the analysis itself succeeded.
+
+```text
+$ parsecraft inspect report.txt
+source: text/plain
+hash: a5063811dae62ef716743d0c10e2f6e99afc19ff4d8dc53ec04d09d206cf234a
+pages: 1
+page 1: chars=131 images=0 blank=False replacement=n/a
+routing: primary=native-text
+  page 1: intent=native chosen=native-text candidates=native-text
+    reason: page 1: native text sufficient (text_chars=131); first pass native-text
+```
+
+### `parsecraft models`
+
+Command group over `parsecraft.assets.AssetManager`.
+
+| Subcommand | Behaviour |
+| ---------- | --------- |
+| `models list` | Descriptor catalogue joined with cache state (name, model id, revision, size, license, quant, VRAM est, cached). `--json` supported |
+| `models install NAME` | Install a pinned asset; requires `--yes` (network opt-in) and `--accept-license` when the license requires it |
+| `models remove NAME` | Delete every cached revision of one model |
+| `models clean` | Delete every cached revision |
+| `models path` | Print the cache location and total size (`--json` supported) |
+
+`NAME` is a backend name (`ocr-ovis`) or a model id (`ATH-MaaS/OvisOCR2`).
+Offline mode comes from the detected host (`PARSECRAFT_OFFLINE`);
+`list`/`path`/`remove`/`clean` never touch the network.
+
+!!! note "Pinned manifests"
+    `models install` needs an `AssetPin` (files + SHA-256). The pin catalogue is
+    not published yet, so the default provider refuses with a typed error
+    (exit `1`) instead of guessing checksums; real installs land with bead
+    `pc-4u7.22`. Downloading also requires the `download` extra — without it the
+    error names the extra and the install command.
+
 ### `parsecraft config`
 
 Command group for the layered configuration engine (ADR-0001 §5). Sources are
@@ -194,7 +245,10 @@ key.
 
 ## Source
 
-- `src/parsecraft/cli/app.py` — app, callback, command registration
-- `src/parsecraft/cli/commands.py` — `backends`, `config_check`, `config_show`, `convert`
+- `src/parsecraft/cli/app.py` — app, callback, command and group registration
+- `src/parsecraft/cli/commands.py` — `backends`, `convert`, `inspect`, `models_*`, `config_*`
 - `src/parsecraft/cli/convert.py` — `convert_source`, `PreferredBackendJudge`, rendering
+- `src/parsecraft/cli/inspect.py` — `inspect_source`, preview rendering
+- `src/parsecraft/cli/models.py` — asset catalogue, `PinProvider`, cache management
+- `src/parsecraft/cli/errors.py` — `CliError`
 - `src/parsecraft/cli/args.py` — `JsonFlag`, `ConfigFileOption`, `PARSECRAFT_JSON`

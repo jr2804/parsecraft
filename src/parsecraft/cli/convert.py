@@ -22,6 +22,7 @@ from parsecraft.backends.protocol import (
     SourceDocument,
 )
 from parsecraft.backends.registry import BackendRegistry
+from parsecraft.cli.errors import CliError
 from parsecraft.environment import constraints_from_environment, probe_environment
 from parsecraft.ir import DocumentResult, to_markdown
 from parsecraft.pipeline import execute
@@ -46,12 +47,8 @@ MEDIA_TYPES: dict[str, str] = {
 _USAGE_EXIT_CODE = 2
 
 
-class ConvertError(Exception):
+class ConvertError(CliError):
     """A ``convert`` request that cannot be served; carries a CLI exit code."""
-
-    def __init__(self, detail: str, *, exit_code: int = 1) -> None:
-        super().__init__(detail)
-        self.exit_code = exit_code
 
 
 class PreferredBackendJudge:
