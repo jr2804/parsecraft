@@ -55,7 +55,7 @@ jobs:
       run: |
         set -euo pipefail
 
-        existing_head_tag="$(git tag --points-at HEAD --sort=-version:refname | grep -E '^[0-9]{4}\.[0-9]{2}\.[0-9]+$' | head -n 1 || true)"
+        existing_head_tag="$(git tag --points-at HEAD --sort=-version:refname | grep -E '^[0-9]{4}\.[0-9]{1,2}\.[0-9]+$' | head -n 1 || true)"
         if [ -n "$existing_head_tag" ]; then
           echo "version=$existing_head_tag" >> "$GITHUB_OUTPUT"
           echo "needs_tag=false" >> "$GITHUB_OUTPUT"
@@ -64,6 +64,7 @@ jobs:
 
         year="$(date -u +%Y)"
         month="$(date -u +%m)"
+        month="${month#0}"
 
         git fetch --tags --force
 

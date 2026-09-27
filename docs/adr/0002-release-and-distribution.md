@@ -26,11 +26,11 @@ distinct from `repo_url`.
 
 ### 2. Automatic CalVer on every push to `main`
 
-- Tag format: `YYYY.MM.N` — **no `v` prefix**, `N` increments within the month.
+- Tag format: `YYYY.M.N` — **no `v` prefix**, month is **not zero-padded**
+  (matches PyPI's normalized form), `N` increments within the month.
 - A tag is created only for a commit that has none; a re-run of an already-tagged
   commit reuses the tag (`needs_tag=false`) so it is idempotent.
-- PEP 440 normalizes `2026.09.1` → `2026.9.1` in wheel metadata; the git tag keeps
-  the zero-padded form. Cosmetic; do not string-compare the two.
+- Git tag text matches the wheel version exactly — no PEP 440 padding skew.
 - `uv-dynamic-versioning` (dunamai) derives the package version from the tag;
   `fallback-version = "0.0.0"`. dunamai's default tag pattern expects a `v`
   prefix, so `[tool.uv-dynamic-versioning] pattern` is set explicitly to the
