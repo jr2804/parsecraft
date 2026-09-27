@@ -20,6 +20,9 @@ registration + Python entry points) without editing this package.
 
 - Frozen entry-point group: `parsecraft.backends`
   (`ENTRY_POINT_GROUP` is the single definition — ADR-0001 §1).
+- `supported_formats` is a **capability** statement in **MIME media types** (one
+  vocabulary across every backend family), never a file-discovery list —
+  consumers own the lossy extension→MIME mapping.
 - Discovery is lazy and never raises: at most one metadata scan per registry
   instance; a broken plugin is recorded in `registry.load_errors`, and
   callers (CLI) MUST surface those — silent omission is a bug.

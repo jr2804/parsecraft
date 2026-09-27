@@ -16,6 +16,14 @@ Both are `runtime_checkable` protocols in `parsecraft.backends.protocol`.
 The registry binds descriptor to factory internally, so descriptors serialize
 cleanly for `parsecraft backends --json`.
 
+### Format vocabulary
+
+`capabilities.supported_formats` lists **MIME media types** — one vocabulary
+across every backend family. It states what a backend can *parse*, not which
+files are discoverable: mapping a filesystem's extensions to MIME types is
+lossy and OS-dependent, so consumers own that map. `parsecraft.routing`'s
+`RoutingConstraints.formats` uses the same MIME vocabulary.
+
 ## Request bounds
 
 `ConversionRequest` carries every bound a backend must honor:

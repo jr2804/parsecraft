@@ -43,9 +43,9 @@ class JudgeViolationError(RoutingError):
 class RoutingConstraints(BaseModel):
     """Hard, code-owned planning constraints — never delegated to a judge.
 
-    ``formats`` is the set of source formats the plan must serve; a
-    candidate must support every one of them. An empty set means no format
-    restriction.
+    ``formats`` is the set of source **MIME media types** the plan must
+    serve; a candidate must support every one of them. An empty set means no
+    format restriction.
     """
 
     formats: set[str] = Field(default_factory=set)
