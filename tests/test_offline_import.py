@@ -25,6 +25,13 @@ _SCRIPT = textwrap.dedent(
     import parsecraft.assets
     import parsecraft.assets.downloader
     import parsecraft.backends
+    import parsecraft.backends.ocr
+    import parsecraft.backends.ocr._common
+    import parsecraft.backends.ocr._models
+    import parsecraft.backends.ocr.ovis
+    import parsecraft.backends.ocr.qianfan
+    import parsecraft.backends.ocr.tele
+    import parsecraft.backends.ocr.unlimited
     import parsecraft.backends.registry
     import parsecraft.config
     import parsecraft.ir
@@ -43,6 +50,8 @@ _SCRIPT = textwrap.dedent(
         if m in sys.modules
     ]
     assert not heavy, f"heavy runtimes imported at package import: {heavy}"
+    impls = [m for m in sys.modules if m.startswith("parsecraft.backends.ocr._") and m.endswith("_impl")]
+    assert not impls, f"heavy impl modules imported at package import: {impls}"
     print("IMPORTS_OK")
     """,
 )

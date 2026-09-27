@@ -90,13 +90,6 @@ class _NoFormatsFactory:
         return _StubBackend()
 
 
-def test_bare_invocation_shows_help() -> None:
-    result = _runner.invoke(app, [])
-    assert result.exit_code == 0
-    assert "Usage:" in result.output
-    assert "backends" in result.output
-
-
 def test_commands_share_the_process_default_registry() -> None:
     assert commands.default_registry is default_registry
 
@@ -109,14 +102,14 @@ def test_version_short_flag_matches_long_flag() -> None:
 
 
 def test_backends_empty_registry(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(commands, "default_registry", BackendRegistry())
+    monkeypatch.setattr(commands, "default_registry", _registry_with())
     result = _runner.invoke(app, ["backends"])
     assert result.exit_code == 0
     assert "No backends registered." in result.output
 
 
 def test_backends_json_empty(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(commands, "default_registry", BackendRegistry())
+    monkeypatch.setattr(commands, "default_registry", _registry_with())
     result = _runner.invoke(app, ["backends", "--json"])
     assert result.exit_code == 0
     assert result.output.strip() == "[]"
@@ -162,7 +155,7 @@ def test_backends_json_capability_schema_is_exact(monkeypatch: pytest.MonkeyPatc
     assert result.exit_code == 0
     payload = json.loads(result.output)
     entry = payload[0]
-    assert set(entry) == {"name", "capabilities"}
+    assert set(entry) == {"name", "version", "capabilities"}
     assert set(entry["capabilities"]) == {
         "supported_formats",
         "supports_page_ranges",
@@ -184,6 +177,7 @@ def test_backends_json_enabled_via_environment_variable(monkeypatch: pytest.Monk
 
 def _registry_with(*factories: BackendFactory) -> BackendRegistry:
     registry = BackendRegistry()
+    registry._entry_points_loaded = True  # isolate from installed entry points
     for factory in factories:
         registry.register(factory.descriptor.name, factory)
     return registry

@@ -17,8 +17,9 @@ tests, and keep the 100% coverage gate green.
   `features`, `sha256`).
 - `test_ir.py`, `test_markdown_projection.py` — IR invariants and the
   deterministic Markdown projection (incl. nested children).
-- `test_backends_registry.py`, `test_example_backend.py` — backend protocol,
-  registry precedence, lazy discovery, third-party example.
+- `test_backends_registry.py`, `test_example_backend.py`, `test_backends_ocr.py`
+  — backend protocol, registry precedence, third-party example, OCR/VLM
+  adapters (heavy stacks stubbed through `sys.modules`, fully offline).
 - `test_smoke.py` — CLI surface (`default`, `backends --json`, `--version`).
 - `test_document_fixtures.py`, `test_sources_manifest.py` — fixture
   determinism/PDF validity, manifest schema, corpus tier (opt-in).

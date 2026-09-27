@@ -104,7 +104,8 @@ def test_explicit_register_get_create() -> None:
     assert backend.name == "fake"
 
 
-def test_list_backends_is_sorted_and_deterministic() -> None:
+def test_list_backends_is_sorted_and_deterministic(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_entry_points(monkeypatch, [])
     registry = BackendRegistry()
     registry.register("gpu-one", GpuFactory())
     registry.register("fake", FakeFactory())
