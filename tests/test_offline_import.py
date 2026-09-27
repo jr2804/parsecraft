@@ -37,6 +37,9 @@ _SCRIPT = textwrap.dedent(
     import parsecraft.ir
     import parsecraft.ir.markdown
     import parsecraft.cli.app
+    import parsecraft.environment
+    import parsecraft.environment.constraints
+    import parsecraft.environment.probe
 
     heavy = [
         m

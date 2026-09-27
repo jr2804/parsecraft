@@ -20,6 +20,10 @@ Markdown as a deterministic projection.
   `adapters/AGENTS.md`).
 - `routing/` — deterministic auto-mode planner: analysis signals → intent →
   eligible backend candidates, with an injectable judge (see `routing/AGENTS.md`).
+- `pipeline/` — routing executor: plan → per-range dispatch → fallback passes →
+  aggregate (see `pipeline/AGENTS.md`).
+- `environment/` — host probe (installed extras, GPU/VRAM) → `RoutingConstraints`
+  bridge (see `environment/AGENTS.md`).
 - `cli/` — Typer CLI; commands are plain functions in `commands.py`,
   registered in `app.py` (never decorators in `commands.py`, never import
   `app` there — circular import breaks clean-sort).
@@ -46,3 +50,5 @@ Markdown as a deterministic projection.
 - `assets/AGENTS.md` — asset-manager rules
 - `adapters/AGENTS.md` — input-adapter rules
 - `routing/AGENTS.md` — routing/auto-mode rules
+- `pipeline/AGENTS.md` — executor rules
+- `environment/AGENTS.md` — environment-probe rules
