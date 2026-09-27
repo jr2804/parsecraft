@@ -21,6 +21,7 @@ app = typer.Typer(
 # re-sorting this file into a broken state. Register with:
 # `app.command()(commands.your_command)`.
 app.command()(commands.backends)
+app.command()(commands.convert)
 
 # `config` is a command group. The sub-app is built here (registration home),
 # while the commands themselves stay plain functions in commands.py.

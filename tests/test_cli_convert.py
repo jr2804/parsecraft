@@ -1,0 +1,281 @@
+"""Tests for ``parsecraft convert`` (auto and non-auto paths)."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from pathlib import Path
+from typing import cast
+
+import pytest
+from typer.testing import CliRunner, Result
+
+import parsecraft.cli.convert as convert_module
+from parsecraft.backends import BackendRegistry
+from parsecraft.backends.errors import BackendError
+from parsecraft.backends.protocol import (
+    AnalysisResult,
+    BackendCapabilities,
+    BackendConfig,
+    BackendDescriptor,
+    BackendRef,
+    BackendResult,
+    ConversionRequest,
+    DocumentBackend,
+    SourceDocument,
+)
+from parsecraft.cli.app import app
+from parsecraft.environment import EnvironmentInfo
+from parsecraft.ir import ChunkKind, PageResult, PageSignal, StructuredChunk
+
+_LONG_TEXT = "A paragraph comfortably longer than the forty character routing threshold."
+
+runner = CliRunner()
+
+
+class _StubBackend:
+    def __init__(self, name: str, capabilities: BackendCapabilities, content: str) -> None:
+        self.name = name
+        self.capabilities = capabilities
+        self._content = content
+
+    def convert(self, request: ConversionRequest) -> BackendResult:
+        return BackendResult(
+            backend=BackendRef(name=self.name, version="0.0.0"),
+            pages=[
+                PageResult(
+                    page_number=1,
+                    blocks=[
+                        StructuredChunk(
+                            id=f"{self.name}-1-0",
+                            kind=ChunkKind.PARAGRAPH,
+                            content=self._content,
+                            page_number=1,
+                            reading_order=0,
+                        )
+                    ],
+                )
+            ],
+            elapsed_s=0.0,
+        )
+
+    @staticmethod
+    def analyze(source: SourceDocument) -> AnalysisResult:
+        data = source.content or b""
+        chars = len(data)
+        return AnalysisResult(
+            source_hash=hashlib.sha256(data).hexdigest(),
+            page_count=1,
+            signals=[
+                PageSignal(
+                    page_number=1,
+                    has_native_text=chars >= 40,
+                    text_chars=chars,
+                    image_count=0,
+                    blank=chars == 0,
+                )
+            ],
+        )
+
+
+class _StubFactory:
+    def __init__(self, descriptor: BackendDescriptor, *, content: str = "stub content", fail: bool = False) -> None:
+        self.descriptor = descriptor
+        self._content = content
+        self._fail = fail
+
+    def __call__(self, config: BackendConfig) -> DocumentBackend:
+        if self._fail:
+            raise BackendError("stub factory failed")
+        return _StubBackend(self.descriptor.name, self.descriptor.capabilities, self._content)
+
+
+def test_media_type_for_supported_and_unsupported(tmp_path: Path) -> None:
+    assert convert_module.media_type_for(tmp_path / "a.TXT") == "text/plain"
+    assert convert_module.media_type_for(tmp_path / "a.md") == "text/markdown"
+    with pytest.raises(convert_module.ConvertError) as error:
+        convert_module.media_type_for(tmp_path / "a.xyz")
+    assert error.value.exit_code == 2
+
+
+def test_read_source_reads_bytes_and_reports_missing(tmp_path: Path) -> None:
+    path = _source_file(tmp_path)
+    source = convert_module.read_source(path, "text/plain")
+    assert source.media_type == "text/plain"
+    assert source.content == path.read_bytes()
+    assert source.uri.startswith("file:")
+
+    with pytest.raises(convert_module.ConvertError, match="cannot read source"):
+        convert_module.read_source(tmp_path / "missing.txt", "text/plain")
+
+
+def test_analysis_backend_prefers_native_then_name_and_errors() -> None:
+    descriptors = [
+        _descriptor("ocr-ovis", ("text/plain",)),
+        _descriptor("native-text", ("text/plain",)),
+        _descriptor("native-html", ("text/html",)),
+    ]
+    assert convert_module.analysis_backend(descriptors, "text/plain").name == "native-text"
+    with pytest.raises(convert_module.ConvertError) as error:
+        convert_module.analysis_backend(descriptors, "application/pdf")
+    assert error.value.exit_code == 2
+
+
+def test_build_constraints_from_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        convert_module,
+        "probe_environment",
+        lambda: EnvironmentInfo(installed_extras=frozenset({"ocr-ovis"}), vram_budget_gb=8.0, offline=False),
+    )
+    derived = convert_module.build_constraints("application/pdf", max_passes=2, allow_ocr=None)
+    assert derived.formats == {"application/pdf"}
+    assert derived.installed_extras == {"ocr-ovis"}
+    assert derived.vram_budget_gb == 8.0
+    assert derived.offline is False
+    assert derived.allow_ocr is True
+    assert derived.max_passes == 2
+
+    overridden = convert_module.build_constraints("text/plain", max_passes=1, allow_ocr=False)
+    assert overridden.allow_ocr is False
+
+
+def test_preferred_backend_judge_orders_and_rejects() -> None:
+    candidates = [_descriptor("native-text", ("text/plain",)), _descriptor("other", ("text/plain",))]
+    judge = convert_module.PreferredBackendJudge("other")
+    assert list(judge.rank(convert_module.Intent.NATIVE, candidates)) == ["other", "native-text"]
+
+    missing = convert_module.PreferredBackendJudge("nope")
+    with pytest.raises(convert_module.JudgeViolationError):
+        missing.rank(convert_module.Intent.NATIVE, candidates)
+
+
+def test_convert_auto_native_markdown(tmp_path: Path, registry: BackendRegistry) -> None:
+    _register(registry, _descriptor("native-text", ("text/plain",)), content="converted paragraph")
+    result = runner.invoke(app, ["convert", str(_source_file(tmp_path))])
+    assert result.exit_code == 0
+    assert "<!-- page 1 -->" in result.output
+    assert "converted paragraph" in result.output
+
+
+def test_convert_auto_json_emits_ir(tmp_path: Path, registry: BackendRegistry) -> None:
+    _register(registry, _descriptor("native-text", ("text/plain",)), content="converted paragraph")
+    result = runner.invoke(app, ["convert", str(_source_file(tmp_path)), "--json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["metadata"]["format"] == "text/plain"
+    assert payload["metadata"]["page_count"] == 1
+    assert payload["pages"][0]["blocks"][0]["content"] == "converted paragraph"
+
+
+def test_convert_no_auto_requires_backend(tmp_path: Path, registry: BackendRegistry) -> None:
+    _register(registry, _descriptor("native-text", ("text/plain",)))
+    result = runner.invoke(app, ["convert", str(_source_file(tmp_path)), "--no-auto"])
+    assert result.exit_code == 2
+    assert "--no-auto requires --backend" in _text(result)
+
+
+def test_convert_unknown_suffix_is_usage_error(tmp_path: Path, registry: BackendRegistry) -> None:
+    path = tmp_path / "doc.xyz"
+    path.write_text("data", encoding="utf-8")
+    result = runner.invoke(app, ["convert", str(path)])
+    assert result.exit_code == 2
+    assert "unsupported source" in _text(result)
+
+
+def test_convert_missing_file_is_usage_error(tmp_path: Path, registry: BackendRegistry) -> None:
+    result = runner.invoke(app, ["convert", str(tmp_path / "missing.txt")])
+    assert result.exit_code == 2
+
+
+def test_convert_backend_path_prefers_named_backend(tmp_path: Path, registry: BackendRegistry) -> None:
+    _register(registry, _descriptor("native-html", ("text/plain",)), content="html stub")
+    _register(registry, _descriptor("native-text", ("text/plain",)), content="text stub")
+    result = runner.invoke(app, ["convert", str(_source_file(tmp_path)), "--backend", "native-html"])
+    assert result.exit_code == 0
+    assert "html stub" in result.output
+
+
+def test_convert_backend_not_eligible_is_usage_error(tmp_path: Path, registry: BackendRegistry) -> None:
+    _register(registry, _descriptor("native-text", ("text/plain",)))
+    result = runner.invoke(app, ["convert", str(_source_file(tmp_path)), "--backend", "native-html"])
+    assert result.exit_code == 2
+    assert "not eligible" in _text(result)
+
+
+def test_convert_without_eligible_backend_fails(tmp_path: Path, registry: BackendRegistry) -> None:
+    _register(registry, _descriptor("native-text", ("text/plain",), group="missing-extra"))
+    result = runner.invoke(app, ["convert", str(_source_file(tmp_path))])
+    assert result.exit_code == 1
+    assert "routing failed" in _text(result)
+
+
+def test_convert_analysis_failure_fails(tmp_path: Path, registry: BackendRegistry) -> None:
+    _register(registry, _descriptor("native-text", ("text/plain",)), fail=True)
+    result = runner.invoke(app, ["convert", str(_source_file(tmp_path))])
+    assert result.exit_code == 1
+    assert "analysis with 'native-text' failed" in _text(result)
+
+
+def _text(result: Result) -> str:
+    return f"{result.output}{result.stderr or ''}"
+
+
+def test_convert_no_ocr_flag(tmp_path: Path, registry: BackendRegistry) -> None:
+    _register(registry, _descriptor("native-text", ("text/plain",)))
+    result = runner.invoke(app, ["convert", str(_source_file(tmp_path)), "--no-ocr"])
+    assert result.exit_code == 0
+
+
+def test_render_json_and_markdown(tmp_path: Path, registry: BackendRegistry) -> None:
+    _register(registry, _descriptor("native-text", ("text/plain",)), content="render me")
+    document = convert_module.convert_source(_source_file(tmp_path))
+    assert "<!-- page 1 -->" in convert_module.render(document, as_json=False)
+    assert "render me" in convert_module.render(document, as_json=False)
+    as_json = cast("dict[str, object]", json.loads(convert_module.render(document, as_json=True)))
+    assert "pages" in as_json
+
+
+def _descriptor(
+    name: str,
+    formats: tuple[str, ...],
+    *,
+    group: str | None = None,
+    gpu: bool = False,
+    vram: float | None = None,
+    ranges: bool = False,
+    multi: bool = False,
+) -> BackendDescriptor:
+    return BackendDescriptor(
+        name=name,
+        capabilities=BackendCapabilities(
+            supported_formats=list(formats),
+            supports_page_ranges=ranges,
+            supports_multi_page=multi,
+            requires_gpu=gpu,
+            estimated_vram_gb=vram,
+            optional_dependency_group=group,
+        ),
+    )
+
+
+def _register(registry: BackendRegistry, descriptor: BackendDescriptor, *, content: str = "stub content", fail: bool = False) -> None:
+    registry.register(descriptor.name, _StubFactory(descriptor, content=content, fail=fail))
+
+
+@pytest.fixture
+def registry(monkeypatch: pytest.MonkeyPatch) -> BackendRegistry:
+    """An isolated registry plus a fixed offline environment probe."""
+    instance = BackendRegistry()
+    monkeypatch.setattr(convert_module, "default_registry", instance)
+    monkeypatch.setattr(
+        convert_module,
+        "probe_environment",
+        lambda: EnvironmentInfo(installed_extras=frozenset(), vram_budget_gb=0.0, offline=True),
+    )
+    return instance
+
+
+def _source_file(tmp_path: Path, name: str = "doc.txt", text: str = _LONG_TEXT) -> Path:
+    path = tmp_path / name
+    path.write_text(text, encoding="utf-8")
+    return path

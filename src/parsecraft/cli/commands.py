@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+from typing import Annotated
 
 import typer
 
 from parsecraft.backends import default_registry
 from parsecraft.cli import args, config
+from parsecraft.cli.convert import ConvertError, convert_source, render
 from parsecraft.config import ConfigError
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -75,3 +78,24 @@ def _emit_config_error(error: ConfigError, *, as_json: bool) -> None:
         typer.echo(json.dumps({"error": str(error)}, indent=2, sort_keys=True))
         return
     typer.echo(f"error: {error}", err=True)
+
+
+def convert(
+    source: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True, help="Source document to convert")],
+    *,
+    backend: Annotated[str | None, typer.Option("--backend", "-b", help="Non-auto: prefer this backend")] = None,
+    auto: Annotated[bool, typer.Option("--auto/--no-auto", help="Route automatically (default); --no-auto requires --backend")] = True,
+    as_json: args.JsonFlag = False,
+    max_passes: Annotated[int, typer.Option("--max-passes", min=1, help="Fallback passes per page group")] = 1,
+    no_ocr: Annotated[bool, typer.Option("--no-ocr", help="Forbid OCR backends")] = False,
+) -> None:
+    """Convert a document through the auto-mode pipeline."""
+    if not auto and backend is None:
+        typer.echo("error: --no-auto requires --backend", err=True)
+        raise typer.Exit(code=2)
+    try:
+        document = convert_source(source, backend=backend, max_passes=max_passes, allow_ocr=False if no_ocr else None)
+    except ConvertError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=exc.exit_code) from exc
+    typer.echo(render(document, as_json=as_json))

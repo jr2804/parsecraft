@@ -78,6 +78,51 @@ is `[]` when none are registered; the schema is `BackendDescriptor`:
 ]
 ```
 
+### `parsecraft convert`
+
+Convert a document through the auto-mode pipeline: analyze the source, route it
+with `parsecraft.routing`, execute with `parsecraft.pipeline`, and print the IR.
+
+```text
+parsecraft convert SOURCE [OPTIONS]
+```
+
+| Option | Default | Behaviour |
+| ------ | ------- | --------- |
+| `--backend`, `-b NAME` | unset | Non-auto: lead with this backend (it must be eligible) |
+| `--auto` / `--no-auto` | `--auto` | Route automatically; `--no-auto` requires `--backend` |
+| `--max-passes N` | `1` | Fallback passes per page group (`N >= 1`) |
+| `--no-ocr` | off | Forbid OCR backends |
+| `--json` | off | Emit the IR as JSON instead of the Markdown projection |
+
+Output is the Markdown projection (`parsecraft.ir.markdown.to_markdown`) or the
+`DocumentResult` as JSON (`--json`). Supported suffixes: `.txt`, `.md`,
+`.markdown`, `.html`, `.htm`, `.pdf`.
+
+```text
+$ parsecraft convert report.txt
+<!-- page 1 -->
+
+A paragraph comfortably longer than the forty character routing threshold.
+```
+
+The command analyzes with the deterministic analysis backend (native backends
+first, then name order) and builds constraints from the detected host
+(`parsecraft.environment.constraints_from_environment`): installed extras,
+measured VRAM, and `PARSECRAFT_OFFLINE`. `--max-passes` and `--no-ocr` map to
+`RoutingConstraints.max_passes` and `allow_ocr`.
+
+Exit codes: `0` success, `1` analysis or routing failure, `2` usage error
+(unsupported suffix, missing file, `--no-auto` without `--backend`, or a
+`--backend` that is not eligible for the source).
+
+!!! note "Format vocabulary"
+    Eligibility matches `RoutingConstraints.formats` against each backend's
+    `supported_formats`. The built-in native backends declare MIME types
+    (`text/plain`, `application/pdf`, ...), while the OCR descriptors declare
+    `pdf`/`png`/`jpeg`, so a scanned PDF cannot currently route to OCR through
+    `--auto`; the native path is unaffected.
+
 ### `parsecraft config`
 
 Command group for the layered configuration engine (ADR-0001 §5). Sources are
@@ -152,5 +197,6 @@ key.
 ## Source
 
 - `src/parsecraft/cli/app.py` — app, callback, command registration
-- `src/parsecraft/cli/commands.py` — `backends`, `config_check`, `config_show`
+- `src/parsecraft/cli/commands.py` — `backends`, `config_check`, `config_show`, `convert`
+- `src/parsecraft/cli/convert.py` — `convert_source`, `PreferredBackendJudge`, rendering
 - `src/parsecraft/cli/args.py` — `JsonFlag`, `ConfigFileOption`, `PARSECRAFT_JSON`
