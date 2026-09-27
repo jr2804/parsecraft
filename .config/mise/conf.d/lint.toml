@@ -1,6 +1,6 @@
 [tasks.lint]
 description = "Run linter (ruff)"
-run = 'ruff check src/ tests/ --fix'
+run = 'ruff check src/ tests/ --fix --no-cache'
 
 [tasks.typecheck]
 description = "Run type checker (ty)"
