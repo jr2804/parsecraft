@@ -185,9 +185,18 @@ fixture binaries in git). Two tiers:
    `.txt/.md/.csv/.json/.html` and a minimal valid PDF built from bytes in test
    code. The generator is the committed artifact, never the binary.
 2. **Real-document fixtures, opt-in and offline-by-default**: a manifest
-   (`tests/fixtures/sources.toml`) records permissively licensed public sources
-   with URLs + the documented local download step. Fetches are skipped unless
-   explicitly enabled; `mise test` never needs network.
+   (`tests/fixtures/sources.toml`) records public sources with URLs + the
+   documented local download step. Fetches are skipped unless explicitly
+   enabled; `mise test` never needs network. Downloads live in a project-owned,
+   gitignored `tests/downloads/` staging dir — never in the pytest cache, which
+   pytest owns. Two sub-classes:
+   - **Pinned** (`sha256` + `approx_size`): reproducible benchmark inputs; the
+     cache is content-addressed (`sha256-filename`) and a hash mismatch fails
+     loudly as drift, to be re-pinned deliberately.
+   - **Mutable** (`mutable = true`): live wiki/spec/archive pages that
+     legitimately change upstream; cached by filename and validated structurally
+     (format plausibility), never by hash, so an upstream edit never fails the
+     tier.
 
 Core stays import-clean offline (enforced by `tests/test_offline_import.py`).
 

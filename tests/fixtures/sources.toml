@@ -25,6 +25,13 @@
 # Drift semantics: a hash mismatch means upstream changed the artifact.
 # Re-pin deliberately after review (benchmark inputs must not move silently).
 #
+# mutable = true marks a *live endpoint* whose content legitimately changes
+# upstream (wiki/spec/archive pages). Mutable sources are NOT hash-pinned:
+# they cache by filename and the corpus tier validates structure + feature
+# plausibility instead of exact bytes, so they never go red on an edit. Use
+# mutable only for structure specimens; the reproducible benchmark inputs stay
+# strictly pinned (`sha256` + `approx_size`).
+#
 # Fields: id (unique slug), format (must be scaffoldable), media_type,
 # url (https), license, license_url, why (why suitable as a fixture),
 # filename (target name inside the cache dir), download_step (single-line
@@ -59,7 +66,7 @@ download_step = "curl -fL -A parsecraft-tests -o tests/downloads/exoplanets.csv 
 difficulty = "simple"
 approx_size = 7754
 features = ["tables"]
-sha256 = "8dd850a1c8ef07d84d25472a3dc9a5c629e133fb29dd972de713680dcf4fd088"
+mutable = true
 
 [[sources]]
 id = "rfc5322"
@@ -104,7 +111,7 @@ download_step = "curl -fL -A parsecraft-tests -o tests/downloads/wikidata-q42.js
 difficulty = "medium"
 approx_size = 321005
 features = []
-sha256 = "49d2edd625009e0d4e9d81311ad5708b6fc1685c93143e78ea6567210ddefe82"
+mutable = true
 
 [[sources]]
 id = "whatwg-html-standard"
@@ -119,7 +126,7 @@ download_step = "curl -fL -A parsecraft-tests -o tests/downloads/whatwg-html.htm
 difficulty = "complex"
 approx_size = 154743
 features = ["code", "images"]
-sha256 = "9a521d16331ff65b01e242c281887e59b91ce364fd9ea6af4f184720ca1c3d2c"
+mutable = true
 
 [[sources]]
 id = "wikipedia-calculus"
@@ -134,7 +141,7 @@ download_step = "curl -fL -A parsecraft-tests -o tests/downloads/wikipedia-calcu
 difficulty = "complex"
 approx_size = 818796
 features = ["equations", "images", "tables"]
-sha256 = "95d6585a83268d2c61061949b37daa4ccd3ed17f6a32f4171bf2dfeb3405e10b"
+mutable = true
 
 [[sources]]
 id = "nist-sp-800-53r5"

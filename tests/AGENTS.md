@@ -45,9 +45,11 @@ tests, and keep the 100% coverage gate green.
   - `corpus` — slow tier, skipped unless `pytest --run-corpus`; runs via
     `mise run test-corpus`; hard budget **15 min on a cold cache**
     (pinned by `test_corpus_cold_cache_refresh_stays_within_budget`).
-  - Corpus downloads cache content-addressed (`sha256-filename`) under
-    `tests/downloads/`; a hash match is never re-downloaded, a mismatch fails
-    as corpus drift and must be re-pinned deliberately.
+  - Corpus downloads live under `tests/downloads/`. Pinned sources cache
+    content-addressed (`sha256-filename`) and fail loudly on drift; re-pin
+    deliberately after review. Live endpoints are marked `mutable = true`:
+    cached by filename and validated structurally (never by hash), so upstream
+    edits do not fail the tier.
 - `mise test` always stays offline and fast — only the default tier runs.
 - Never weaken `fail_under = 100` (`pyproject.toml`) or the offline import
   gate (`test_offline_import.py`).

@@ -67,10 +67,13 @@ class DocumentSource(BaseModel):
     pages: int | None = Field(default=None, ge=1)
     sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
     manual: bool = False
+    mutable: bool = False
 
     @property
     def cache_name(self) -> str:
-        """Content-addressed cache file name: pinned hash, then the filename."""
+        """Cache file name: ``sha256-filename`` when pinned, ``filename`` when mutable."""
+        if self.mutable:
+            return self.filename
         if self.sha256 is None:
             msg = f"{self.id!r} has no pinned sha256 — nothing to key the cache on"
             raise ValueError(msg)
@@ -86,6 +89,9 @@ class DocumentSource(BaseModel):
             raise ValueError(msg)
         if _DOWNLOADS_DIR not in self.download_step:
             msg = f"download_step must write into {_DOWNLOADS_DIR}"
+            raise ValueError(msg)
+        if self.mutable and self.sha256 is not None:
+            msg = f"{self.id!r} is mutable; do not pin sha256 (upstream content changes)"
             raise ValueError(msg)
         return self
 

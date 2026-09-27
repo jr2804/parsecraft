@@ -61,12 +61,44 @@ def test_corpus_covers_every_expected_feature() -> None:
     assert features == set(Feature)
 
 
-def test_every_downloadable_source_is_pinned() -> None:
+def test_every_pinned_downloadable_source_is_hash_pinned() -> None:
     for source in _MANIFEST.downloadable:
+        if source.mutable:
+            assert source.sha256 is None
+            assert source.cache_name == source.filename
+            continue
         assert source.sha256 is not None
         assert source.approx_size is not None
         assert source.approx_size > 0
         assert source.cache_name == f"{source.sha256}-{source.filename}"
+
+
+def test_live_endpoints_are_marked_mutable() -> None:
+    mutable = {source.id for source in _MANIFEST.sources if source.mutable}
+    assert mutable == {
+        "nasa-exoplanet-catalog",
+        "wikidata-entity-q42",
+        "whatwg-html-standard",
+        "wikipedia-calculus",
+    }
+
+
+def test_mutable_source_caches_by_filename() -> None:
+    mutable = DocumentSource(
+        id="mutable-example",
+        format="html",
+        media_type="text/html",
+        url="https://example.com/a.html",
+        license="example licence placeholder text",
+        license_url="https://example.com/license",
+        why="documents that a live source caches by name without a pinned hash",
+        filename="a.html",
+        download_step=f"curl -o {_DOWNLOADS_DIR_HINT}/a.html https://example.com/a.html",
+        difficulty=Difficulty.MEDIUM,
+        mutable=True,
+    )
+    assert mutable.sha256 is None
+    assert mutable.cache_name == "a.html"
 
 
 def test_page_counts_are_recorded_where_known() -> None:
@@ -194,17 +226,21 @@ def test_duplicate_source_ids_are_rejected() -> None:
 @pytest.mark.corpus
 @pytest.mark.network
 @pytest.mark.parametrize("source_id", [source.id for source in _MANIFEST.downloadable])
-def test_corpus_document_is_cached_and_matches_pinned_hash(source_id: str, downloads_dir: Path) -> None:
+def test_corpus_document_is_cached_and_verified(source_id: str, downloads_dir: Path) -> None:
     source = _by_id(source_id)
-    assert source.approx_size is not None
     cache_path = downloads_dir / source.cache_name
     started = time.monotonic()
     data = _acquire(source, cache_path)
     _FETCH_ELAPSED_S.append(time.monotonic() - started)
     assert cache_path.is_file()
-    assert hashlib.sha256(data).hexdigest() == source.sha256
-    assert len(data) == source.approx_size
     _assert_plausible(source, data)
+    if source.mutable:
+        assert source.sha256 is None
+    else:
+        assert source.sha256 is not None
+        assert source.approx_size is not None
+        assert hashlib.sha256(data).hexdigest() == source.sha256
+        assert len(data) == source.approx_size
 
 
 def _by_id(source_id: str) -> DocumentSource:
@@ -217,7 +253,18 @@ def _by_id(source_id: str) -> DocumentSource:
 
 
 def _acquire(source: DocumentSource, cache_path: Path) -> bytes:
-    """Content-addressed acquisition: reuse on hash match, else fetch, verify, store."""
+    """Acquire one corpus document.
+
+    Mutable sources (live endpoints) cache by name and are validated
+    structurally — never by hash — so upstream edits do not fail the tier.
+    Pinned sources reuse on hash match, else fetch, verify, and store.
+    """
+    if source.mutable:
+        if cache_path.is_file():
+            return cache_path.read_bytes()
+        data = _fetch(source.url)
+        cache_path.write_bytes(data)
+        return data
     expected = source.sha256
     assert expected is not None, "downloadable corpus entries must be content-pinned"
     if cache_path.is_file():
