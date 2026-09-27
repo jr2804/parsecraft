@@ -1,0 +1,32 @@
+# Auto-detect text files and normalize to LF
+* text=auto
+
+# Shell scripts must be LF
+*.sh text eol=lf
+
+# Python source
+*.py text diff=python
+
+# Markdown
+*.md text diff=markdown
+
+# Configuration
+*.yml text
+*.yaml text
+*.toml text
+*.ini text
+*.cfg text
+*.conf text
+
+# Images
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.svg text
+*.ico binary
+
+# Archives
+*.zip binary
+*.tar.gz binary
+*.gz binary

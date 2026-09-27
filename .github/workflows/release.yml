@@ -1,0 +1,179 @@
+name: release
+
+on:
+  push:
+    branches:
+    - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+
+env:
+  LANG: en_US.utf-8
+  LC_ALL: en_US.utf-8
+  PYTHONIOENCODING: UTF-8
+  PYTHONWARNDEFAULTENCODING: "1"
+
+jobs:
+
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        fetch-tags: true
+
+    - name: Setup Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.13"
+
+    - name: Setup uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        enable-cache: true
+        cache-dependency-glob: pyproject.toml
+
+    - name: Compute next calendar version
+      id: version
+      run: |
+        set -euo pipefail
+
+        existing_head_tag="$(git tag --points-at HEAD --sort=-version:refname | grep -E '^[0-9]{4}\.[0-9]{2}\.[0-9]+$' | head -n 1 || true)"
+        if [ -n "$existing_head_tag" ]; then
+          echo "version=$existing_head_tag" >> "$GITHUB_OUTPUT"
+          echo "needs_tag=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        year="$(date -u +%Y)"
+        month="$(date -u +%m)"
+
+        git fetch --tags --force
+
+        prefix="${year}.${month}."
+        highest="$(git tag --list "${prefix}*" | sed -n "s/^${year}\\.${month}\\.\\([0-9][0-9]*\\)$/\\1/p" | sort -n | tail -n 1)"
+        counter="${highest:-0}"
+        next="$((counter + 1))"
+        version="${year}.${month}.${next}"
+
+        while git rev-parse -q --verify "refs/tags/${version}" >/dev/null; do
+          next="$((next + 1))"
+          version="${year}.${month}.${next}"
+        done
+
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        echo "needs_tag=true" >> "$GITHUB_OUTPUT"
+
+    - name: Create and push tag
+      if: steps.version.outputs.needs_tag == 'true'
+      run: |
+        set -euo pipefail
+        version="${{ steps.version.outputs.version }}"
+        git tag -a "$version" -m "Release $version"
+        git push origin "$version"
+
+    - name: Build package
+      run: uv build
+
+    - name: Create GitHub release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ steps.version.outputs.version }}
+        name: ${{ steps.version.outputs.version }}
+        files: dist/*
+        generate_release_notes: true
+
+    - name: Upload distributions
+      uses: actions/upload-artifact@v4
+      with:
+        name: dist
+        path: dist/
+
+  publish-pypi:
+    needs:
+    - release
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/parsecraft/
+    permissions:
+      id-token: write
+    steps:
+    - name: Download distributions
+      uses: actions/download-artifact@v4
+      with:
+        name: dist
+        path: dist/
+
+    - name: Publish to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        skip-existing: true
+
+  deploy-docs:
+    needs:
+    - release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        fetch-tags: true
+
+    - name: Setup Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.13"
+
+    - name: Setup uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        enable-cache: true
+        cache-dependency-glob: pyproject.toml
+
+    - name: Setup mise
+      uses: jdx/mise-action@v2
+      with:
+        install: true
+
+    - name: Install dependencies
+      run: mise dev
+
+    - name: Build documentation site
+      run: mise docs
+
+    - name: Setup Pages
+      uses: actions/configure-pages@v5
+
+    - name: Upload artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: site/
+
+    - id: deployment
+      uses: actions/deploy-pages@v4

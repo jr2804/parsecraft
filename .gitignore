@@ -1,0 +1,82 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.coverage
+coverage.xml
+htmlcov/
+
+# Documentation build output (zensical / mkdocs)
+site/
+
+# Rust build artifacts (maturin/other native builds)
+target/
+
+# Native extension binaries
+*.so
+*.dll
+*.pyd
+*.dylib
+
+# Windows artifacts
+*.exe
+*.pdb
+nul
+
+# Logs
+*.log
+
+# Virtual environments
+.venv
+*.env
+uv.lock
+
+# Dev tools/MCP server data/dirs
+/.config/chunkhound/db
+.sisyphus
+.config/memorygraph/memory.db
+/.opencode
+
+# temp folders
+/.tmp
+/tmp
+/temp
+
+# Copier answers (regenerated on update)
+.copier-answers.yml
+
+# MCP / coding assistant directories
+.vscode
+opencode.json
+.opencode
+
+# Skills lock file
+skills-lock.json
+
+# Local tool directories
+.repowise/
+.grepai/
+.mcp.json
+opencode.json
+mcporter.json
+
+# .agents/ DOX files — track .md and history/, ignore everything else tools may drop
+/.agents/*
+!/.agents/*.md
+!/.agents/history/
+!/.agents/history/**
+# Implementation plans — mutable working artifacts, never committed
+/.agents/plans/
+
+# custom/local/misc. files
+mise.local.toml
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
+*.gate.lock*

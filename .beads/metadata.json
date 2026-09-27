@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "parsecraft",
+  "project_id": "39ad31e1-5c0b-42c0-a624-5c632ff0558c"
+}

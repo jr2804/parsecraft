@@ -1,0 +1,38 @@
+# mise configuration
+# Task definitions are in conf.d/*.toml files (automatically loaded by mise)
+[tools]
+# basic frameworks that should always be available
+node = "latest"
+bun = "latest"
+
+# Linter/formatter/type checker tools
+"ruff" = "latest"
+"ty" = "latest"
+"rumdl" = "latest"
+"pipx:git+https://codeberg.org/jr2804/clean-sort.git" = "latest"
+"pipx:codespell" = "latest"
+
+# CLI tools rg and tree-cli -> use `rg --files | tree-cli --fromfile` to get a nice tree view of the project files
+ripgrep = "latest"
+"github:peteretelej/tree" = { version = "latest", rename_exe = "tree-cli" }
+"pypi:sloppylint" = "latest"
+"pypi:ai-slop-detector" = "latest"
+"npm:@yuvrajangadsingh/vibecheck" = "latest"
+"npm:aislop" = "latest"
+"github:djinn-soul/CytoScnPy" = "latest"
+"github:ChuprinaDaria/Vibecode-Cleaner-Fartrun" = "latest"
+"github:yoanbernabeu/grepai" = "latest"
+"npm:@colbymchenry/codegraph" = "latest"
+"pypi:repowise" = "latest"
+"github:1broseidon/ketch" = "latest"
+"github:AlmogBaku/debug-skill" = "latest"
+"github:rtk-ai/rtk" = "latest"
+"github:gastownhall/beads" = "latest"
+"github:dolthub/dolt" = "latest"
+"pypi:beads-mcp" = "latest"
+
+[settings.npm]
+package_manager = "bun"
+
+[settings.pipx]
+uvx = true

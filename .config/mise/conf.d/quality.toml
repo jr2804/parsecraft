@@ -1,0 +1,23 @@
+[tasks.test]
+description = "Run tests with coverage"
+run = "uv run pytest --cov=parsecraft --cov-report=term-missing --cov-report=html"
+
+[tasks.test-corpus]
+description = "Corpus tier: opt-in network + cached public documents (15 min cold-cache budget)"
+run = "uv run pytest -m corpus --run-corpus --run-downloads"
+
+[tasks.all]
+description = "Run all quality checks"
+depends = [
+  "test",
+  "typecheck",
+  "lint",
+  "spell",
+  "format",
+  "format-md",
+  "docs",
+]
+
+[tasks.clean]
+description = "Clean build artifacts"
+run = ["rm -rf build dist *.egg-info .pytest_cache .coverage htmlcov docs/_build"]

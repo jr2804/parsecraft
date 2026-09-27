@@ -1,0 +1,5 @@
+[tasks.add-skills]
+description = "Install agent skills for AI assistants (driven by data/dev-features.csv and skills.csv)"
+depends = ["dev"]
+run = "uv run .config/mise/scripts/install_dev_features.py add-skills"
+

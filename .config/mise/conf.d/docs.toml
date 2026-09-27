@@ -1,0 +1,7 @@
+
+[tasks.docs]
+description = "Build documentation"
+# --link-mode=copy: zensical's file watcher panics under uv's symlink link
+# mode (UV_LINK_MODE=symlink); copy links keep the build deterministic.
+run = ["uv run --link-mode=copy zensical build"]
+
