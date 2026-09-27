@@ -30,6 +30,10 @@ nav = [
     { "Backends" = "reference/backends.md" },
     { "API" = "reference/api.md" },
   ] },
+  { "Benchmarks" = [
+    { "Phase 2 report" = "benchmarks/index.md" },
+    { "CPU report (raw)" = "benchmarks/benchmark.md" },
+  ] },
   { "Development" = [
     { "Setup" = "development/setup.md" },
     { "CI/CD" = "development/ci-cd.md" },

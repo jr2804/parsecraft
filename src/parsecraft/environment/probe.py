@@ -19,6 +19,7 @@ from parsecraft.environment.models import EnvironmentInfo
 #: Declared map: extra name -> import packages whose presence proves it installed.
 EXTRA_IMPORTS: dict[str, tuple[str, ...]] = {
     "download": ("huggingface_hub",),
+    "liteparse": ("liteparse",),
     "ocr-ovis": ("transformers",),
     "ocr-qianfan": ("transformers",),
     "ocr-tele": ("transformers",),
