@@ -1,3 +1,5 @@
 [tasks.dev]
 description = "Install development dependencies"
-run = "uv sync -U --dev --all-extras --all-groups"
+# Light extras only: heavy extras (ocr-*, vllm) must never be installed by
+# `mise dev`/CI. Add new *light* extras to this list explicitly.
+run = "uv sync -U --dev --all-groups --extra download --extra web --extra pdf-lite"
