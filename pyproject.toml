@@ -16,6 +16,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
+    "charset-normalizer>=3.4",
     "markdown-it-py>=4.2",
     "pydantic>=2.13",
     "pydantic-settings>=2.15",
@@ -29,6 +30,23 @@ download = ["huggingface-hub>=0.34"]
 web = ["httpx>=0.27"]
 pdf-lite = ["pypdf>=5"]
 pdf = ["pymupdf>=1.24"]
+vllm = ["vllm>=0.11"]
+# OCR extras intentionally exclude PyMuPDF (AGPL): PDF input additionally needs
+# `parsecraft[pdf]`, keeping the copyleft choice explicit (ADR-0003).
+ocr-ovis = ["transformers>=4.56", "torch>=2.5", "pillow>=10.4", "accelerate>=0.34"]
+ocr-tele = ["transformers>=4.56", "torch>=2.5", "pillow>=10.4", "accelerate>=0.34"]
+ocr-unlimited = ["transformers>=4.56", "torch>=2.5", "pillow>=10.4", "accelerate>=0.34"]
+ocr-qianfan = ["transformers>=4.56", "torch>=2.5", "pillow>=10.4", "accelerate>=0.34"]
+
+[project.entry-points."parsecraft.backends"]
+native-text = "parsecraft.backends.native.text:factory"
+native-markdown = "parsecraft.backends.native.markdown:factory"
+native-html = "parsecraft.backends.native.html:factory"
+native-pdf = "parsecraft.backends.native.pdf:factory"
+ocr-ovis = "parsecraft.backends.ocr.ovis:factory"
+ocr-tele = "parsecraft.backends.ocr.tele:factory"
+ocr-unlimited = "parsecraft.backends.ocr.unlimited:factory"
+ocr-qianfan = "parsecraft.backends.ocr.qianfan:factory"
 
 [dependency-groups]
 dev = [
