@@ -25,6 +25,81 @@ Analysis runs first and produces per-page signals. Those signals classify each
 page into an intent, constraints filter the backend catalog to eligible
 candidates, and the judge orders them. The result is a `RoutingPlan`.
 
+## Execution flow
+
+`parsecraft.pipeline` executes a plan. `execute()` plans and dispatches in one
+call: it builds the plan itself, groups contiguous pages, converts each group
+with its chosen backend, retries fallback candidates on typed failure, and
+aggregates a `DocumentResult`.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Caller
+    participant P as pipeline.execute
+    participant R as routing.plan_route
+    participant J as RoutingJudge
+    participant Reg as BackendRegistry
+    participant B as DocumentBackend
+
+    Caller->>P: execute(analysis, registry, constraints, source, judge)
+    P->>R: plan_route(analysis, registry.list_backends(), constraints, judge)
+    R->>J: rank(intent, eligible candidates)
+    J-->>R: ordered backend names
+    R-->>P: RoutingPlan
+    loop each PageGroup — contiguous pages, one chosen backend
+        P->>Reg: create(chosen, config)
+        Reg-->>P: backend
+        P->>B: convert(ConversionRequest(page_range=PageRange))
+        B-->>P: BackendResult — pages + failures
+        opt attempt failed — typed PassFailure or page mismatch
+            P->>Reg: create(next candidate)
+        end
+    end
+    P-->>Caller: PipelineResult(document, plan, groups)
+```
+
+## Execution API
+
+Exported from `parsecraft.pipeline`: `PageGroup`, `PassAttempt`,
+`PipelineResult`, `execute`.
+
+```python
+def execute(
+    analysis: AnalysisResult,
+    registry: BackendRegistry,
+    constraints: RoutingConstraints,
+    source: SourceDocument,
+    judge: RoutingJudge | None = None,
+    *,
+    produced_at: datetime | None = None,
+) -> PipelineResult
+```
+
+`execute` takes no `RoutingPlan` and no `ConversionRequest`: it calls
+`plan_route` itself and builds one `ConversionRequest` per group.
+
+| Type | Field | Type | Meaning |
+| ---- | ----- | ---- | ------- |
+| `PipelineResult` | `document` | `DocumentResult` | Aggregated IR document |
+| `PipelineResult` | `plan` | `RoutingPlan` | The plan that was executed |
+| `PipelineResult` | `groups` | `list[PageGroup]` | Dispatch groups with per-attempt records |
+| `PageGroup` | `page_numbers` | `list[int]` | Contiguous pages in the group |
+| `PageGroup` | `intent` | `Intent` | Shared intent |
+| `PageGroup` | `candidates` | `list[str]` | Shared candidate order |
+| `PageGroup` | `winner` | `str` or `None` | Backend that succeeded, `None` if every pass failed |
+| `PageGroup` | `attempts` | `list[PassAttempt]` | Every attempt, in candidate order |
+| `PassAttempt` | `backend` | `str` | Backend tried |
+| `PassAttempt` | `status` | `PassStatus` | `ok` or `failed` |
+| `PassAttempt` | `failure` | `PassFailure` or `None` | Typed failure when the attempt failed |
+
+Aggregation builds `DocumentMetadata` (`source_uri`, `source_hash` from the
+analysis, `format` from the source media type, `page_count`, `produced_at`) and
+one `TraceEntry` per attempt, with `page_range` set to the group's range and
+`pass_kind` native or visual by intent. An attempt that reports multiple
+`PassFailure`s emits one trace entry per failure, while `PassAttempt.failure`
+keeps the first.
+
 ## Signal to intent
 
 `Intent` is a `StrEnum` with four members:
@@ -82,6 +157,22 @@ A `NATIVE` page with native text but no eligible native backend for its format
 `NoEligibleBackendError` with `intent=Intent.NATIVE` rather than routing a
 native-intent page to OCR.
 
+## Eligibility funnel
+
+```mermaid
+flowchart TD
+    A["Catalog — registry.list_backends()"] --> B["installed extras"]
+    B --> C["VRAM budget"]
+    C --> D["format coverage"]
+    D --> E["allow_ocr switch"]
+    E --> F["offline / model assets"]
+    F --> G["intent family"]
+    G --> H["eligible candidates"]
+```
+
+The filters run in this order. A backend that fails any stage never reaches the
+judge; the funnel is the only path from catalog to candidates.
+
 ## Constraints
 
 `RoutingConstraints` (`parsecraft.routing`) holds the hard limits. All fields are
@@ -112,6 +203,31 @@ code-owned at plan time and may be set per call.
 
 A plan carries fallbacks as extra candidates; it does not carry execution
 failures. Those are `PassFailure` records on the backend result.
+
+## Per-page dispatch and fallbacks
+
+Each page carries ordered candidates. `candidates[0]` is the pass-1 route and
+`candidates[1..]` are fallback passes, tried only after a typed failure. Pages
+with the same `(intent, chosen, candidates)` group into one range when the chosen
+backend supports page ranges and multi-page conversion.
+
+```mermaid
+flowchart LR
+    P["page — candidates[0], candidates[1..]"] --> W{"candidates[0] succeeds?"}
+    W -- yes --> A["winner = candidates[0]"]
+    W -- "no — typed PassFailure" --> N{"candidates[1] succeeds?"}
+    N -- yes --> B["winner = candidates[1]"]
+    N -- no --> F["PageGroup.winner = None<br/>placeholder PageResult + WARNING"]
+    A --> G["group contiguous pages<br/>same (intent, chosen, candidates)"]
+    B --> G
+    G --> R["one ConversionRequest per PageRange"]
+```
+
+A group merges contiguous pages only when the chosen backend declares both
+`supports_page_ranges` and `supports_multi_page`; otherwise each page converts
+alone. When every candidate fails, each page gets a placeholder `PageResult`
+with a `pipeline-all-passes-failed` warning diagnostic (constant
+`ALL_PASSES_FAILED_CODE`) — no silent drops.
 
 ## Judge seam
 
@@ -156,9 +272,41 @@ Exported from `parsecraft.routing`: `DeterministicJudge`, `Intent`,
 | `NoEligibleBackendError` | No eligible candidate for an intent, or none at all; carries the `intent`, including `NATIVE` with only OCR candidates |
 | `JudgeViolationError` | A judge returns an ineligible name, a duplicate, or an empty order |
 
+## What routing does not see
+
+Routing reads only what backends *declare* and what the caller passes in; it
+never probes the machine. Host reality is *detected* once, in
+`parsecraft.environment`, and distilled into `RoutingConstraints`.
+
+| Fact | Declared — descriptor `capabilities` | Detected — `parsecraft.environment` |
+| ---- | ------------------------------------ | ----------------------------------- |
+| Backends present | — | `EnvironmentInfo.backends` |
+| Installed extras | `optional_dependency_group` | `EnvironmentInfo.installed_extras` |
+| GPU need and VRAM | `requires_gpu`, `estimated_vram_gb` | `EnvironmentInfo.vram_budget_gb` — measured |
+| Formats | `supported_formats` | — |
+| Model assets | `model_asset` | — |
+| Offline | — | `EnvironmentInfo.offline` — operator-declared |
+
+`probe_environment() -> EnvironmentInfo` measures installed extras (resolve
+only, never import), total GPU VRAM via `nvidia-smi`, and the operator-declared
+`PARSECRAFT_OFFLINE` flag. `constraints_from_environment(environment, *,
+formats=(), allow_ocr=None, max_passes=1) -> RoutingConstraints` fills all six
+constraint fields; with `allow_ocr=None` the switch is derived from whether an
+`ocr-` extra is installed. Routing consumes the built constraints plus
+descriptors and never probes hardware; the probe never judges eligibility.
+
+Planning does not depend on probing: pass `RoutingConstraints` directly and
+routing works.
+
+**Language is out of scope for now.** Routing is language-agnostic — it uses
+text-volume and replacement-character signals, not a language detector.
+Language detection and language-aware routing are tracked by bead `pc-4u7.15`.
+
 ## Status
 
-The routing engine above is implemented in `parsecraft.routing`. Planned, not
-implemented: a Jev / System One-backed `RoutingJudge` (the seam is the hook; it
-would be an optional extra), per-range assignment instead of per-page, and
-failure records inside the plan. Tracking bead: `pc-5ub`.
+The routing engine (`parsecraft.routing`) and the executor
+(`parsecraft.pipeline`) are implemented and exported. Execution is library-only
+for now: the `convert --auto` CLI wiring is planned (bead `pc-4u7.14`). Also
+planned: a Jev / System One-backed `RoutingJudge` (the seam is the hook; it
+would be an optional extra) and cancellation/timeout passthrough into
+`ConversionRequest`. Tracking bead: `pc-5ub`.

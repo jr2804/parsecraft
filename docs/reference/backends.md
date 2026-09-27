@@ -78,7 +78,10 @@ missing or unusable.
 `auto` mode is decided by `parsecraft.routing`. `analyze()` produces per-page
 signals, one rule table classifies each page into an `Intent`, eligibility rules
 filter the catalog, and `plan_route()` returns a `RoutingPlan` with ordered
-fallbacks. Planning is deterministic, pure, and offline.
+fallbacks. Planning is deterministic, pure, and offline. `parsecraft.pipeline.execute()`
+runs that plan: it groups contiguous pages, converts each group with the chosen
+backend, retries fallback candidates on a typed failure, and aggregates a
+`DocumentResult`.
 
 Hard constraints stay code-owned: installed extras, VRAM budget, format
 coverage, `max_passes`, `allow_ocr`, and `offline` are enforced before any judge
