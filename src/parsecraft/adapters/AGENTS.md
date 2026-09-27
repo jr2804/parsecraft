@@ -4,15 +4,24 @@ Input adapters: convert external document formats into the canonical IR.
 
 ## Purpose
 
-Parse source documents (currently Markdown via markdown-it-py) into
-`DocumentResult`/`PageResult`/`StructuredChunk`. Adapters are INPUT-only:
+Parse source documents into `DocumentResult`/`PageResult`/`StructuredChunk`
+and feed document bytes to future web backends. Adapters are INPUT-only:
 they never consume rendered output of `parsecraft.ir.markdown` — the IR is
 the single source of truth (ADR-0001 §11, `parsecraft.ir.AGENTS.md`).
 
 ## Ownership
 
 - `markdown.py` — `parse_markdown(source: str | bytes, source_uri, ...) -> DocumentResult`
-  and the internal token-stream builder.
+  (markdown-it-py, core dep, top-level import).
+- `encoding.py` — `parse_content_type(header) -> (media_type, charset)` (stdlib)
+  and `decode(data, declared_charset=None) -> EncodingDetection`
+  (charset-normalizer behind an `import_module` seam).
+- `http.py` — `fetch(url, ...) -> HttpResource` (httpx behind an
+  `import_module` seam, `web` extra; raw bytes only, no decoding).
+- `charset_impl.py`, `httpx_impl.py` — impl modules with TOP-LEVEL optional
+  imports; loaded only by their light front modules at call time.
+- `errors.py` — `AdapterError` hierarchy (`MissingDependencyError`,
+  `HttpFetchError`).
 
 ## Local Contracts
 
@@ -27,9 +36,13 @@ the single source of truth (ADR-0001 §11, `parsecraft.ir.AGENTS.md`).
   paragraph → figure, image + text → figure + caption, unhandled → unknown.
 - Markdown is one page (`page_number=1`); `source_span`s are exact character
   offsets computed from the original text.
-- `markdown-it-py` (and every future heavy adapter dependency) imports
-  lazily inside functions, never at module import time (offline-import gate).
+- Optional deps never import at module import time: front modules use
+  `import_module` + typed `Protocol` seams and raise `MissingDependencyError`
+  with an actionable hint. Impl modules are the only place their dep is
+  imported, at module top level (csort-compatible).
 
 ## Verification
 
-`mise test` — `tests/test_adapters_markdown.py` (100% coverage gate applies).
+`mise test` — `tests/test_adapters_markdown.py`,
+`tests/test_adapters_encoding.py`, `tests/test_adapters_http.py`
+(100% coverage gate applies).
