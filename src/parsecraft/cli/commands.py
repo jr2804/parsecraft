@@ -18,12 +18,6 @@ from parsecraft.config import ConfigError
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def default() -> None:
-    """Default command showing welcome message."""
-    typer.echo("Welcome to ParseCraft!")
-    typer.echo("Use --help to see available commands.")
-
-
 def backends(as_json: args.JsonFlag = False) -> None:
     """List registered document backends."""
     descriptors = default_registry.list_backends()

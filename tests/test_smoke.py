@@ -90,19 +90,11 @@ class _NoFormatsFactory:
         return _StubBackend()
 
 
-def test_default_command() -> None:
-    result = _runner.invoke(app, ["default"])
+def test_bare_invocation_shows_help() -> None:
+    result = _runner.invoke(app, [])
     assert result.exit_code == 0
-    assert "Welcome to ParseCraft!" in result.output
-
-
-def test_default_command_emits_exactly_the_documented_lines() -> None:
-    result = _runner.invoke(app, ["default"])
-    assert result.exit_code == 0
-    assert result.output.splitlines() == [
-        "Welcome to ParseCraft!",
-        "Use --help to see available commands.",
-    ]
+    assert "Usage:" in result.output
+    assert "backends" in result.output
 
 
 def test_commands_share_the_process_default_registry() -> None:

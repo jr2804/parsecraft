@@ -10,7 +10,7 @@ from parsecraft.cli import commands
 
 app = typer.Typer(
     name="parsecraft",
-    help="Document intelligence: convert any document into typed structured chunks, with Markdown as a deterministic projection",
+    help="Document intelligence: align existing converters, parsers, and OCR/VLM models behind one workflow and one typed output format",
     add_completion=True,
     no_args_is_help=True,
 )
@@ -20,7 +20,6 @@ app = typer.Typer(
 # circular import (commands.py <-> app.py) and keeps clean-sort from
 # re-sorting this file into a broken state. Register with:
 # `app.command()(commands.your_command)`.
-app.command()(commands.default)
 app.command()(commands.backends)
 
 # `config` is a command group. The sub-app is built here (registration home),
@@ -45,7 +44,7 @@ def _callback(
         is_eager=True,
     ),
 ) -> None:
-    """Document intelligence: convert any document into typed structured chunks, with Markdown as a deterministic projection"""
+    """Document intelligence: align existing converters, parsers, and OCR/VLM models behind one workflow and one typed output format"""
     if version:
         typer.echo(_get_version())
         raise typer.Exit()
