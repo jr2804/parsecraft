@@ -108,11 +108,50 @@ Reading rules (also pc-4's run notes):
   you can multiply to the full corpus.
 - The two passes are different virtualenvs: merge rows per backend, never
   sum across passes.
-- Full-corpus `qianfan` remains a documented **not run** (~145 s/page →
-  ≈ 20 h for NIST alone); its weights are now staged and offline-ready.
+- Full-corpus `qianfan` is a dated deferral, not a gap — see
+  [Deferred runs](#deferred-runs).
 - `selected` is recorded before load success/failure: a
   `selected: true` + `failures: [backend_error]` row means “planner picked
   it, then it could not load in this transformers” — not a planner bug.
+
+## Deferred runs
+
+The legs below were **deliberately deferred on 2026-09-28**, with the reason
+recorded so a later run is a scheduling decision rather than a missing result.
+None of them failed: the measured fixtures already prove the adapters work, and
+the full-corpus runs only cost machine time.
+
+| Run | Deferred on | Reason | Command |
+| --- | --- | --- | --- |
+| Full-corpus OCR, all four models | 2026-09-28 | Cost/time: the 2-page fixtures already take 82–1024 s per document, and the corpus spans two mutually exclusive `transformers` majors (many hours of exclusive GPU time) | [Pass A / Pass B](#full-corpus-ocr-commands) |
+| Full-corpus `ocr-qianfan` | 2026-09-28 | Cost/time: ≈ 145 s/page measured → ≈ 20 h for NIST SP 800-53r5 alone. Weights are staged and sha-verified (20 GB cache), so the run is offline-ready | Pass A below |
+| Quantised variants (int8 / 4-bit) | 2026-09-28 | Out of scope by design: quantisation is a backend-installation choice, not a harness dimension | — |
+
+### Full-corpus OCR commands
+
+The GPU environment is `.venv-gpu` (RTX A2000 8 GB). The four models pin two
+mutually exclusive `transformers` majors — 5.x for `ovis`/`qianfan`, 4.57.x for
+`tele`/`unlimited` — so the full run is two passes. Both commands print JSON on
+stdout and never overwrite the committed CPU report; `--extra pdf` is required
+for PDF rasterisation (PyMuPDF, AGPL — ADR-0003).
+
+```bash
+# Pass A — transformers 5.x: ovis + qianfan (covers the full-corpus qianfan deferral)
+uv run --project .venv-gpu --extra ocr-ovis --extra ocr-qianfan --extra pdf --extra download \
+  parsecraft benchmark tests/downloads/itu-t-p863.pdf \
+    tests/downloads/etsi-ts-103558.pdf tests/downloads/nist-sp-800-53r5.pdf \
+  --json > docs/benchmarks/benchmark-ocr-full-pass-a.json
+
+# Pass B — transformers 4.57.x: tele + unlimited
+uv run --project .venv-gpu --extra ocr-tele --extra ocr-unlimited --extra pdf --extra download \
+  parsecraft benchmark tests/downloads/itu-t-p863.pdf \
+    tests/downloads/etsi-ts-103558.pdf tests/downloads/nist-sp-800-53r5.pdf \
+  --json > docs/benchmarks/benchmark-ocr-full-pass-b.json
+```
+
+The committed bounded runs stay the evidence for adapter correctness:
+[`benchmark-ocr-pass-a.json`](benchmark-ocr-pass-a.json) and
+[`benchmark-ocr-pass-b.json`](benchmark-ocr-pass-b.json).
 
 ## Cross-check: the motivating incident
 
@@ -133,14 +172,16 @@ signals say native extraction cannot do the job (ADR-0001 §6 keeps the
 
 ## Honest gaps
 
-- **Full-corpus OCR was not run.** The GPU legs cover 2-page fixtures only
-  (see [GPU OCR legs](#gpu-ocr-legs-bounded-fixtures)); scaling any OCR
-  number here to a whole document would be fabricated. The pinned corpus
-  fetch tier (`mise run test-corpus`) stays opt-in; the licensed PDFs are
-  hand-staged and never downloaded by the harness.
-- **Full-corpus `qianfan` not run** (≈ 145 s/page measured; ≈ 20 h for NIST
-  alone). All four models are staged and sha-verified (20 GB cache), so
-  future runs pass offline asset checks.
+- **Full-corpus OCR was deferred, not skipped.** The GPU legs cover 2-page
+  fixtures only (see [GPU OCR legs](#gpu-ocr-legs-bounded-fixtures)); scaling
+  any OCR number here to a whole document would be fabricated. The dated
+  deferral and exact commands are in [Deferred runs](#deferred-runs). The pinned
+  corpus fetch tier (`mise run test-corpus`) stays opt-in; the licensed PDFs
+  are hand-staged and never downloaded by the harness.
+- **Full-corpus `qianfan` is a dated deferral** (≈ 145 s/page measured; ≈ 20 h
+  for NIST alone) — see [Deferred runs](#deferred-runs). All four models are
+  staged and sha-verified (20 GB cache), so the deferred run passes offline
+  asset checks.
 - **VRAM is not measured here.** Peak bytes are `tracemalloc` (host Python
   allocations). GPU VRAM is covered by the separate `gpu` test tier
   (`mise run test-gpu`, RTX A2000 8 GB pins in `pyproject.toml`).

@@ -59,6 +59,10 @@ one-file-owns-each-definition pattern in `.agents/FILES.md`.
   document anything that does not exist.
 - **Label unbuilt work.** Planned components are marked as planned or Phase N,
   never presented as implemented.
+- **Dated deferrals.** A measurement or run that was deliberately not performed
+  is recorded as a deferral with a date, the reason (cost/time or scope, never
+  "failed"), and the exact command to run it later — never left as silent prose
+  in a results page.
 - **ADRs.** Records live only in `docs/adr/`, in the project-docs skill's ADR
   format. Creation and edits are pc-1's call.
 
