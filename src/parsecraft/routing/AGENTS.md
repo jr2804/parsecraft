@@ -25,7 +25,10 @@ identical plan.
 
 - Hard constraints are code-owned and never delegated: extras installed,
   VRAM budget vs `requires_gpu`, source-format coverage, `allow_ocr`,
-  `offline` (excludes model-asset carriers). Plus code-owned intent family:
+  `offline` (excludes model-asset carriers), and `language` (a BCP-47
+  request only narrows backends that *declare* `capabilities.languages` —
+  language-agnostic candidates such as the native family are never
+  excluded). Plus code-owned intent family:
   OCR intents accept OCR backends only; NATIVE admits native + OCR
   fallbacks but requires at least one eligible non-OCR backend — otherwise
   `plan_route` raises `NoEligibleBackendError(intent=NATIVE, "no native
@@ -40,6 +43,11 @@ identical plan.
   (preferred model → native before OCR → lowest VRAM → name). A Jev /
   System-One judge is a FUTURE optional extra implementing `RoutingJudge`;
   this package must never import Jev/System-One.
+- Language detection is an injectable seam the same way:
+  `language.LanguageDetector` (`detect_language(text) -> str | None`). The
+  requested language arrives as plain data on `RoutingConstraints.language`
+  and the core never imports a detector implementation — the ollaya/`laya`
+  backed one lives in `parsecraft.providers.ollaya`, opt-in like a judge.
 - Judge resolution lives in `judge_providers.py`:
   `resolve_judge(spec: str | RoutingJudge | None) -> RoutingJudge` —
   `None` → `DeterministicJudge`, instance → passthrough, else parse

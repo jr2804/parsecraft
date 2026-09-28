@@ -68,6 +68,8 @@ class BackendCapabilities(BaseModel):
     estimated_vram_gb: float | None = Field(default=None, ge=0)
     optional_dependency_group: str | None = None
     model_asset: ModelAssetDescriptor | None = None
+    #: BCP-47 tags this backend declares support for; empty = language-agnostic.
+    languages: tuple[str, ...] = ()
 
 
 class BackendDescriptor(BaseModel):

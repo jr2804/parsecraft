@@ -144,6 +144,11 @@ backend.
 | Format coverage | `constraints.formats` not fully covered by `supported_formats` |
 | OCR switch | `allow_ocr=False` and the backend is an OCR backend |
 | Offline | `offline=True` and the backend carries a `ModelAssetDescriptor` |
+| Language | A candidate that declares a non-empty `languages` set, when the requested `language` is not in it |
+
+Language narrows declarations, not the field: an empty `languages` tuple means
+the backend makes no language claim, so a request can never disqualify it (see
+[Language](#language-optional)).
 
 The intent family is also fixed:
 
@@ -186,6 +191,37 @@ code-owned at plan time and may be set per call.
 | `max_passes` | `int` | `1` | Caps `len(PageRoute.candidates)` (`ge=1`) |
 | `allow_ocr` | `bool` | `True` | When false, OCR backends are ineligible |
 | `offline` | `bool` | `True` | When true, model-asset backends are ineligible |
+| `language` | `str` or `None` | `None` | Requested BCP-47 document language; `None` places no language restriction |
+
+## Language (optional)
+
+Language is *declared* by backends and *requested* by the caller; the
+deterministic core only reads the plain data and never detects anything itself.
+
+| Layer | Field | Meaning |
+| ----- | ----- | ------- |
+| Declared | `BackendCapabilities.languages` | BCP-47 tags the backend claims; empty tuple = no claim (language-agnostic) |
+| Requested | `RoutingConstraints.language` | BCP-47 tag for the document; `None` = unrestricted |
+
+Eligibility only narrows a declaration: a candidate with a non-empty `languages`
+set is excluded when the requested language is not in it, while an empty tuple is
+never excluded — agnostic is the fail-safe direction, because set membership
+cannot express broad coverage. Declared values (verified against model card
+metadata, 2026-09-27): `ocr-tele` declares `zh` and `en`; `ocr-ovis`,
+`ocr-unlimited`, `ocr-qianfan`, the native family, and `liteparse` are
+language-agnostic (their cards say nothing, "multilingual", or claim broad
+coverage).
+
+Detection is an optional seam, like the judge. `parsecraft.routing.language`
+defines `LanguageDetector` (`detect_language(text) -> str | None`); the core
+never imports an implementation. The ollama/`laya`-backed detector is
+`parsecraft.providers.ollaya.OllayaLanguageDetector`, loaded with
+`load_language_detector(...)`: it asks a typed choice question over BCP-47
+candidates, returns `None` below a confidence floor (calibrated doubt means "not
+identified"), raises `OllayaJudgeError` when the daemon is unreachable or answers
+off-schema, and reads `OLLAYA_BASE_URL` (default `http://localhost:11435`).
+Importing `parsecraft.routing` never pulls `providers.ollaya` — pinned by
+`tests/test_routing_language.py`.
 
 ## Plan
 
@@ -290,7 +326,7 @@ never probes the machine. Host reality is *detected* once, in
 `probe_environment() -> EnvironmentInfo` measures installed extras (resolve
 only, never import), total GPU VRAM via `nvidia-smi`, and the operator-declared
 `PARSECRAFT_OFFLINE` flag. `constraints_from_environment(environment, *,
-formats=(), allow_ocr=None, max_passes=1) -> RoutingConstraints` fills all six
+formats=(), allow_ocr=None, max_passes=1) -> RoutingConstraints` fills all seven
 constraint fields; with `allow_ocr=None` the switch is derived from whether an
 `ocr-` extra is installed. Routing consumes the built constraints plus
 descriptors and never probes hardware; the probe never judges eligibility.
@@ -298,9 +334,10 @@ descriptors and never probes hardware; the probe never judges eligibility.
 Planning does not depend on probing: pass `RoutingConstraints` directly and
 routing works.
 
-**Language is out of scope for now.** Routing is language-agnostic — it uses
-text-volume and replacement-character signals, not a language detector.
-Language detection and language-aware routing are tracked by bead `pc-4u7.15`.
+**Language is declared, not detected.** Routing reads
+`BackendCapabilities.languages` and `RoutingConstraints.language` as plain data
+and never calls a detector; filling the request is the caller's job. See
+[Language](#language-optional).
 
 ## Status
 

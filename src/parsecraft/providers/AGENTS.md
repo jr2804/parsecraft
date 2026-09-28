@@ -7,8 +7,10 @@ turns a `JudgeSpec` into a `RoutingJudge`.
 
 ## Ownership
 
-- `ollaya.py` — the ollama daemon provider (`load_judge`, the verified wire
-  format, `OllayaJudge`, `OllayaJudgeError`).
+- `ollaya.py` — the ollaya daemon provider (`load_judge`, the verified wire
+  format, `OllayaJudge`, `OllayaJudgeError`, plus the opt-in
+  `OllayaLanguageDetector` / `load_language_detector` implementing
+  `routing.language.LanguageDetector`).
 
 ## Local Contracts
 

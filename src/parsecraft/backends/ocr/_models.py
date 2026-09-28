@@ -186,8 +186,15 @@ def ocr_capabilities(
     requires_gpu: bool,
     supports_multi_page: bool,
     estimated_vram_gb: float,
+    languages: tuple[str, ...] = (),
 ) -> BackendCapabilities:
-    """Build the capability record shared by a factory descriptor and its backend."""
+    """Build the capability record shared by a factory descriptor and its backend.
+
+    ``languages`` is declared only for narrow card claims: cards saying
+    "multilingual" (or nothing) stay language-agnostic on purpose — an empty
+    tuple is never excluded by a language request, which is the fail-safe
+    direction for set-membership eligibility.
+    """
     return BackendCapabilities(
         supported_formats=list(OCR_FORMATS),
         supports_page_ranges=True,
@@ -196,6 +203,7 @@ def ocr_capabilities(
         estimated_vram_gb=estimated_vram_gb,
         optional_dependency_group=optional_dependency_group,
         model_asset=asset,
+        languages=languages,
     )
 
 
@@ -213,6 +221,8 @@ TELE_CAPABILITIES = ocr_capabilities(
     requires_gpu=True,
     supports_multi_page=False,
     estimated_vram_gb=TELE_VRAM_GB,
+    # TeleOCR's HF card declares exactly zh + en (cardData.language, 2026-09-27):
+    languages=("zh", "en"),
 )
 
 UNLIMITED_CAPABILITIES = ocr_capabilities(

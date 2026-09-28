@@ -89,7 +89,11 @@ def is_hard_eligible(descriptor: BackendDescriptor, constraints: RoutingConstrai
     )
     formats_covered = not constraints.formats or constraints.formats.issubset(set(capabilities.supported_formats))
     offline_ok = not constraints.offline or capabilities.model_asset is None
-    return ocr_allowed and extra_installed and vram_within_budget and formats_covered and offline_ok
+    declared_languages = capabilities.languages
+    # A language request only narrows backends that DECLARE languages:
+    # language-agnostic candidates (native included) are never excluded.
+    language_ok = constraints.language is None or not declared_languages or constraints.language in declared_languages
+    return ocr_allowed and extra_installed and vram_within_budget and formats_covered and offline_ok and language_ok
 
 
 def in_intent_family(intent: Intent, descriptor: BackendDescriptor) -> bool:

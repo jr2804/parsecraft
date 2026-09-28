@@ -64,6 +64,21 @@ source's media type. The OCR backends declare `application/pdf`,
 
 Model licences apply to the weights; the ParseCraft adapter code is MIT.
 
+## Languages
+
+Backends declare BCP-47 tags in `capabilities.languages`; an empty tuple means
+no claim. A `RoutingConstraints.language` request only narrows a declaration —
+it never excludes a language-agnostic backend (see
+[Language](../architecture/routing.md#language-optional)).
+
+| Backend | Declared languages |
+| ------- | ------------------ |
+| `native-text`, `native-markdown`, `native-html`, `native-pdf` | agnostic (no claim) |
+| `liteparse` | agnostic (no claim) |
+| `ocr-tele` | `zh`, `en` |
+| `ocr-ovis`, `ocr-unlimited`, `ocr-qianfan` | agnostic (multilingual) |
+| `pandoc`, `docling` | agnostic (planned) |
+
 ## Choosing a backend
 
 | Document trait | Route | Why |

@@ -54,6 +54,9 @@ class RoutingConstraints(BaseModel):
     max_passes: int = Field(default=1, ge=1)
     allow_ocr: bool = True
     offline: bool = True
+    #: Requested document language (BCP-47); ``None`` places no language
+    #: restriction. A language-agnostic candidate is never excluded by it.
+    language: str | None = None
 
 
 class PageRoute(BaseModel):
