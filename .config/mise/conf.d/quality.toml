@@ -1,7 +1,6 @@
 [tasks.test]
 description = "Run tests with coverage (per-run data file; concurrent runs cannot clash)"
-run = "COVERAGE_FILE=.coverage.$$ uv run pytest --cov=parsecraft --cov-report=term-missing --cov-report=html:.htmlcov.$$"
-run_windows = "$env:COVERAGE_FILE=\".coverage.$PID\"; uv run pytest --cov=parsecraft --cov-report=term-missing --cov-report=html:.htmlcov_$PID"
+run = '''uv run python -c "import os,subprocess,sys;pid=os.getpid();os.environ['COVERAGE_FILE']=f'.coverage.{pid}';raise SystemExit(subprocess.call([sys.executable,'-m','pytest','--cov=parsecraft','--cov-report=term-missing',f'--cov-report=html:.htmlcov_{pid}']))"'''
 
 [tasks.test-corpus]
 description = "Corpus tier: opt-in network + cached public documents (15 min cold-cache budget)"
