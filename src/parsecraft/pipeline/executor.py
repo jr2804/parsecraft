@@ -6,10 +6,13 @@ routing, never the reverse.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import datetime
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _dist_version
 from time import monotonic
+from typing import Protocol, get_origin
 
 from parsecraft.backends.errors import BackendError, DependencyUnavailableError
 from parsecraft.backends.protocol import (
@@ -35,11 +38,30 @@ from parsecraft.ir.models import (
     utcnow,
 )
 from parsecraft.pipeline.models import PageGroup, PassAttempt, PipelineResult
-from parsecraft.routing import Intent, RoutingConstraints, RoutingJudge, plan_route
+from parsecraft.routing import (
+    DeterministicJudge,
+    Intent,
+    RoutingConstraints,
+    RoutingJudge,
+    RoutingPlan,
+    plan_route,
+)
 from parsecraft.routing.models import PageRoute
 
 #: Placeholder diagnostic emitted when every candidate of a group failed.
 ALL_PASSES_FAILED_CODE = "pipeline-all-passes-failed"
+
+
+class CacheProtocol(Protocol):
+    """Injectable conversion-cache seam (see ``parsecraft.cache``)."""
+
+    def get(self, key: str) -> DocumentResult | None:
+        """Stored document for ``key`` or ``None`` (any miss condition)."""
+        ...
+
+    def put(self, key: str, result: DocumentResult) -> None:
+        """Store a freshly executed document under ``key``."""
+        ...
 
 
 def execute(
@@ -50,14 +72,27 @@ def execute(
     judge: RoutingJudge | None = None,
     *,
     produced_at: datetime | None = None,
+    cache: CacheProtocol | None = None,
 ) -> PipelineResult:
     """Plan the route, dispatch contiguous groups, and aggregate the document.
 
     Deterministic for fixed inputs and a pinned ``produced_at`` (trace timing
     fields are runtime measurements). Heavy imports happen only inside
     ``registry.create`` — the instantiation boundary.
+
+    ``cache`` (default ``None`` = exactly the previous behaviour) is keyed on
+    source bytes + registry fingerprint + canonical constraints + effective
+    judge identity: a hit returns the stored ``DocumentResult`` without any
+    dispatch (its ``groups`` record the planned groups with no attempts —
+    nothing was executed); a miss executes and stores. All filesystem policy
+    lives behind the injected protocol.
     """
     plan = plan_route(analysis, registry.list_backends(), constraints, judge)
+    key = _cache_key(source, registry, constraints, judge) if cache is not None else None
+    if cache is not None and key is not None:
+        cached = cache.get(key)
+        if cached is not None:
+            return PipelineResult(document=cached, plan=plan, groups=_planned_groups(plan, registry))
     pages: list[PageResult] = []
     trace: list[TraceEntry] = []
     groups: list[PageGroup] = []
@@ -77,7 +112,54 @@ def execute(
         package_version=_package_version(),
     )
     document = DocumentResult(metadata=metadata, pages=pages, trace=trace, quality=[])
+    if cache is not None and key is not None:
+        cache.put(key, document)
     return PipelineResult(document=document, plan=plan, groups=groups)
+
+
+def _cache_key(
+    source: SourceDocument,
+    registry: BackendRegistry,
+    constraints: RoutingConstraints,
+    judge: RoutingJudge | None,
+) -> str:
+    """sha256 over source bytes, registry fingerprint, constraints, judge id."""
+    # ponytail: a content-less source keys on its uri instead of hashing the
+    # file (execute must stay I/O-free); upgrade path is hashing the bytes at
+    # the read_source boundary, where the file is already open.
+    source_bytes = source.content if source.content is not None else source.uri.encode("utf-8")
+    source_hash = hashlib.sha256(source_bytes).hexdigest()
+    effective_judge = judge if judge is not None else DeterministicJudge()
+    judge_id = f"{type(effective_judge).__module__}.{type(effective_judge).__qualname__}"
+    material = json.dumps(
+        [source_hash, registry.fingerprint(), _canonical_constraints(constraints), judge_id],
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+def _canonical_constraints(constraints: RoutingConstraints) -> str:
+    """Deterministic JSON: stable key order, set-valued fields sorted."""
+    dumped: dict[str, object] = constraints.model_dump(mode="json")
+    for name, field in type(constraints).model_fields.items():
+        value = dumped.get(name)
+        if get_origin(field.annotation) is set and isinstance(value, list):
+            dumped[name] = sorted(value)
+    return json.dumps(dumped, sort_keys=True, separators=(",", ":"))
+
+
+def _planned_groups(plan: RoutingPlan, registry: BackendRegistry) -> list[PageGroup]:
+    """Plan-shaped groups for a cache hit: nothing was dispatched, no attempts."""
+    return [
+        PageGroup(
+            page_numbers=[route.page_number for route in routes],
+            intent=routes[0].intent,
+            candidates=routes[0].candidates,
+            winner=None,
+            attempts=[],
+        )
+        for routes in _group_pages(plan.pages, registry)
+    ]
 
 
 def _package_version() -> str:

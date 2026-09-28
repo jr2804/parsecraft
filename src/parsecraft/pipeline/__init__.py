@@ -18,12 +18,13 @@ from parsecraft.pipeline.analysis import (
     choose_analyzer,
     media_type_for,
 )
-from parsecraft.pipeline.executor import execute
+from parsecraft.pipeline.executor import CacheProtocol, execute
 from parsecraft.pipeline.models import PageGroup, PassAttempt, PipelineResult
 
 __all__ = [
     "MEDIA_TYPES",
     "AnalysisError",
+    "CacheProtocol",
     "NoAnalyzerError",
     "PageGroup",
     "PassAttempt",

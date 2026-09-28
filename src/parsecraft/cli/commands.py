@@ -9,6 +9,7 @@ from typing import Annotated
 import typer
 
 from parsecraft.backends import default_registry
+from parsecraft.cache import ConversionCache
 from parsecraft.cli import args, config
 from parsecraft.cli import benchmark as benchmark_module
 from parsecraft.cli import inspect as inspect_module
@@ -92,13 +93,20 @@ def convert(
     as_json: args.JsonFlag = False,
     max_passes: Annotated[int, typer.Option("--max-passes", min=1, help="Fallback passes per page group")] = 1,
     no_ocr: Annotated[bool, typer.Option("--no-ocr", help="Forbid OCR backends")] = False,
+    use_cache: Annotated[bool, typer.Option("--cache/--no-cache", help="Reuse a content-addressed conversion cache")] = False,
 ) -> None:
     """Convert a document through the auto-mode pipeline."""
     if not auto and backend is None:
         typer.echo("error: --no-auto requires --backend", err=True)
         raise typer.Exit(code=2)
     try:
-        document = convert_source(source, backend=backend, max_passes=max_passes, allow_ocr=False if no_ocr else None)
+        document = convert_source(
+            source,
+            backend=backend,
+            max_passes=max_passes,
+            allow_ocr=False if no_ocr else None,
+            use_cache=use_cache,
+        )
     except ConvertError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=exc.exit_code) from exc
@@ -180,6 +188,32 @@ def models_clean() -> None:
     """Delete every cached model revision."""
     removed = models_module.clean(models_module.manager())
     typer.echo(f"removed {removed} cached revision(s)")
+
+
+def cache(
+    as_json: args.JsonFlag = False,
+    *,
+    clear: Annotated[bool, typer.Option("--clear", help="Delete every cached conversion")] = False,
+) -> None:
+    """Inspect or clear the content-addressed conversion cache."""
+    store = ConversionCache()
+    if clear:
+        removed = store.clear()
+        typer.echo(f"removed {removed} conversion cache entries from {store.root}")
+        return
+    entries = store.entries()
+    if as_json:
+        payload = {
+            "location": str(store.root),
+            "entries": len(entries),
+            "total_bytes": store.total_bytes(),
+            "keys": [entry.key for entry in entries],
+        }
+        typer.echo(json.dumps(payload, indent=2, sort_keys=True))
+        return
+    typer.echo(f"location: {store.root}")
+    typer.echo(f"entries: {len(entries)}")
+    typer.echo(f"size: {store.total_bytes()} bytes")
 
 
 def benchmark(

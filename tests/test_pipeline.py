@@ -24,6 +24,7 @@ from parsecraft.backends.protocol import (
     SourceDocument,
 )
 from parsecraft.backends.registry import BackendRegistry
+from parsecraft.cache import ConversionCache
 from parsecraft.ir.models import (
     ChunkKind,
     DiagnosticLevel,
@@ -401,51 +402,6 @@ def test_empty_signals_propagates_routing_error(monkeypatch: pytest.MonkeyPatch)
         execute(analysis, registry, make_constraints(), make_source(), produced_at=PRODUCED)
 
 
-def add_stub(
-    registry: BackendRegistry,
-    descriptor: BackendDescriptor,
-    convert_fn: Any | None = None,
-    create_error: Exception | None = None,
-) -> list[ConversionRequest]:
-    # Resolved at call time, not def time: csort's stepdown reorders functions.
-    behavior = convert_fn if convert_fn is not None else echo_ok
-    calls: list[ConversionRequest] = []
-    registry.register(descriptor.name, _StubFactory(descriptor, behavior, calls, create_error))
-    return calls
-
-
-def echo_ok(request: ConversionRequest, name: str) -> BackendResult:
-    page_range = request.page_range
-    numbers = list(range(page_range.start, page_range.end + 1)) if page_range is not None else [1]
-    pages = [
-        PageResult(
-            page_number=number,
-            blocks=[
-                StructuredChunk(
-                    id=f"{name}-{number}",
-                    kind=ChunkKind.PARAGRAPH,
-                    content=f"content {number}",
-                    page_number=number,
-                    reading_order=0,
-                )
-            ],
-        )
-        for number in numbers
-    ]
-    return BackendResult(backend=BackendRef(name=name, version=_VERSION), pages=pages, elapsed_s=0.01)
-
-
-def make_constraints(**overrides: Any) -> RoutingConstraints:
-    base: dict[str, Any] = {
-        "formats": {"text/plain"},
-        "installed_extras": {"ocr-stub"},
-        "vram_budget_gb": 8.0,
-        "max_passes": 3,
-    }
-    base.update(overrides)
-    return RoutingConstraints(**base)
-
-
 # ── model validators ───────────────────────────────────────────────────────
 
 
@@ -653,6 +609,180 @@ def test_analyze_source_threads_installed_extras(monkeypatch: pytest.MonkeyPatch
     assert default.page_count == 1  # None → historical name order → liteparse
 
 
+# ── conversion-cache seam (execute) ────────────────────────────────────────
+
+
+def _run_with_cache(
+    tmp_path: Path,
+    registry: BackendRegistry,
+    calls: list[ConversionRequest],
+    **kwargs: Any,
+) -> Any:
+    store = ConversionCache(root=tmp_path / "conversions")
+    source = kwargs.pop("source", None) or make_source()
+    produced_at = kwargs.pop("produced_at", PRODUCED)
+    first = execute(make_analysis(1), registry, make_constraints(), source, produced_at=produced_at, cache=store, **kwargs)
+    dispatched_after_first = len(calls)
+    second = execute(make_analysis(1), registry, make_constraints(), source, produced_at=produced_at, cache=store, **kwargs)
+    return first, second, dispatched_after_first
+
+
+def test_cache_hit_returns_identical_ir_without_redispatch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    registry = make_registry(monkeypatch)
+    calls = add_stub(registry, make_descriptor("native-a"))
+    store = ConversionCache(root=tmp_path / "conversions")
+    source = make_source()
+
+    first = execute(make_analysis(1), registry, make_constraints(), source, produced_at=PRODUCED, cache=store)
+    assert len(calls) == 1
+    second = execute(make_analysis(1), registry, make_constraints(), source, produced_at=PRODUCED, cache=store)
+    assert len(calls) == 1  # no re-dispatch on hit
+    assert first.document == second.document  # byte-identical stored IR
+    assert first.plan == second.plan
+    # hit groups are plan-shaped: nothing was dispatched, no attempts
+    for group in second.groups:
+        assert group.winner is None
+        assert group.attempts == []
+
+
+def test_cache_miss_on_changed_fingerprint(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    registry = make_registry(monkeypatch)
+    calls = add_stub(registry, make_descriptor("native-a"))
+    store = ConversionCache(root=tmp_path / "conversions")
+    source = make_source()
+
+    execute(make_analysis(1), registry, make_constraints(), source, produced_at=PRODUCED, cache=store)
+    assert len(calls) == 1
+    add_stub(registry, make_descriptor("native-b"))  # registry fingerprint changes
+    execute(make_analysis(1), registry, make_constraints(), source, produced_at=PRODUCED, cache=store)
+    assert len(calls) == 2  # changed fingerprint must miss, never stale reuse
+
+
+def test_cache_miss_on_changed_constraints(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    registry = make_registry(monkeypatch)
+    calls = add_stub(registry, make_descriptor("native-a"))
+    store = ConversionCache(root=tmp_path / "conversions")
+    source = make_source()
+
+    execute(make_analysis(1), registry, make_constraints(), source, produced_at=PRODUCED, cache=store)
+    execute(
+        make_analysis(1),
+        registry,
+        make_constraints(max_passes=2),
+        source,
+        produced_at=PRODUCED,
+        cache=store,
+    )
+    assert len(calls) == 2  # different constraints ⇒ different key
+
+
+def test_cache_miss_on_changed_judge(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    registry = make_registry(monkeypatch)
+    calls = add_stub(registry, make_descriptor("native-a"))
+    store = ConversionCache(root=tmp_path / "conversions")
+    source = make_source()
+
+    execute(make_analysis(1), registry, make_constraints(), source, produced_at=PRODUCED, cache=store)
+
+    class ReverseJudge:
+        @staticmethod
+        def rank(intent: Intent, candidates: Any) -> list[str]:
+            return [descriptor.name for descriptor in sorted(candidates, key=lambda d: d.name, reverse=True)]
+
+    execute(
+        make_analysis(1),
+        registry,
+        make_constraints(),
+        source,
+        judge=ReverseJudge(),
+        produced_at=PRODUCED,
+        cache=store,
+    )
+    assert len(calls) == 2  # judge identity is part of the key
+
+
+def test_cache_hit_survives_corrupt_entry(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    registry = make_registry(monkeypatch)
+    calls = add_stub(registry, make_descriptor("native-a"))
+    store = ConversionCache(root=tmp_path / "conversions")
+    source = make_source()
+
+    execute(make_analysis(1), registry, make_constraints(), source, produced_at=PRODUCED, cache=store)
+    for entry in (tmp_path / "conversions").iterdir():
+        entry.write_text("garbage not json", encoding="utf-8")
+    # corrupt entry = miss, never an error: it re-executes and overwrites
+    result = execute(make_analysis(1), registry, make_constraints(), source, produced_at=PRODUCED, cache=store)
+    assert len(calls) == 2
+    assert result.document.pages
+
+
+def test_execute_without_cache_writes_nothing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    registry = make_registry(monkeypatch)
+    add_stub(registry, make_descriptor("native-a"))
+    store = ConversionCache(root=tmp_path / "conversions")
+    execute(make_analysis(1), registry, make_constraints(), make_source(), produced_at=PRODUCED)
+    assert not store.root.exists()
+
+
+def make_source(media_type: str | None = "text/plain") -> SourceDocument:
+    return SourceDocument(uri="mem://pipeline", media_type=media_type, content=b"data")
+
+
+def test_cache_key_falls_back_to_uri_for_content_less_sources(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    registry = make_registry(monkeypatch)
+    add_stub(registry, make_descriptor("native-a"))
+    store = ConversionCache(root=tmp_path / "conversions")
+    source = SourceDocument(uri="mem://content-less", media_type="text/plain", content=None)
+    result = execute(make_analysis(1), registry, make_constraints(), source, produced_at=PRODUCED, cache=store)
+    assert result.document.pages
+    assert store.entries()
+
+
+def add_stub(
+    registry: BackendRegistry,
+    descriptor: BackendDescriptor,
+    convert_fn: Any | None = None,
+    create_error: Exception | None = None,
+) -> list[ConversionRequest]:
+    # Resolved at call time, not def time: csort's stepdown reorders functions.
+    behavior = convert_fn if convert_fn is not None else echo_ok
+    calls: list[ConversionRequest] = []
+    registry.register(descriptor.name, _StubFactory(descriptor, behavior, calls, create_error))
+    return calls
+
+
+def echo_ok(request: ConversionRequest, name: str) -> BackendResult:
+    page_range = request.page_range
+    numbers = list(range(page_range.start, page_range.end + 1)) if page_range is not None else [1]
+    pages = [
+        PageResult(
+            page_number=number,
+            blocks=[
+                StructuredChunk(
+                    id=f"{name}-{number}",
+                    kind=ChunkKind.PARAGRAPH,
+                    content=f"content {number}",
+                    page_number=number,
+                    reading_order=0,
+                )
+            ],
+        )
+        for number in numbers
+    ]
+    return BackendResult(backend=BackendRef(name=name, version=_VERSION), pages=pages, elapsed_s=0.01)
+
+
+def make_constraints(**overrides: Any) -> RoutingConstraints:
+    base: dict[str, Any] = {
+        "formats": {"text/plain"},
+        "installed_extras": {"ocr-stub"},
+        "vram_budget_gb": 8.0,
+        "max_passes": 3,
+    }
+    base.update(overrides)
+    return RoutingConstraints(**base)
+
+
 def make_analysis(pages: int, *, blank_pages: tuple[int, ...] = ()) -> AnalysisResult:
     signals = [make_signal(page, text_chars=5 if page in blank_pages else 500, blank=page in blank_pages) for page in range(1, pages + 1)]
     return AnalysisResult(source_hash="0" * 64, page_count=pages, signals=signals, diagnostics=[])
@@ -673,10 +803,6 @@ def make_registry(monkeypatch: pytest.MonkeyPatch) -> BackendRegistry:
     """Fresh registry with entry-point discovery stubbed out (offline, isolated)."""
     monkeypatch.setattr("parsecraft.backends.registry.entry_points", lambda **kwargs: [])
     return BackendRegistry()
-
-
-def make_source(media_type: str | None = "text/plain") -> SourceDocument:
-    return SourceDocument(uri="mem://pipeline", media_type=media_type, content=b"data")
 
 
 def make_descriptor(name: str, **kwargs: Any) -> BackendDescriptor:

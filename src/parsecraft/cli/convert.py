@@ -16,6 +16,7 @@ from pathlib import Path
 from parsecraft.backends import default_registry
 from parsecraft.backends.errors import BackendError, DependencyUnavailableError
 from parsecraft.backends.protocol import BackendDescriptor, SourceDocument
+from parsecraft.cache import ConversionCache
 from parsecraft.cli.errors import CliError
 from parsecraft.environment import EnvironmentInfo, constraints_from_environment, probe_environment
 from parsecraft.ir import DocumentResult, to_markdown
@@ -62,6 +63,7 @@ def convert_source(
     backend: str | None = None,
     max_passes: int = 1,
     allow_ocr: bool | None = None,
+    use_cache: bool = False,
 ) -> DocumentResult:
     """Analyze, plan, and execute a source, returning the aggregated IR."""
     try:
@@ -84,7 +86,8 @@ def convert_source(
     constraints = build_constraints(media_type, max_passes=max_passes, allow_ocr=allow_ocr, environment=environment)
     judge = PreferredBackendJudge(backend) if backend is not None else None
     try:
-        return execute(analysis, registry, constraints, source, judge).document
+        cache = ConversionCache() if use_cache else None
+        return execute(analysis, registry, constraints, source, judge, cache=cache).document
     except JudgeViolationError as exc:
         raise ConvertError(f"backend {backend!r} is not eligible for this source: {exc}", exit_code=_USAGE_EXIT_CODE) from exc
     except (NoEligibleBackendError, RoutingError) as exc:
