@@ -17,6 +17,7 @@ from parsecraft.backends import (
     BackendDescriptor,
     DocumentBackend,
 )
+from parsecraft_example_backend.impl import EchoBackend  # lazy by contract
 
 DESCRIPTOR = BackendDescriptor(
     name="example-echo",
@@ -35,7 +36,6 @@ class EchoFactory:
     descriptor: BackendDescriptor = DESCRIPTOR
 
     def __call__(self, config: BackendConfig) -> DocumentBackend:
-        from parsecraft_example_backend.impl import EchoBackend  # lazy by contract
 
         return EchoBackend(config, DESCRIPTOR.capabilities)
 
