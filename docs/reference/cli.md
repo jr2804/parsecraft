@@ -110,15 +110,19 @@ $ parsecraft convert report.txt
 A paragraph comfortably longer than the forty character routing threshold.
 ```
 
-The command analyzes with the deterministic analysis backend (native backends
-first, then name order) and builds constraints from the detected host
-(`parsecraft.environment.constraints_from_environment`): installed extras,
-measured VRAM, and `PARSECRAFT_OFFLINE`. `--max-passes` and `--no-ocr` map to
+The command probes the host once per invocation, analyzes with the
+deterministic analysis backend (candidates whose optional dependency is
+installed or dependency-free win; native backends first, then name order), and
+reuses that probe for the routing constraints built by
+`parsecraft.environment.constraints_from_environment` (installed extras,
+measured VRAM, `PARSECRAFT_OFFLINE`). `--max-passes` and `--no-ocr` map to
 `RoutingConstraints.max_passes` and `allow_ocr`.
 
 Exit codes: `0` success, `1` analysis or routing failure, `2` usage error
 (unsupported suffix, missing file, `--no-auto` without `--backend`, or a
-`--backend` that is not eligible for the source).
+`--backend` that is not eligible for the source). A missing optional backend
+dependency also exits `1` with an actionable `optional dependency missing: …`
+message naming the extra to install.
 
 Eligibility matches `RoutingConstraints.formats` against each backend's
 `supported_formats`; both declare MIME media types (`text/plain`,

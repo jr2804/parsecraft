@@ -12,7 +12,7 @@ from typer.testing import CliRunner, Result
 
 import parsecraft.cli.convert as convert_module
 from parsecraft.backends import BackendRegistry
-from parsecraft.backends.errors import BackendError
+from parsecraft.backends.errors import BackendError, DependencyUnavailableError
 from parsecraft.backends.protocol import (
     AnalysisResult,
     BackendCapabilities,
@@ -199,6 +199,42 @@ def test_cli_inspect_analysis_failure_maps_to_cli_error(tmp_path: Path, offline_
     result = runner.invoke(app, ["inspect", str(_source_file(tmp_path))])
     assert result.exit_code == 1
     assert "analysis with 'native-text' failed" in _text(result)
+
+
+def test_inspect_prefers_installed_claimer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """An installed claimer beats a name-order-earlier backend whose extra is missing (pc-4u7.27)."""
+    registry = BackendRegistry()
+    monkeypatch.setattr("parsecraft.backends.registry.entry_points", lambda **kwargs: [])  # isolate: no real backends
+    missing = Diagnostic(level=DiagnosticLevel.INFO, code="from-missing", message="extra not installed")
+    installed = Diagnostic(level=DiagnosticLevel.INFO, code="from-installed", message="installed claimer")
+    registry.register("aaa-liteparse", _StubFactory(_descriptor("aaa-liteparse", group="liteparse"), diagnostics=(missing,)))
+    registry.register("zzz-ocr", _StubFactory(_descriptor("zzz-ocr", group="ocr-ovis"), diagnostics=(installed,)))
+    monkeypatch.setattr(
+        convert_module,
+        "probe_environment",
+        lambda: EnvironmentInfo(installed_extras=frozenset({"ocr-ovis"}), vram_budget_gb=8.0, offline=False),
+    )
+    preview = inspect_module.inspect_source(_source_file(tmp_path), registry)
+    assert [diagnostic.code for diagnostic in preview.analysis.diagnostics] == ["from-installed"]
+
+
+def test_cli_inspect_missing_dependency_maps_to_cli_error(tmp_path: Path, offline_probe: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    """DependencyUnavailableError keeps exit 1 with its own actionable message (pc-4u7.28)."""
+    registry = BackendRegistry()
+
+    class MissingExtraFactory:
+        descriptor = _descriptor()
+
+        @staticmethod
+        def __call__(config: BackendConfig) -> DocumentBackend:
+            raise DependencyUnavailableError("some.module", "some-extra")
+
+    registry.register("native-text", MissingExtraFactory())
+    monkeypatch.setattr(commands_module, "default_registry", registry)
+    result = runner.invoke(app, ["inspect", str(_source_file(tmp_path))])
+    assert result.exit_code == 1
+    assert "optional dependency missing" in _text(result)
+    assert "backend dependency 'some.module' is not installed" in _text(result)
 
 
 def _source_file(tmp_path: Path, name: str = "doc.txt", text: str = _LONG_TEXT) -> Path:

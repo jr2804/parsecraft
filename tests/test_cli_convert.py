@@ -12,7 +12,7 @@ from typer.testing import CliRunner, Result
 
 import parsecraft.cli.convert as convert_module
 from parsecraft.backends import BackendRegistry
-from parsecraft.backends.errors import BackendError
+from parsecraft.backends.errors import BackendError, DependencyUnavailableError
 from parsecraft.backends.protocol import (
     AnalysisResult,
     BackendCapabilities,
@@ -215,6 +215,43 @@ def test_convert_analysis_failure_fails(tmp_path: Path, registry: BackendRegistr
     result = runner.invoke(app, ["convert", str(_source_file(tmp_path))])
     assert result.exit_code == 1
     assert "analysis with 'native-text' failed" in _text(result)
+
+
+def test_convert_missing_optional_dependency_is_classified(tmp_path: Path, registry: BackendRegistry) -> None:
+    """DependencyUnavailableError keeps exit 1 with its own actionable message (pc-4u7.28)."""
+
+    class _MissingExtraFactory:
+        descriptor = _descriptor("native-text", ("text/plain",))
+
+        @staticmethod
+        def __call__(config: BackendConfig) -> DocumentBackend:
+            raise DependencyUnavailableError("some.module", "some-extra")
+
+    registry.register("native-text", _MissingExtraFactory())
+    result = runner.invoke(app, ["convert", str(_source_file(tmp_path))])
+    assert result.exit_code == 1
+    assert "optional dependency missing" in _text(result)
+    assert "backend dependency 'some.module' is not installed" in _text(result)
+
+
+def test_convert_image_prefers_installed_claimer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """An installed claimer beats a name-order-earlier backend whose extra is missing (pc-4u7.27)."""
+    registry = BackendRegistry()
+    monkeypatch.setattr("parsecraft.backends.registry.entry_points", lambda **kwargs: [])  # isolate: no real backends
+    _register(registry, _descriptor("aaa-liteparse", ("image/png",), group="liteparse"), content="missing extra")
+    _register(registry, _descriptor("zzz-ocr", ("image/png",), group="ocr-ovis"), content="installed claimer")
+    monkeypatch.setattr(convert_module, "default_registry", registry)
+    monkeypatch.setattr(
+        convert_module,
+        "probe_environment",
+        lambda: EnvironmentInfo(installed_extras=frozenset({"ocr-ovis"}), vram_budget_gb=8.0, offline=False),
+    )
+    path = tmp_path / "scan.png"
+    path.write_bytes(b"\x89PNG\r\n\x1a\n")
+    result = runner.invoke(app, ["convert", str(path)])
+    assert result.exit_code == 0
+    assert "installed claimer" in result.output
+    assert "missing extra" not in result.output
 
 
 def test_convert_unclaimed_media_type_is_usage_error(tmp_path: Path, registry: BackendRegistry, monkeypatch: pytest.MonkeyPatch) -> None:

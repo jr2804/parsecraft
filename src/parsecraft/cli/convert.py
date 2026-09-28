@@ -14,10 +14,10 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from parsecraft.backends import default_registry
-from parsecraft.backends.errors import BackendError
+from parsecraft.backends.errors import BackendError, DependencyUnavailableError
 from parsecraft.backends.protocol import BackendDescriptor, SourceDocument
 from parsecraft.cli.errors import CliError
-from parsecraft.environment import constraints_from_environment, probe_environment
+from parsecraft.environment import EnvironmentInfo, constraints_from_environment, probe_environment
 from parsecraft.ir import DocumentResult, to_markdown
 from parsecraft.pipeline import execute
 from parsecraft.pipeline.analysis import (
@@ -70,15 +70,18 @@ def convert_source(
         raise ConvertError(str(exc), exit_code=_USAGE_EXIT_CODE) from exc
     source = read_source(path, media_type)
     registry = default_registry
+    environment = probe_environment()  # a single probe per invocation
     try:
-        analyzer = choose_analyzer(registry.list_backends(), media_type)
+        analyzer = choose_analyzer(registry.list_backends(), media_type, installed_extras=environment.installed_extras)
     except NoAnalyzerError as exc:
         raise ConvertError(str(exc), exit_code=_USAGE_EXIT_CODE) from exc
     try:
-        analysis = analyze_source(source, registry, media_type=media_type)
+        analysis = analyze_source(source, registry, media_type=media_type, installed_extras=environment.installed_extras)
+    except DependencyUnavailableError as exc:
+        raise ConvertError(f"optional dependency missing: {exc}") from exc  # exit 1
     except BackendError as exc:
         raise ConvertError(f"analysis with {analyzer.name!r} failed: {exc}") from exc
-    constraints = build_constraints(media_type, max_passes=max_passes, allow_ocr=allow_ocr)
+    constraints = build_constraints(media_type, max_passes=max_passes, allow_ocr=allow_ocr, environment=environment)
     judge = PreferredBackendJudge(backend) if backend is not None else None
     try:
         return execute(analysis, registry, constraints, source, judge).document
@@ -97,10 +100,20 @@ def read_source(path: Path, media_type: str) -> SourceDocument:
     return SourceDocument(uri=path.absolute().as_uri(), media_type=media_type, content=content)
 
 
-def build_constraints(media_type: str, *, max_passes: int, allow_ocr: bool | None) -> RoutingConstraints:
-    """Distill detected host facts plus plan inputs into routing constraints."""
+def build_constraints(
+    media_type: str,
+    *,
+    max_passes: int,
+    allow_ocr: bool | None,
+    environment: EnvironmentInfo | None = None,
+) -> RoutingConstraints:
+    """Distill detected host facts plus plan inputs into routing constraints.
+
+    ``environment`` lets a caller that already probed the host reuse that one
+    result; ``None`` probes here (the library default).
+    """
     return constraints_from_environment(
-        probe_environment(),
+        environment if environment is not None else probe_environment(),
         formats={media_type},
         allow_ocr=allow_ocr,
         max_passes=max_passes,
