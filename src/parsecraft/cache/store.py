@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field, ValidationError
 from parsecraft.ir.models import DocumentResult
 
 #: Envelope schema version — a format change yields a miss, never a mis-read.
-CACHE_SCHEMA_VERSION = 1
+CACHE_SCHEMA_VERSION = 2  # v2: DocumentResult.quality carries routing degradation
 
 _CACHE_DIR_ENV = "PARSECRAFT_CACHE_DIR"
 _KEY_PATTERN = re.compile(r"^[0-9a-f]{64}$")

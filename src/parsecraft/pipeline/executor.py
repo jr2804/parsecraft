@@ -34,6 +34,7 @@ from parsecraft.ir.models import (
     PassFailure,
     PassKind,
     PassStatus,
+    QualitySignal,
     TraceEntry,
     utcnow,
 )
@@ -111,7 +112,7 @@ def execute(
         produced_at=produced_at if produced_at is not None else utcnow(),
         package_version=_package_version(),
     )
-    document = DocumentResult(metadata=metadata, pages=pages, trace=trace, quality=[])
+    document = DocumentResult(metadata=metadata, pages=pages, trace=trace, quality=_quality_from_plan(plan))
     if cache is not None and key is not None:
         cache.put(key, document)
     return PipelineResult(document=document, plan=plan, groups=groups)
@@ -160,6 +161,25 @@ def _planned_groups(plan: RoutingPlan, registry: BackendRegistry) -> list[PageGr
         )
         for routes in _group_pages(plan.pages, registry)
     ]
+
+
+def _quality_from_plan(plan: RoutingPlan) -> list[QualitySignal]:
+    """Degradation travels on the document: the plan is transient, quality isn't."""
+    quality: list[QualitySignal] = []
+    for route in plan.pages:
+        code = route.degradation_code
+        score = route.degradation_score
+        if code is None or score is None:
+            continue
+        quality.append(
+            QualitySignal(
+                name=code,
+                score=score,
+                detail=route.reason,
+                page_number=route.page_number,
+            )
+        )
+    return quality
 
 
 def _package_version() -> str:

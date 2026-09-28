@@ -11,7 +11,7 @@ import pytest
 from typer.testing import CliRunner
 
 from parsecraft.backends.native.text import TextBackend
-from parsecraft.cache import ConversionCache, default_cache_root
+from parsecraft.cache import CACHE_SCHEMA_VERSION, ConversionCache, default_cache_root
 from parsecraft.cli.app import app
 from parsecraft.ir.models import (
     ChunkKind,
@@ -103,8 +103,9 @@ def test_invalid_key_is_a_miss(tmp_path: Path) -> None:
         "[1, 2, 3]\n",
         '{"schema_version": 999, "key": "' + "a" * 64 + '", "result": {}}\n',
         '{"schema_version": 1, "key": "' + "b" * 64 + '", "result": {}}\n',
-        '{"schema_version": 1, "key": "' + "a" * 64 + '", "result": {"nonsense": 1}}\n',
-        '{"schema_version": 1, "key": "' + "a" * 64 + '", "result": "not-a-dict"}\n',
+        # current schema, but payload itself is invalid → miss (never mis-read)
+        '{"schema_version": ' + str(CACHE_SCHEMA_VERSION) + ', "key": "' + "a" * 64 + '", "result": {"nonsense": 1}}\n',
+        '{"schema_version": ' + str(CACHE_SCHEMA_VERSION) + ', "key": "' + "a" * 64 + '", "result": "not-a-dict"}\n',
     ],
 )
 def test_malformed_entries_are_misses(tmp_path: Path, payload: str) -> None:

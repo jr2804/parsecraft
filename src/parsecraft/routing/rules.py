@@ -29,6 +29,11 @@ FEATURE_EQUATIONS_CODE = "feature:equations"
 FEATURE_FIGURES_CODE = "feature:figures"
 
 
+#: Degradation codes: mojibake vs thin content mean different things downstream.
+DEGRADED_GARBLED_TEXT_CODE = "degraded-garbled-text"
+DEGRADED_SHORT_TEXT_CODE = "degraded-short-text"
+
+
 class IntentRule(BaseModel):
     """One row of the signal→intent table (first match wins)."""
 
@@ -103,6 +108,19 @@ def in_intent_family(intent: Intent, descriptor: BackendDescriptor) -> bool:
     if intent is Intent.NATIVE:
         return True
     return is_ocr(descriptor)
+
+
+def degradation_for(signal: PageSignal) -> tuple[str, float]:
+    """``(code, score)`` recorded when an OCR-intent page degrades to native.
+
+    Garbled pages report the clean-text share (``1 - replacement_ratio``);
+    thin pages report the share of the native-text threshold met
+    (``text_chars / NATIVE_MIN_TEXT_CHARS``) — both in ``[0, 1]``.
+    """
+    ratio = signal.replacement_char_ratio
+    if ratio is not None and ratio > MAX_REPLACEMENT_RATIO:
+        return DEGRADED_GARBLED_TEXT_CODE, round(max(1.0 - ratio, 0.0), 6)
+    return DEGRADED_SHORT_TEXT_CODE, round(min(signal.text_chars / NATIVE_MIN_TEXT_CHARS, 1.0), 6)
 
 
 def can_degrade_to_native(signal: PageSignal, eligible: Sequence[BackendDescriptor]) -> bool:

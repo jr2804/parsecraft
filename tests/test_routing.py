@@ -456,10 +456,6 @@ def ocr_backends() -> list[BackendDescriptor]:
     ]
 
 
-def good_native(signals_count: int = 1) -> list[PageSignal]:
-    return [make_signal(index) for index in range(1, signals_count + 1)]
-
-
 def garbled(pages: int = 1) -> list[PageSignal]:
     return [make_signal(index, text_chars=90, replacement=0.25) for index in range(1, pages + 1)]
 
@@ -532,6 +528,61 @@ def test_no_degradation_when_ocr_family_is_available() -> None:
     assert "degraded to native" not in page.reason
 
 
+def test_can_degrade_requires_a_non_ocr_backend() -> None:
+    signal = make_signal(1, text_chars=34)
+    assert can_degrade_to_native(signal, [make_desc("native-text")]) is True
+    assert can_degrade_to_native(signal, [make_desc("ocr-only", ALL_FORMATS, group="ocr-x")]) is False
+    blank = make_signal(1, text_chars=0, native=False, blank=True)
+    assert can_degrade_to_native(blank, [make_desc("native-text")]) is False
+
+
+# ── degradation records: codes, scores, consistency ────────────────────────
+
+
+def test_short_text_degradation_records_code_and_score() -> None:
+    plan = plan_route(
+        make_analysis([make_signal(1, text_chars=34)], 1),
+        [make_desc("native-text")],
+        full_constraints(formats={"text/plain"}, installed_extras=set()),
+    )
+    page = plan.pages[0]
+    assert page.degradation_code == "degraded-short-text"
+    assert page.degradation_score == round(34 / 40, 6)
+    assert page.degradation_score is not None
+    assert 0 <= page.degradation_score < 1
+
+
+def test_garbled_text_degradation_is_flagged_distinctly() -> None:
+    # 90 chars ≥ 40 but replacement 0.25 → OCR intent via mojibake, degrades.
+    signal = make_signal(1, text_chars=90, replacement=0.25)
+    assert classify_page(signal, 1, extract_hints(make_analysis([signal], 1))) is Intent.OCR_GENERAL
+    plan = plan_route(
+        make_analysis([signal], 1),
+        [make_desc("native-text")],
+        full_constraints(formats={"text/plain"}, installed_extras=set()),
+    )
+    page = plan.pages[0]
+    assert page.intent is Intent.NATIVE
+    assert page.degradation_code == "degraded-garbled-text"  # mojibake ≠ thin content
+    assert page.degradation_score == 0.75  # clean-text share
+    assert page.degradation_code != "degraded-short-text"
+
+
+def test_non_degraded_route_has_no_degradation_fields() -> None:
+    plan = plan_route(
+        make_analysis(good_native(), 1),
+        [make_desc("native-text")],
+        full_constraints(formats={"text/plain"}),
+    )
+    page = plan.pages[0]
+    assert page.degradation_code is None
+    assert page.degradation_score is None
+
+
+def good_native(signals_count: int = 1) -> list[PageSignal]:
+    return [make_signal(index) for index in range(1, signals_count + 1)]
+
+
 def full_constraints(**overrides: Any) -> RoutingConstraints:
     base: dict[str, Any] = {
         "installed_extras": set(OCR_EXTRAS),
@@ -545,14 +596,6 @@ def full_constraints(**overrides: Any) -> RoutingConstraints:
 def make_analysis(signals: list[PageSignal], page_count: int, codes: tuple[str, ...] = ()) -> AnalysisResult:
     diagnostics = [Diagnostic(level=DiagnosticLevel.INFO, code=code, message=f"synthetic hint {code}") for code in codes]
     return AnalysisResult(source_hash="0" * 64, page_count=page_count, signals=signals, diagnostics=diagnostics)
-
-
-def test_can_degrade_requires_a_non_ocr_backend() -> None:
-    signal = make_signal(1, text_chars=34)
-    assert can_degrade_to_native(signal, [make_desc("native-text")]) is True
-    assert can_degrade_to_native(signal, [make_desc("ocr-only", ALL_FORMATS, group="ocr-x")]) is False
-    blank = make_signal(1, text_chars=0, native=False, blank=True)
-    assert can_degrade_to_native(blank, [make_desc("native-text")]) is False
 
 
 def make_desc(
@@ -598,3 +641,24 @@ def make_signal(
         blank=blank,
         replacement_char_ratio=replacement,
     )
+
+
+def test_degradation_fields_must_travel_together() -> None:
+    with pytest.raises(ValidationError, match="must appear together"):
+        PageRoute(
+            page_number=1,
+            intent=Intent.NATIVE,
+            candidates=["native-text"],
+            chosen="native-text",
+            reason="r",
+            degradation_code="degraded-short-text",
+        )
+    with pytest.raises(ValidationError, match="must appear together"):
+        PageRoute(
+            page_number=1,
+            intent=Intent.NATIVE,
+            candidates=["native-text"],
+            chosen="native-text",
+            reason="r",
+            degradation_score=0.5,
+        )

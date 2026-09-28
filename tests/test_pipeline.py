@@ -25,6 +25,7 @@ from parsecraft.backends.protocol import (
 )
 from parsecraft.backends.registry import BackendRegistry
 from parsecraft.cache import ConversionCache
+from parsecraft.ir import to_markdown
 from parsecraft.ir.models import (
     ChunkKind,
     DiagnosticLevel,
@@ -37,6 +38,8 @@ from parsecraft.ir.models import (
     PassStatus,
     StructuredChunk,
 )
+from parsecraft.ir.models import PageSignal as _PS
+from parsecraft.pipeline import ALL_PASSES_FAILED_CODE as public_code
 from parsecraft.pipeline import (
     MEDIA_TYPES,
     NoAnalyzerError,
@@ -434,19 +437,6 @@ def test_page_group_validators() -> None:
         )
 
 
-def make_failure() -> PassFailure:
-    return PassFailure(
-        code=FailureCode.BACKEND_ERROR,
-        pass_kind=PassKind.NATIVE,
-        backend="a",
-        backend_version=_VERSION,
-        budget_s=0.0,
-        elapsed_s=0.0,
-        detail="boom",
-        occurred_at=PRODUCED,
-    )
-
-
 # ── public analysis API (parsecraft.pipeline) ──────────────────────────────
 
 
@@ -724,10 +714,6 @@ def test_execute_without_cache_writes_nothing(monkeypatch: pytest.MonkeyPatch, t
     assert not store.root.exists()
 
 
-def make_source(media_type: str | None = "text/plain") -> SourceDocument:
-    return SourceDocument(uri="mem://pipeline", media_type=media_type, content=b"data")
-
-
 def test_cache_key_falls_back_to_uri_for_content_less_sources(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     registry = make_registry(monkeypatch)
     add_stub(registry, make_descriptor("native-a"))
@@ -736,6 +722,121 @@ def test_cache_key_falls_back_to_uri_for_content_less_sources(monkeypatch: pytes
     result = execute(make_analysis(1), registry, make_constraints(), source, produced_at=PRODUCED, cache=store)
     assert result.document.pages
     assert store.entries()
+
+
+# ── degradation travels on the document (pc-4u7.35) ────────────────────────
+
+
+def test_degradation_quality_signal_ride_on_the_document(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    registry = make_registry(monkeypatch)
+    add_stub(registry, make_descriptor("native-a"))
+    store = ConversionCache(root=tmp_path / "conversions")
+    analysis = make_analysis(1)  # good signals by default…
+
+    analysis = AnalysisResult(
+        source_hash="0" * 64,
+        page_count=1,
+        signals=[_PS(page_number=1, has_native_text=True, text_chars=34, image_count=0, blank=False, replacement_char_ratio=None)],
+        diagnostics=[],
+    )
+    first = execute(analysis, registry, make_constraints(), make_source(), produced_at=PRODUCED, cache=store)
+    quality = first.document.quality
+    assert [signal.name for signal in quality] == ["degraded-short-text"]
+    signal = quality[0]
+    assert signal.page_number == 1
+    assert signal.score == round(34 / 40, 6)
+    assert "degraded to native" in (signal.detail or "")
+
+    # cache hit: the stored document carries the same record (schema v2)
+    second = execute(analysis, registry, make_constraints(), make_source(), produced_at=PRODUCED, cache=store)
+    assert second.document.quality == quality
+
+
+def test_non_degraded_document_has_empty_quality(monkeypatch: pytest.MonkeyPatch) -> None:
+    registry = make_registry(monkeypatch)
+    add_stub(registry, make_descriptor("native-a"))
+    result = execute(make_analysis(1), registry, make_constraints(), make_source(), produced_at=PRODUCED)
+    assert result.document.quality == []
+
+
+def make_analysis(pages: int, *, blank_pages: tuple[int, ...] = ()) -> AnalysisResult:
+    signals = [make_signal(page, text_chars=5 if page in blank_pages else 500, blank=page in blank_pages) for page in range(1, pages + 1)]
+    return AnalysisResult(source_hash="0" * 64, page_count=pages, signals=signals, diagnostics=[])
+
+
+def make_signal(page: int, *, text_chars: int = 500, blank: bool = False) -> PageSignal:
+    return PageSignal(
+        page_number=page,
+        has_native_text=not blank,
+        text_chars=text_chars,
+        image_count=0,
+        blank=blank,
+        replacement_char_ratio=None,
+    )
+
+
+def test_all_passes_failed_code_is_public_and_matches_executor() -> None:
+
+    assert public_code == ALL_PASSES_FAILED_CODE
+    assert public_pipeline.ALL_PASSES_FAILED_CODE == "pipeline-all-passes-failed"
+
+
+def test_canonical_group_discriminator() -> None:
+    # winner None + attempts ⇒ all passes failed; winner None + no attempts
+    # ⇒ cache hit / not dispatched (the canonical consumer discriminator).
+    failed = PageGroup(
+        page_numbers=[1],
+        intent=Intent.NATIVE,
+        candidates=["a"],
+        winner=None,
+        attempts=[PassAttempt(backend="a", status=PassStatus.FAILED, failure=make_failure())],
+    )
+    assert failed.winner is None
+    assert failed.attempts
+    cached = PageGroup(page_numbers=[1], intent=Intent.NATIVE, candidates=["a"], winner=None, attempts=[])
+    assert cached.winner is None
+    assert not cached.attempts
+
+
+def make_failure() -> PassFailure:
+    return PassFailure(
+        code=FailureCode.BACKEND_ERROR,
+        pass_kind=PassKind.NATIVE,
+        backend="a",
+        backend_version=_VERSION,
+        budget_s=0.0,
+        elapsed_s=0.0,
+        detail="boom",
+        occurred_at=PRODUCED,
+    )
+
+
+def test_quality_is_data_only_in_the_markdown_projection(monkeypatch: pytest.MonkeyPatch) -> None:
+
+    registry = make_registry(monkeypatch)
+    add_stub(registry, make_descriptor("native-a"))
+    analysis = AnalysisResult(
+        source_hash="0" * 64,
+        page_count=1,
+        signals=[
+            PageSignal(
+                page_number=1,
+                has_native_text=True,
+                text_chars=34,
+                image_count=0,
+                blank=False,
+                replacement_char_ratio=None,
+            )
+        ],
+        diagnostics=[],
+    )
+    result = execute(analysis, registry, make_constraints(), make_source(), produced_at=PRODUCED)
+    assert result.document.quality  # present as data …
+    assert "degraded" not in to_markdown(result.document)  # … never projected to markdown
+
+
+def make_source(media_type: str | None = "text/plain") -> SourceDocument:
+    return SourceDocument(uri="mem://pipeline", media_type=media_type, content=b"data")
 
 
 def add_stub(
@@ -781,22 +882,6 @@ def make_constraints(**overrides: Any) -> RoutingConstraints:
     }
     base.update(overrides)
     return RoutingConstraints(**base)
-
-
-def make_analysis(pages: int, *, blank_pages: tuple[int, ...] = ()) -> AnalysisResult:
-    signals = [make_signal(page, text_chars=5 if page in blank_pages else 500, blank=page in blank_pages) for page in range(1, pages + 1)]
-    return AnalysisResult(source_hash="0" * 64, page_count=pages, signals=signals, diagnostics=[])
-
-
-def make_signal(page: int, *, text_chars: int = 500, blank: bool = False) -> PageSignal:
-    return PageSignal(
-        page_number=page,
-        has_native_text=not blank,
-        text_chars=text_chars,
-        image_count=0,
-        blank=blank,
-        replacement_char_ratio=None,
-    )
 
 
 def make_registry(monkeypatch: pytest.MonkeyPatch) -> BackendRegistry:

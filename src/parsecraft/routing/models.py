@@ -71,11 +71,19 @@ class PageRoute(BaseModel):
     candidates: list[str] = Field(min_length=1)
     chosen: str = Field(min_length=1)
     reason: str = Field(min_length=1)
+    #: Set only when ``plan_route`` degraded this page (NATIVE-lead mirror):
+    #: distinguishes mojibake (garbled) from thin content (short text).
+    degradation_code: str | None = None
+    #: Threshold fraction met, in [0, 1]; set together with ``degradation_code``.
+    degradation_score: float | None = Field(default=None, ge=0, le=1)
 
     @model_validator(mode="after")
     def _chosen_is_first(self) -> PageRoute:
         if self.chosen != self.candidates[0]:
             msg = f"chosen {self.chosen!r} must be candidates[0] {self.candidates[0]!r}"
+            raise ValueError(msg)
+        if (self.degradation_code is None) != (self.degradation_score is None):
+            msg = "degradation_code and degradation_score must appear together"
             raise ValueError(msg)
         return self
 

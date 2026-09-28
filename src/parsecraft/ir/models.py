@@ -150,6 +150,8 @@ class QualitySignal(_ValueModel):
     name: str = Field(min_length=1)
     score: float = Field(ge=0, le=1)
     detail: str | None = None
+    #: Page this signal applies to; ``None`` means document-level.
+    page_number: int | None = Field(default=None, ge=1)
 
 
 class ChunkRelation(_ValueModel):

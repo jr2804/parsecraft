@@ -19,6 +19,7 @@ from parsecraft.routing.models import (
 from parsecraft.routing.rules import (
     can_degrade_to_native,
     classify_page,
+    degradation_for,
     extract_hints,
     in_intent_family,
     is_hard_eligible,
@@ -52,12 +53,15 @@ def plan_route(
         intent = classify_page(signal, analysis.page_count, hints)
         family = [descriptor for descriptor in eligible if in_intent_family(intent, descriptor)]
         degraded = False
+        degradation_code: str | None = None
+        degradation_score: float | None = None
         if not family and intent is not Intent.NATIVE and can_degrade_to_native(signal, eligible):
             # Mirror of the NATIVE-lead guard: no OCR family is available
             # (missing extras / allow_ocr off) but this page can still emit
             # native text → degrade to NATIVE with a recorded reason instead
             # of failing a valid document (routing/AGENTS.md).
             degraded = True
+            degradation_code, degradation_score = degradation_for(signal)
             intent = Intent.NATIVE
             family = [descriptor for descriptor in eligible if in_intent_family(intent, descriptor)]
         if not family:
@@ -76,6 +80,8 @@ def plan_route(
                 candidates=candidates,
                 chosen=candidates[0],
                 reason=_degraded_reason(signal, candidates[0]) if degraded else _reason(intent, candidates[0], signal),
+                degradation_code=degradation_code,
+                degradation_score=degradation_score,
             )
         )
     return RoutingPlan(primary=_primary(pages), pages=pages)
