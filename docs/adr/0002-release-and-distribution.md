@@ -38,8 +38,13 @@ distinct from `repo_url`.
   and the build falls back to a local version (`0.0.0.postN.dev0+<hash>`) that
   PyPI rejects (HTTP 400).
 
-Every push to `main` produces a release, including docs-only pushes. That is
-accepted: the tag is the release record and the pipeline is idempotent.
+~~Every push to `main` produces a release, including docs-only pushes.~~
+**Amended 2026-09-28:** every push to `main` is validated by CI, but a release is
+a **deliberate milestone**. A push whose head commit message contains
+`[skip release]` is never tagged, published, or deployed; omit the marker to cut
+a release. Development pushes carry the marker; milestone pushes omit it.
+(Originally every push released — abandoned after 25 releases accumulated during
+an unfinished development phase.)
 
 ### 3. PyPI publishing uses trusted publishing (OIDC)
 

@@ -29,10 +29,14 @@ env:
 jobs:
 
   release:
+    # Releases are deliberate milestones, not a side effect of pushing.
+    # A push whose head commit message contains [skip release] is validated
+    # by CI but never tagged, published or deployed.
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_branch == 'main')
+       github.event.workflow_run.head_branch == 'main' &&
+       !contains(github.event.workflow_run.head_commit.message, '[skip release]'))
     runs-on: ubuntu-latest
     permissions:
       contents: write
