@@ -54,6 +54,8 @@ ignore = [
     "ANN401",
     "PLR0912",  # too-many-branches
     "PLR0913",
+    "PLR0915",  # too-many-statements
+    "PLR0917",  # too-many-local-positions (private-domain APIs)
     "PLR2004", # magic value used in comparison
     "PT028",   # test function parameter has default argument
 ]
@@ -61,6 +63,11 @@ ignore = [
 [lint.per-file-ignores]
 # Use of assert statements in tests is pytest default behavior
 "tests/**/*.py" = ["S101"]
+# Ported model code (backends/ocr/_vendored) is first-party: fully formatted,
+# spelled, and correctness-linted (F/E/B/S... all apply). Only upstream STYLE
+# is relaxed — annotations (ANN), docstring rules (D, W605), and pure-style
+# families (SIM, PLW, C4, NPY, PLR6301, PLR0202). pc-4u7.36 ruling.
+"src/parsecraft/backends/ocr/_vendored/**" = ["ANN", "D", "W605", "SIM", "PLW", "C4", "NPY", "PLR6301", "PLR0202", "PLR1704", "PLR1714"]
 
 [lint.pylint]
 max-locals = 20
