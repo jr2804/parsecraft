@@ -31,7 +31,7 @@ class UnlimitedFactory:
     descriptor: BackendDescriptor = DESCRIPTOR
 
     def __call__(self, config: BackendConfig) -> DocumentBackend:
-        impl = load_impl(_IMPL_MODULE, backend=UNLIMITED_NAME, extra=UNLIMITED_EXTRA)
+        impl = load_impl(_IMPL_MODULE, extra=UNLIMITED_EXTRA)
         return impl.create(config)
 
 

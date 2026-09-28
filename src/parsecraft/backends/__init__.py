@@ -7,6 +7,7 @@ from parsecraft.backends.errors import (
     BackendError,
     BackendLoadError,
     BackendNotFoundError,
+    DependencyUnavailableError,
 )
 from parsecraft.backends.protocol import (
     AnalysisResult,
@@ -39,6 +40,7 @@ __all__ = [
     "BackendRegistry",
     "BackendResult",
     "ConversionRequest",
+    "DependencyUnavailableError",
     "DocumentBackend",
     "ModelAssetDescriptor",
     "PageSignal",

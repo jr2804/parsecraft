@@ -25,7 +25,7 @@ from pydantic import ValidationError
 from parsecraft.assets.errors import OfflineModeError
 from parsecraft.assets.models import AssetPin
 from parsecraft.backends import registry as registry_module
-from parsecraft.backends.errors import BackendError
+from parsecraft.backends.errors import BackendError, DependencyUnavailableError
 from parsecraft.backends.ocr import _common, _models, ovis, qianfan, tele, unlimited
 from parsecraft.backends.ocr._common import VllmCompletion, VllmOutput
 from parsecraft.backends.protocol import (
@@ -444,9 +444,14 @@ def test_missing_extra_raises_typed_error_with_install_hint(
         return real_import(module_name)
 
     monkeypatch.setattr(importlib, "import_module", _fake_import)
-    with pytest.raises(BackendError, match=re.escape(f"pip install 'parsecraft[{extra}]'")) as excinfo:
+    with pytest.raises(
+        DependencyUnavailableError,
+        match=re.escape(f"backend dependency 'transformers' is not installed — install the '{extra}' extra"),
+    ) as excinfo:
         module.factory(BackendConfig(name=name))
-    assert "transformers" in str(excinfo.value)
+    assert excinfo.value.module == "transformers"
+    assert excinfo.value.extra == extra
+    assert isinstance(excinfo.value, BackendError)
 
 
 @pytest.mark.parametrize(("module", "name", "extra", "_vram", "_multi"), _FACTORY_MODULES)
@@ -790,8 +795,12 @@ def test_missing_vllm_runtime_carries_the_install_hint(monkeypatch: pytest.Monke
         return real_import(module_name)
 
     monkeypatch.setattr(importlib, "import_module", _fake_import)
-    with pytest.raises(BackendError, match=re.escape("pip install 'parsecraft[vllm]'")):
+    with pytest.raises(
+        DependencyUnavailableError,
+        match=re.escape("backend dependency 'vllm' is not installed — install the 'vllm' extra"),
+    ) as excinfo:
         _common.load_vllm()
+    assert (excinfo.value.module, excinfo.value.extra) == ("vllm", "vllm")
 
 
 def test_missing_pillow_carries_the_backend_extra_hint(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -804,8 +813,12 @@ def test_missing_pillow_carries_the_backend_extra_hint(monkeypatch: pytest.Monke
         return real_import(module_name)
 
     monkeypatch.setattr(importlib, "import_module", _fake_import)
-    with pytest.raises(BackendError, match=re.escape("pip install 'parsecraft[ocr-tele]'")):
+    with pytest.raises(
+        DependencyUnavailableError,
+        match=re.escape("backend dependency 'PIL' is not installed — install the 'ocr-tele' extra"),
+    ) as excinfo:
         _common.pil_image(_PNG, extra="ocr-tele")
+    assert (excinfo.value.module, excinfo.value.extra) == ("PIL", "ocr-tele")
 
 
 def test_pil_image_decodes_through_the_stub(pil: _PilImageStub) -> None:

@@ -10,8 +10,7 @@ from typing import Any, cast
 
 import pytest
 
-from parsecraft.backends.errors import BackendError
-from parsecraft.backends.native._common import DependencyUnavailableError
+from parsecraft.backends.errors import BackendError, DependencyUnavailableError
 from parsecraft.backends.protocol import (
     AnalysisResult,
     BackendCapabilities,

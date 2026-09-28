@@ -24,7 +24,9 @@ from parsecraft.backends import (
     SourceDocument,
     default_registry,
 )
+from parsecraft.backends import DependencyUnavailableError as public_error
 from parsecraft.backends import registry as registry_module
+from parsecraft.backends.errors import DependencyUnavailableError
 from parsecraft.backends.registry import BackendRegistry
 from parsecraft.ir.models import PageRange
 
@@ -402,3 +404,12 @@ def _patch_entry_points(
 
     monkeypatch.setattr(registry_module, "entry_points", fake_entry_points)
     return requested
+
+
+def test_dependency_unavailable_error_is_public_and_typed() -> None:
+    """One public signal for 'optional extra missing' (pc-4u7.28)."""
+    assert public_error is DependencyUnavailableError  # package re-export, same class
+    error = DependencyUnavailableError("some.module", "some-extra")
+    assert isinstance(error, BackendError)
+    assert (error.module, error.extra) == ("some.module", "some-extra")
+    assert str(error) == ("backend dependency 'some.module' is not installed — install the 'some-extra' extra")

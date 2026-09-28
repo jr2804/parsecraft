@@ -36,3 +36,12 @@ class BackendLoadError(BackendError):
         super().__init__(f"failed to load backend {name!r} from entry point{detail}")
         self.name = name
         self.cause = cause
+
+
+class DependencyUnavailableError(BackendError):
+    """A backend's optional implementation module is not installed."""
+
+    def __init__(self, module: str, extra: str) -> None:
+        self.module = module
+        self.extra = extra
+        super().__init__(f"backend dependency {module!r} is not installed — install the {extra!r} extra")

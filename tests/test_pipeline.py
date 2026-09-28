@@ -12,8 +12,7 @@ from pydantic import ValidationError
 
 from parsecraft import pipeline as public_pipeline
 from parsecraft.backends import default_registry
-from parsecraft.backends.errors import BackendError
-from parsecraft.backends.native._common import DependencyUnavailableError
+from parsecraft.backends.errors import BackendError, DependencyUnavailableError
 from parsecraft.backends.protocol import (
     AnalysisResult,
     BackendCapabilities,

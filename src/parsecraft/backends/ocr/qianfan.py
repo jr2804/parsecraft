@@ -31,7 +31,7 @@ class QianfanFactory:
     descriptor: BackendDescriptor = DESCRIPTOR
 
     def __call__(self, config: BackendConfig) -> DocumentBackend:
-        impl = load_impl(_IMPL_MODULE, backend=QIANFAN_NAME, extra=QIANFAN_EXTRA)
+        impl = load_impl(_IMPL_MODULE, extra=QIANFAN_EXTRA)
         return impl.create(config)
 
 

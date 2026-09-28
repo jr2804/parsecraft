@@ -16,7 +16,7 @@ from collections.abc import Callable, Iterator
 import pytest
 
 from parsecraft.backends import registry as registry_module
-from parsecraft.backends.errors import BackendError
+from parsecraft.backends.errors import BackendError, DependencyUnavailableError
 from parsecraft.backends.liteparse import liteparse as liteparse_module
 from parsecraft.backends.protocol import (
     BackendConfig,
@@ -147,9 +147,13 @@ def test_missing_extra_error_names_parsecraft_extra(monkeypatch: pytest.MonkeyPa
         return real_import(module_name)
 
     monkeypatch.setattr(importlib, "import_module", _fake_import)
-    with pytest.raises(BackendError, match=re.escape("pip install 'parsecraft[liteparse]'")) as excinfo:
+    with pytest.raises(
+        DependencyUnavailableError,
+        match=re.escape("backend dependency 'liteparse' is not installed — install the 'liteparse' extra"),
+    ) as excinfo:
         liteparse_module.factory(BackendConfig(name="liteparse"))
-    assert "liteparse" in str(excinfo.value)
+    assert (excinfo.value.module, excinfo.value.extra) == ("liteparse", "liteparse")
+    assert isinstance(excinfo.value, BackendError)
 
 
 def test_impl_without_create_entry_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:

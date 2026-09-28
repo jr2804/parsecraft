@@ -11,8 +11,7 @@ from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _dist_version
 from time import monotonic
 
-from parsecraft.backends.errors import BackendError
-from parsecraft.backends.native._common import DependencyUnavailableError
+from parsecraft.backends.errors import BackendError, DependencyUnavailableError
 from parsecraft.backends.protocol import (
     AnalysisResult,
     BackendConfig,

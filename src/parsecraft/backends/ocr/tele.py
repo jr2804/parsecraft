@@ -31,7 +31,7 @@ class TeleFactory:
     descriptor: BackendDescriptor = DESCRIPTOR
 
     def __call__(self, config: BackendConfig) -> DocumentBackend:
-        impl = load_impl(_IMPL_MODULE, backend=TELE_NAME, extra=TELE_EXTRA)
+        impl = load_impl(_IMPL_MODULE, extra=TELE_EXTRA)
         return impl.create(config)
 
 

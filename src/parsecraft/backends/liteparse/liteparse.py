@@ -14,7 +14,7 @@ from __future__ import annotations
 import importlib
 from typing import Protocol, runtime_checkable
 
-from parsecraft.backends.errors import BackendError
+from parsecraft.backends.errors import BackendError, DependencyUnavailableError
 from parsecraft.backends.protocol import (
     BackendCapabilities,
     BackendConfig,
@@ -71,8 +71,7 @@ class LiteparseFactory:
         try:
             module = importlib.import_module(_IMPL_MODULE)
         except ImportError as exc:
-            msg = f"backend 'liteparse' requires the 'liteparse' extra — pip install 'parsecraft[liteparse]' (missing module: {exc.name})"
-            raise BackendError(msg) from exc
+            raise DependencyUnavailableError(exc.name or "liteparse", _EXTRA) from exc
         if not isinstance(module, _ImplModule):
             msg = f"impl module {_IMPL_MODULE!r} must expose create(config)"
             raise BackendError(msg)

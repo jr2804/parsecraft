@@ -19,7 +19,7 @@ from typing import Protocol, cast, runtime_checkable
 
 from parsecraft.assets.manager import AssetManager
 from parsecraft.assets.models import AssetPin
-from parsecraft.backends.errors import BackendError
+from parsecraft.backends.errors import BackendError, DependencyUnavailableError
 from parsecraft.backends.protocol import (
     AnalysisResult,
     BackendConfig,
@@ -138,9 +138,9 @@ class ImageTextPipeline(Protocol):
         ...
 
 
-def load_impl(module_name: str, *, backend: str, extra: str) -> ImplModule:
+def load_impl(module_name: str, *, extra: str) -> ImplModule:
     """Import a heavy impl module at instantiation time — the only heavy boundary."""
-    module = optional_module(module_name, extra=extra, purpose=f"backend {backend!r}")
+    module = optional_module(module_name, extra=extra)
     if not isinstance(module, ImplModule):
         msg = f"impl module {module_name!r} must expose create(config)"
         raise BackendError(msg)
@@ -161,7 +161,7 @@ def runtime_choice(config: BackendConfig) -> str:
 
 def load_vllm() -> ModuleType:
     """Import the optional vLLM runtime for ``runtime = "vllm"`` backends."""
-    return optional_module("vllm", extra="vllm", purpose="runtime='vllm'")
+    return optional_module("vllm", extra="vllm")
 
 
 def model_source_and_revision(descriptor: ModelAssetDescriptor, config: BackendConfig) -> tuple[str, str | None]:
@@ -505,7 +505,7 @@ def vllm_transcriber(
 
 def pil_image(payload: bytes, *, extra: str) -> object:
     """Decode PNG/JPEG bytes to a PIL image (pillow ships with the OCR extras)."""
-    image_module = optional_module("PIL.Image", extra=extra, purpose="image decoding")
+    image_module = optional_module("PIL.Image", extra=extra)
     return image_module.open(BytesIO(payload))
 
 
@@ -552,13 +552,12 @@ def _open_pdf(payload: bytes) -> PdfDocument:
     return cast("PdfDocument", pymupdf.open(stream=payload, filetype="pdf"))
 
 
-def optional_module(module_name: str, *, extra: str, purpose: str) -> ModuleType:
-    """Import an optional dependency on demand, or fail with the install hint."""
+def optional_module(module_name: str, *, extra: str) -> ModuleType:
+    """Import an optional dependency on demand, or fail with the public typed error."""
     try:
         return importlib.import_module(module_name)
     except ImportError as exc:
-        msg = f"{purpose} requires the {extra!r} extra — pip install 'parsecraft[{extra}]' (missing module: {exc.name})"
-        raise BackendError(msg) from exc
+        raise DependencyUnavailableError(exc.name or module_name, extra) from exc
 
 
 def _resolve_window(

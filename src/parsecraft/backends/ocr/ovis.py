@@ -31,7 +31,7 @@ class OvisFactory:
     descriptor: BackendDescriptor = DESCRIPTOR
 
     def __call__(self, config: BackendConfig) -> DocumentBackend:
-        impl = load_impl(_IMPL_MODULE, backend=OVIS_NAME, extra=OVIS_EXTRA)
+        impl = load_impl(_IMPL_MODULE, extra=OVIS_EXTRA)
         return impl.create(config)
 
 

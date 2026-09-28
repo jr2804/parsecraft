@@ -15,7 +15,7 @@ from time import monotonic
 
 from pydantic import BaseModel, Field
 
-from parsecraft.backends.errors import BackendError
+from parsecraft.backends.errors import BackendError, DependencyUnavailableError
 from parsecraft.backends.protocol import (
     AnalysisResult,
     BackendCapabilities,
@@ -46,15 +46,6 @@ Extract = Callable[[SourceDocument, bytes], list[PageResult]]
 ImageCounter = Callable[[bytes], int]
 #: Counts pages in raw document bytes (deterministic, no conversion).
 PageCounter = Callable[[bytes], int]
-
-
-class DependencyUnavailableError(BackendError):
-    """A backend's optional implementation module is not installed."""
-
-    def __init__(self, module: str, extra: str) -> None:
-        self.module = module
-        self.extra = extra
-        super().__init__(f"backend dependency {module!r} is not installed — install the {extra!r} extra")
 
 
 class SourceReadError(BackendError):
