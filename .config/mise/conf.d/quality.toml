@@ -1,6 +1,7 @@
 [tasks.test]
-description = "Run tests with coverage"
-run = "uv run pytest --cov=parsecraft --cov-report=term-missing --cov-report=html"
+description = "Run tests with coverage (per-run data file; concurrent runs cannot clash)"
+run = "COVERAGE_FILE=.coverage.$$ uv run pytest --cov=parsecraft --cov-report=term-missing --cov-report=html:.htmlcov.$$"
+run_windows = "$env:COVERAGE_FILE=\".coverage.$PID\"; uv run pytest --cov=parsecraft --cov-report=term-missing --cov-report=html:.htmlcov_$PID"
 
 [tasks.test-corpus]
 description = "Corpus tier: opt-in network + cached public documents (15 min cold-cache budget)"
@@ -29,4 +30,4 @@ depends = [
 
 [tasks.clean]
 description = "Clean build artifacts"
-run = ["rm -rf build dist *.egg-info .pytest_cache .coverage htmlcov docs/_build"]
+run = ["rm -rf build dist *.egg-info .pytest_cache .coverage .coverage.* coverage.xml htmlcov .htmlcov.* docs/_build"]

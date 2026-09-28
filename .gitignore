@@ -6,8 +6,10 @@ dist/
 wheels/
 *.egg-info
 .coverage
+.coverage.*
 coverage.xml
 htmlcov/
+.htmlcov.*
 
 # Documentation build output (zensical / mkdocs)
 site/
