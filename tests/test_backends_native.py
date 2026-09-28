@@ -517,10 +517,6 @@ def test_pdf_convert_with_fake_extraction_impl(monkeypatch: pytest.MonkeyPatch) 
     assert result.failures == []
 
 
-def _request(content: bytes, **kwargs: Any) -> ConversionRequest:
-    return ConversionRequest(source=_source(content), **kwargs)
-
-
 def _contents(result: Any, page: int = 1) -> list[str]:
     return [block.content for block in result.pages[page - 1].blocks]
 
@@ -658,10 +654,6 @@ def test_base_analyze_with_injected_counters() -> None:
     assert analysis.signals[0].image_count == 7
 
 
-def _source(content: bytes, uri: str = "mem://native") -> SourceDocument:
-    return SourceDocument(uri=uri, content=content)
-
-
 def _pages(texts: list[str]) -> list[PageResult]:
     return [PageResult(page_number=index, blocks=paragraph_chunks("stub", index, text)) for index, text in enumerate(texts, start=1)]
 
@@ -680,10 +672,6 @@ def test_all_native_factories_register_and_create() -> None:
         assert descriptors[name].version == NATIVE_BACKEND_VERSION
         backend = registry.create(name, _config(name))
         assert backend.name == name
-
-
-def _config(name: str) -> BackendConfig:
-    return BackendConfig(name=name)
 
 
 def test_native_family_imports_stay_offline_clean() -> None:
@@ -765,3 +753,37 @@ def _import_pdf_inspect(monkeypatch: pytest.MonkeyPatch, reader: _FakePdfReader)
     monkeypatch.setitem(sys.modules, "pypdf", fake)
     monkeypatch.delitem(sys.modules, "parsecraft.backends.native.pdf_inspect", raising=False)
     return importlib.import_module("parsecraft.backends.native.pdf_inspect")
+
+
+# ── structured table rows (pc-4u7.40) ──────────────────────────────────────
+
+
+def test_html_table_carries_structured_rows() -> None:
+    backend = html_module.factory(_config("native-html"))
+    html = "<table><tr><th>id</th><th>name</th></tr><tr><td>1</td><td>ada</td></tr></table>"
+    result = backend.convert(_request(html.encode("utf-8")))
+    table = result.pages[0].blocks[0]
+    assert table.kind is ChunkKind.TABLE
+    assert table.rows == (("id", "name"), ("1", "ada"))
+    # round-trip: rows are exactly the content cells (separator row excluded)
+    content_rows = [[cell.strip() for cell in line.strip().strip("|").split("|")] for line in table.content.splitlines() if "---" not in line]
+    assert [list(row) for row in table.rows] == content_rows
+
+
+def test_html_non_table_chunks_carry_no_rows() -> None:
+    backend = html_module.factory(_config("native-html"))
+    result = backend.convert(_request(b"<h1>Head</h1><p>Body.</p>"))
+    for block in result.pages[0].blocks:
+        assert block.rows is None
+
+
+def _request(content: bytes, **kwargs: Any) -> ConversionRequest:
+    return ConversionRequest(source=_source(content), **kwargs)
+
+
+def _source(content: bytes, uri: str = "mem://native") -> SourceDocument:
+    return SourceDocument(uri=uri, content=content)
+
+
+def _config(name: str) -> BackendConfig:
+    return BackendConfig(name=name)

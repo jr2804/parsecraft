@@ -8,6 +8,7 @@ recorded as INFO diagnostics.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 
@@ -268,9 +269,15 @@ class _HtmlChunkParser(HTMLParser):
             return
         lines = [f"| {' | '.join(row)} |" for row in table]
         lines.insert(1, f"| {' | '.join(['---'] * len(table[0]))} |")
-        self._emit(ChunkKind.TABLE, "\n".join(lines))
+        self._emit(ChunkKind.TABLE, "\n".join(lines), rows=table)
 
-    def _emit(self, kind: ChunkKind, content: str, metadata: dict[str, str] | None = None) -> None:
+    def _emit(
+        self,
+        kind: ChunkKind,
+        content: str,
+        metadata: dict[str, str] | None = None,
+        rows: Sequence[Sequence[str]] | None = None,
+    ) -> None:
         self._flush_stray()
         if not content:
             self.diagnostics.append(
@@ -289,6 +296,7 @@ class _HtmlChunkParser(HTMLParser):
                 page_number=1,
                 reading_order=self._order,
                 metadata=metadata or {},
+                rows=tuple(tuple(cell for cell in row) for row in rows) if rows is not None else None,
             )
         )
         self._order += 1

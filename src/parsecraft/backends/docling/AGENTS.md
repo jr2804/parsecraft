@@ -18,6 +18,10 @@ plus a bound-checked `convert()` that maps docling items to typed IR chunks.
 
 ## Local Contracts
 
+- **Structured table rows** (pc-4u7.40): TABLE chunks carry `rows` built from
+  `TableItem.data.grid` (`list[list[TableCell]]` → cell texts), while
+  `content` remains the Markdown export — both derive from the same table,
+  and tests pin cell agreement. Non-table items carry `rows=None`.
 - Entry point: `parsecraft.backends.docling.docling:factory`; heavy imports
   load through `importlib.import_module` at instantiation, never inline
   (`csort` would hoist an inline import to module level and break the

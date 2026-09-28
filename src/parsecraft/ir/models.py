@@ -184,6 +184,18 @@ class StructuredChunk(BaseModel):
     confidence: float | None = Field(default=None, ge=0, le=1)
     quality: list[QualitySignal] = Field(default_factory=list)
     metadata: dict[str, str] = Field(default_factory=dict)
+    #: Structured grid for ``kind == "table"`` only — **consumer data**:
+    #: ``to_markdown`` keeps rendering from ``content``, rows never change
+    #: projection output. Serialized as an array-of-arrays (consumers read
+    #: ``list[list[str]]``); ``None`` when no cheap structure exists.
+    rows: tuple[tuple[str, ...], ...] | None = None
+
+    @model_validator(mode="after")
+    def _rows_only_for_tables(self) -> StructuredChunk:
+        if self.rows is not None and self.kind is not ChunkKind.TABLE:
+            msg = f"rows are only valid for table chunks, not {self.kind.value!r}"
+            raise ValueError(msg)
+        return self
 
 
 class DetectedRegion(BaseModel):

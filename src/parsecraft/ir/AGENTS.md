@@ -20,6 +20,11 @@ from them.
 
 - Markdown is a projection, never a source of truth — do not add parsing of
   rendered output back into IR types.
+- `StructuredChunk.rows` is **consumer data, not projection input**:
+  `to_markdown` always renders from `content`, rows or not (same content ⇒
+  byte-identical Markdown, pinned by `test_markdown_projection_ignores_rows_entirely`).
+  Rows validate only on `kind == table`. Producers that generate both derive
+  rows and content from one source and pin their agreement in tests.
 - No silent data loss: `to_markdown` must emit every block of every page,
   **including nested `children`** (pinned by
   `test_no_silent_drops_every_content_appears` and

@@ -25,6 +25,10 @@ the single source of truth (ADR-0001 §11, `parsecraft.ir.AGENTS.md`).
 
 ## Local Contracts
 
+- **Markdown tables carry structured `rows`** (pc-4u7.40): the parser keeps
+  the row/cell lists it already builds and passes them to the TABLE chunk;
+  the separator line lives only in `content`. Round-trip rule: flattening
+  `rows` equals the non-separator cells of `content` (pinned in tests).
 - Deterministic: identical input (and fixed `produced_at`) → byte-identical
   `DocumentResult`; chunk ids derive from `reading_order` (`md-NNNN-kind`).
 - No silent drops: every level-0 token with content becomes a chunk (known

@@ -31,6 +31,7 @@ from parsecraft.ir import (
     SourceSpan,
     StructuredChunk,
     TraceEntry,
+    to_markdown,
     utcnow,
 )
 
@@ -516,3 +517,82 @@ def test_detected_region_and_asset_validate_fields() -> None:
         ExtractedAsset(id="a1", kind=AssetKind.IMAGE, media_type="image/png", uri="file:///a.png", sha256="xyz")
     with pytest.raises(ValidationError):
         ExtractedAsset(id="a1", kind=AssetKind.IMAGE, media_type="image/png", uri="")
+
+
+def test_rows_validate_only_on_table_chunks() -> None:
+    chunk = _row_chunk()
+    assert chunk.rows == (("a", "b"),)
+    with pytest.raises(ValidationError, match="only valid for table chunks"):
+        StructuredChunk(
+            id="bad",
+            kind=ChunkKind.PARAGRAPH,
+            content="text",
+            page_number=1,
+            reading_order=0,
+            rows=(("a", "b"),),
+        )
+
+
+def test_rows_default_to_none_and_round_trip_through_json() -> None:
+    plain = StructuredChunk(id="p", kind=ChunkKind.TABLE, content="| a | b |", page_number=1, reading_order=0)
+    assert plain.rows is None
+    round_tripped = StructuredChunk.model_validate_json(plain.model_dump_json())
+    assert round_tripped == plain
+
+    with_rows = _row_chunk()
+    dumped = with_rows.model_dump_json()
+    restored = StructuredChunk.model_validate_json(dumped)
+    assert restored == with_rows
+    assert restored.rows == (("a", "b"),)
+    # consumer shape: serialized as an array-of-arrays
+    assert StructuredChunk.model_validate(with_rows.model_dump(mode="json")).rows == (("a", "b"),)
+
+
+# ── structured table rows (pc-4u7.40) ──────────────────────────────────────
+
+
+def _row_chunk(content: str = "| a | b |") -> StructuredChunk:
+    return StructuredChunk(
+        id="row-chunk",
+        kind=ChunkKind.TABLE,
+        content=content,
+        page_number=1,
+        reading_order=0,
+        rows=(("a", "b"),),
+    )
+
+
+def test_markdown_projection_ignores_rows_entirely() -> None:
+    base = StructuredChunk(
+        id="t",
+        kind=ChunkKind.TABLE,
+        content="| a | b |\n| --- | --- |\n| 1 | 2 |",
+        page_number=1,
+        reading_order=0,
+    )
+    with_rows = StructuredChunk(
+        id="t",
+        kind=ChunkKind.TABLE,
+        content=base.content,
+        page_number=1,
+        reading_order=0,
+        rows=(("a", "b"), ("1", "2")),
+    )
+
+    def document(chunk: StructuredChunk) -> DocumentResult:
+        return DocumentResult(
+            metadata=DocumentMetadata(
+                source_uri="mem://t",
+                source_hash="0" * 64,
+                format="text/markdown",
+                page_count=1,
+                title=None,
+                produced_at=datetime(2026, 9, 28, tzinfo=UTC),
+                package_version="test",
+            ),
+            pages=[PageResult(page_number=1, blocks=[chunk])],
+            trace=[],
+            quality=[],
+        )
+
+    assert to_markdown(document(with_rows)) == to_markdown(document(base))  # rows are data-only

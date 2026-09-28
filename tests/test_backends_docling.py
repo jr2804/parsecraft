@@ -43,10 +43,12 @@ class _TextItem:
 
 
 class _TableItem:
-    def __init__(self, markdown: str, page_no: int = 1) -> None:
+    def __init__(self, markdown: str, page_no: int = 1, rows: list[list[types.SimpleNamespace]] | None = None) -> None:
         self._markdown = markdown
         self.prov = [_Prov(page_no)]
         self.last_doc: object = None
+        # Mirrors the real accessor: TableItem.data.grid -> list[list[TableCell]]
+        self.data = types.SimpleNamespace(grid=rows if rows is not None else _grid_from_markdown(markdown))
 
     def export_to_markdown(self, doc: object = None) -> str:
         self.last_doc = doc
@@ -141,6 +143,19 @@ class _State:
         self.convert_calls: list[tuple[str | None, tuple[int, int] | None]] = []
         self.convert_error: Exception | None = None
         self.delay_s = 0.0
+
+
+def _grid_from_markdown(markdown: str) -> list[list[types.SimpleNamespace]]:
+    """Cells of a Markdown table (separator row dropped) as a grid."""
+    rows: list[list[types.SimpleNamespace]] = []
+    for line in markdown.splitlines():
+        if "|" not in line:
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if cells and all(cell == "---" for cell in cells):
+            continue
+        rows.append([types.SimpleNamespace(text=cell) for cell in cells])
+    return rows
 
 
 # ── Light factory / descriptor (no heavy import) ────────────────────────────────
@@ -241,6 +256,10 @@ def test_convert_builds_typed_ir_per_page(docling_stub: _State) -> None:
     assert [block.kind for block in result.pages[0].blocks] == [ChunkKind.HEADING, ChunkKind.TABLE]
     assert result.pages[0].blocks[0].id == "docling-1-b0"
     assert result.pages[0].blocks[1].content == "| a | b |"
+    # structured rows: same cells as the Markdown content (round-trip rule)
+    assert result.pages[0].blocks[1].rows == (("a", "b"),)
+    content_cells = [cell.strip() for cell in result.pages[0].blocks[1].content.strip().strip("|").split("|")]
+    assert [cell for row in result.pages[0].blocks[1].rows for cell in row] == content_cells
     assert table.last_doc is not None  # table export receives the document
     assert result.pages[1].blocks[0].content == "second page"
     assert result.backend.name == "docling"

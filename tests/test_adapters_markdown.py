@@ -272,3 +272,26 @@ def make_token(type_: str, **overrides: Any) -> Token:
     }
     values.update(overrides)
     return Token(**values)
+
+
+# ── structured table rows (pc-4u7.40) ──────────────────────────────────────
+
+
+def test_markdown_table_carries_structured_rows() -> None:
+    document = parse_markdown(
+        "| name | qty |\n| --- | --- |\n| apple | 3 |\n| pear | 5 |\n",
+        "table.md",
+        produced_at=PRODUCED,
+    )
+    table = document.pages[0].blocks[0]
+    assert table.kind is ChunkKind.TABLE
+    assert table.rows == (("name", "qty"), ("apple", "3"), ("pear", "5"))
+    # round-trip: rows are exactly the content cells (separator row excluded)
+    content_rows = [[cell.strip() for cell in line.strip().strip("|").split("|")] for line in table.content.splitlines() if "---" not in line]
+    assert [list(row) for row in table.rows] == content_rows
+
+
+def test_non_table_markdown_chunks_carry_no_rows() -> None:
+    document = parse_markdown("# Head\n\nBody paragraph.\n", "x.md", produced_at=PRODUCED)
+    for block in document.pages[0].blocks:
+        assert block.rows is None

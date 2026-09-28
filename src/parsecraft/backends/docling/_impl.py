@@ -187,7 +187,7 @@ def _select(
     for item, _level in document.iterate_items():
         if request.cancellation is not None and request.cancellation():
             return _filled_pages(blocks, request.page_range), _failure(request, started, FailureCode.CANCELLED, "cancelled between items")
-        content, kind = _item_content(item, document)
+        content, kind, rows = _item_content(item, document)
         if not content:
             continue
         page_number = item.prov[0].page_no if item.prov else 1
@@ -204,19 +204,26 @@ def _select(
                 content=content,
                 page_number=page_number,
                 reading_order=len(chunks),
+                rows=rows,
             )
         )
     return _filled_pages(blocks, request.page_range), None
 
 
-def _item_content(item: object, document: DoclingDocument) -> tuple[str, ChunkKind]:
-    """Text + chunk kind for one docling item (tables export to Markdown)."""
+def _item_content(item: object, document: DoclingDocument) -> tuple[str, ChunkKind, tuple[tuple[str, ...], ...] | None]:
+    """Text + chunk kind for one docling item (tables export to Markdown).
+
+    Table cells come from ``TableItem.data.grid`` — the structured grid
+    backs the chunk's ``rows`` while ``content`` stays the Markdown export
+    (the projection keeps rendering from ``content``).
+    """
     if isinstance(item, TableItem):
-        return (item.export_to_markdown(document) or "").strip(), ChunkKind.TABLE
+        rows = tuple(tuple(cell.text for cell in row) for row in item.data.grid)
+        return (item.export_to_markdown(document) or "").strip(), ChunkKind.TABLE, rows
     if isinstance(item, TextItem):
         kind = _LABEL_KINDS.get(str(item.label), ChunkKind.PARAGRAPH)
-        return (item.text or "").strip(), kind
-    return "", ChunkKind.UNKNOWN
+        return (item.text or "").strip(), kind, None
+    return "", ChunkKind.UNKNOWN, None
 
 
 def _filled_pages(blocks: dict[int, list[StructuredChunk]], page_range: PageRange | None) -> list[PageResult]:

@@ -9,6 +9,7 @@ identical ``DocumentResult``.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from markdown_it import MarkdownIt
@@ -69,6 +70,7 @@ class _ChunkBuilder:
         content: str,
         token: Token,
         metadata: dict[str, str] | None = None,
+        rows: Sequence[Sequence[str]] | None = None,
     ) -> None:
         self._chunks.append(
             StructuredChunk(
@@ -79,6 +81,7 @@ class _ChunkBuilder:
                 reading_order=self._order,
                 source_span=self._span(token),
                 metadata=metadata or {},
+                rows=tuple(tuple(cell for cell in row) for row in rows) if rows is not None else None,
             )
         )
         self._order += 1
@@ -178,7 +181,7 @@ class _ChunkBuilder:
         lines = [f"| {' | '.join(row)} |" for row in rows]
         if lines:
             lines.insert(1, "| " + " | ".join(["---"] * len(rows[0])) + " |")
-        self._add(ChunkKind.TABLE, "\n".join(lines), tokens[index])
+        self._add(ChunkKind.TABLE, "\n".join(lines), tokens[index], rows=rows)
         return close - index + 1
 
     def _handle_unknown(self, token: Token) -> None:

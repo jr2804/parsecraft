@@ -23,6 +23,11 @@ Four entry-point backends, each a light `factory` (descriptor + `__call__`):
 
 ## Local Contracts
 
+- **Structured table rows** (pc-4u7.40): `native-html` emits `rows` from its
+  `_row`/`_cell` buffers (same cells as the Markdown `content`, separator
+  excluded). `native-markdown` inherits rows through the markdown adapter;
+  `native-text`/`native-pdf` carry `rows=None` — their extraction is plain
+  text with no cheap grid structure.
 - Entry modules stay light: optional/heavy deps (`pypdf`, `pymupdf`) load via
   `import_module` seams only — `pdf_inspect` at factory instantiation,
   `pdf_text` at conversion time (missing extra → typed
