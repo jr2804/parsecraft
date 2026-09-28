@@ -45,3 +45,13 @@ class DependencyUnavailableError(BackendError):
         self.module = module
         self.extra = extra
         super().__init__(f"backend dependency {module!r} is not installed — install the {extra!r} extra")
+
+
+class UnsupportedDependencyVersionError(BackendError):
+    """A dependency is installed but outside the range this build supports."""
+
+    def __init__(self, package: str, actual: str, expected: str) -> None:
+        self.package = package
+        self.actual = actual
+        self.expected = expected
+        super().__init__(f"{package}=={actual} does not satisfy the required range {expected!r} — pip install '{package}{expected}'")

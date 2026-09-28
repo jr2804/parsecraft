@@ -13,7 +13,6 @@ from types import ModuleType
 from typing import Any, cast
 
 import pytest
-from pypdf import PdfWriter
 
 from parsecraft.backends.native import html as html_module
 from parsecraft.backends.native import markdown as markdown_module
@@ -49,6 +48,32 @@ class _StubBackend(NativeBackendBase):
     """Minimal concrete subclass for exercising the shared flow."""
 
     name = "native-stub"
+
+
+# ── pdf_inspect coverage without the pdf-lite extra (fake pypdf) ───────────
+
+
+class _FakePasswordType:
+    NOT_DECRYPTED = 0
+    USER_PASSWORD = 1
+
+
+class _FakePdfPage:
+    def __init__(self, text: str | None) -> None:
+        self._text = text
+
+    def extract_text(self) -> str | None:
+        return self._text
+
+
+class _FakePdfReader:
+    def __init__(self, *, encrypted: bool, decrypt_result: int, texts: list[str | None]) -> None:
+        self.is_encrypted = encrypted
+        self._decrypt_result = decrypt_result
+        self.pages = [_FakePdfPage(text) for text in texts]
+
+    def decrypt(self, password: str) -> int:
+        return self._decrypt_result
 
 
 # ── _common: source reading, helpers ───────────────────────────────────────
@@ -397,6 +422,7 @@ def test_pdf_descriptor_contract() -> None:
 
 
 def test_pdf_factory_and_analyze_with_real_pypdf() -> None:
+    pytest.importorskip("pypdf", reason="pdf-lite extra absent in the light env")
     backend = pdf_module.factory(_config("native-pdf"))
     data = document_bytes("pdf", pages=[["page one text"], ["page two text", "more"]])
     analysis = backend.analyze(_source(data))
@@ -420,7 +446,8 @@ def test_pdf_analyze_encrypted_pdf_reports_warning() -> None:
 
 
 def _encrypted_pdf(data: bytes) -> bytes:
-    writer = PdfWriter()
+    pypdf = pytest.importorskip("pypdf", reason="pdf-lite extra absent in the light env")
+    writer = pypdf.PdfWriter()
     writer.append(io.BytesIO(data))
     writer.encrypt("secret")
     buffer = io.BytesIO()
@@ -429,6 +456,7 @@ def _encrypted_pdf(data: bytes) -> bytes:
 
 
 def test_pdf_analyze_blank_page_reports_no_extractable_text() -> None:
+    pytest.importorskip("pypdf", reason="pdf-lite extra absent in the light env")
     backend = pdf_module.factory(_config("native-pdf"))
     data = document_bytes("pdf", pages=[[]])
     analysis = backend.analyze(_source(data))
@@ -694,3 +722,46 @@ print("NATIVE_IMPORTS_OK")
     )
     assert proc.returncode == 0, proc.stderr
     assert "NATIVE_IMPORTS_OK" in proc.stdout
+
+
+def test_pdf_inspect_statistics_against_fake_pypdf(monkeypatch: pytest.MonkeyPatch) -> None:
+    # plain PDF: text, blank page, garbled page, and an extract_text() None
+    reader = _FakePdfReader(encrypted=False, decrypt_result=0, texts=["Hello world.", "", "bad � data", None])
+    module = _import_pdf_inspect(monkeypatch, reader)
+    report = module.inspect(b"%PDF-fake")
+    assert report.encrypted is False
+    assert report.readable is True
+    assert report.page_count == 4
+    assert [stats.blank for stats in report.pages] == [False, True, False, True]
+    assert report.pages[0].replacement_char_ratio == 0.0
+    assert report.pages[1].replacement_char_ratio is None
+    assert report.pages[2].replacement_char_ratio is not None
+    assert report.pages[2].replacement_char_ratio > 0
+    assert report.pages[3].replacement_char_ratio is None  # extract_text() -> None
+
+
+def test_pdf_inspect_encrypted_paths_against_fake_pypdf(monkeypatch: pytest.MonkeyPatch) -> None:
+    # encrypted, empty password rejected → unreadable, no page stats
+    blocked = _FakePdfReader(encrypted=True, decrypt_result=_FakePasswordType.NOT_DECRYPTED, texts=[])
+    report = _import_pdf_inspect(monkeypatch, blocked).inspect(b"%PDF-fake")
+    assert report.encrypted is True
+    assert report.readable is False
+    assert report.page_count == 0
+    assert report.pages == []
+
+    # encrypted, empty password accepted → readable with stats
+    openable = _FakePdfReader(encrypted=True, decrypt_result=_FakePasswordType.USER_PASSWORD, texts=["secret text"])
+    report = _import_pdf_inspect(monkeypatch, openable).inspect(b"%PDF-fake")
+    assert report.encrypted is True
+    assert report.readable is True
+    assert report.page_count == 1
+    assert report.pages[0].text_chars == len("secret text")
+
+
+def _import_pdf_inspect(monkeypatch: pytest.MonkeyPatch, reader: _FakePdfReader) -> Any:
+    fake = ModuleType("pypdf")
+    fake.PasswordType = _FakePasswordType  # ty: ignore[unresolved-attribute] — fake module
+    fake.PdfReader = lambda stream: reader  # ty: ignore[unresolved-attribute] — fake module
+    monkeypatch.setitem(sys.modules, "pypdf", fake)
+    monkeypatch.delitem(sys.modules, "parsecraft.backends.native.pdf_inspect", raising=False)
+    return importlib.import_module("parsecraft.backends.native.pdf_inspect")

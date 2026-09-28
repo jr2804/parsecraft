@@ -27,6 +27,8 @@ MEDIA_TYPES: dict[str, str] = {
     ".cc": "text/plain",
     ".cfg": "text/plain",
     ".cpp": "text/plain",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".epub": "application/epub+zip",
     ".h": "text/plain",
     ".htm": "text/html",
     ".html": "text/html",
@@ -37,10 +39,13 @@ MEDIA_TYPES: dict[str, str] = {
     ".log": "text/plain",
     ".markdown": "text/markdown",
     ".md": "text/markdown",
+    ".odt": "application/vnd.oasis.opendocument.text",
     ".pdf": "application/pdf",
     ".png": "image/png",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     ".py": "text/plain",
     ".rst": "text/plain",
+    ".rtf": "application/rtf",
     ".sh": "text/plain",
     ".tex": "text/plain",
     ".text": "text/plain",
@@ -48,6 +53,7 @@ MEDIA_TYPES: dict[str, str] = {
     ".tiff": "image/tiff",
     ".toml": "text/plain",
     ".txt": "text/plain",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 }
 
 

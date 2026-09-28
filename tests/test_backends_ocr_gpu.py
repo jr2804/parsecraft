@@ -14,9 +14,11 @@ A warm run takes a few minutes (model loads); the first run downloads weights.
 
 from __future__ import annotations
 
+import gc
 import importlib
 import importlib.metadata
-from collections.abc import Callable
+import sys
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -35,10 +37,12 @@ from parsecraft.ir.models import PageRange
 
 #: (backend name, light factory, required transformers major — from pc-5gf runs).
 _GPU_CASES: tuple[tuple[str, Callable[[BackendConfig], DocumentBackend], int], ...] = (
+    # All four run on the unified window (pc-4u7.36): tele/unlimited load the
+    # vendored modeling in backends/ocr/_vendored — no trust_remote_code.
     ("ocr-ovis", ovis_factory, 5),
-    ("ocr-tele", tele_factory, 4),
+    ("ocr-tele", tele_factory, 5),
     ("ocr-qianfan", qianfan_factory, 5),
-    ("ocr-unlimited", unlimited_factory, 4),
+    ("ocr-unlimited", unlimited_factory, 5),
 )
 
 #: Generation caps: small enough for the laptop GPU budget, long enough to prove shape.
@@ -57,6 +61,20 @@ def test_gpu_environment_is_reported(gpu_report: str) -> None:
     torch = importlib.import_module("torch")
     print(f"GPU: {gpu_report}; torch {torch.__version__}; transformers {importlib.metadata.version('transformers')}")
     assert "MiB" in gpu_report
+
+
+@pytest.fixture(autouse=True)
+def _release_vram_between_gpu_tests() -> Iterator[None]:
+    """One model resident at a time (8 GB ceiling): drop weights + cached blocks
+    after every GPU test so the NEXT case's `device_map="auto"` sees real free
+    VRAM (a full session's retained cache otherwise pushes later loads into
+    meta/CPU offload — 'Cannot copy out of meta tensor').
+    """
+    yield
+    gc.collect()
+    torch_module = sys.modules.get("torch")
+    if torch_module is not None and torch_module.cuda.is_available():
+        torch_module.cuda.empty_cache()
 
 
 @pytest.mark.parametrize(("name", "factory", "required_major"), _GPU_CASES)

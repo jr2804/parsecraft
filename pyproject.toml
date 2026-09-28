@@ -31,22 +31,30 @@ web = ["httpx>=0.27"]
 pdf-lite = ["pypdf>=5"]
 pdf = ["pymupdf>=1.24"]
 liteparse = ["liteparse>=2.14"]
-vllm = ["vllm>=0.11"]
+# GPL-2.0-or-later pandoc BINARY behind the MIT pypandoc wrapper — the
+# user's licence decision (ADR-0005); never installed by `mise dev`/CI.
+pandoc = ["pypandoc>=1.15"]
+docling = ["docling>=2.130"]
+# The vLLM path is Linux/WSL2-only (runtime AND install): the marker keeps
+# Windows resolvable with every extra enabled at once.
+vllm = ["vllm>=0.11 ; sys_platform != 'win32'"]
 # OCR extras intentionally exclude PyMuPDF (AGPL): PDF input additionally needs
 # `parsecraft[pdf]`, keeping the copyleft choice explicit (ADR-0003).
 #
-# Pins are GPU-smoke-verified (RTX A2000 8 GB, 2026-09-27, `mise run test-gpu`).
-# The model cards pin DIFFERENT transformers majors, so the OCR extras are
-# MUTUALLY EXCLUSIVE — install exactly one per environment; a combined install
-# (e.g. `[ocr-ovis,ocr-tele]`) cannot resolve. For GPU use, install torch and
+# ONE transformers window for all four OCR models — `uv sync -U --all-extras`
+# must always resolve (root AGENTS.md rule 10; extras are never mutually
+# exclusive). 5.17.0 is the verified member of the window; a runtime guard
+# names it (`backends/ocr/_common.py`). For GPU use, install torch and
 # torchvision from the PyTorch CUDA index first (they are CPU-only on PyPI for
-# Windows). `vllm` paths are Linux/WSL2-only and were not validated here.
-ocr-ovis = ["transformers>=5.0", "torch>=2.5", "torchvision", "pillow>=10.4", "accelerate>=0.34"]
-ocr-qianfan = ["transformers>=5.0", "torch>=2.5", "torchvision", "pillow>=10.4", "accelerate>=0.34"]
-ocr-tele = ["transformers==4.57.1", "torch>=2.5", "pillow>=10.4", "accelerate>=0.34"]
+# Windows).
+# The same window is enforced at runtime as TRANSFORMERS_RANGE in backends/ocr/_models.py.
+ocr-ovis = ["transformers>=5.17,<6", "torch>=2.5", "torchvision", "pillow>=10.4", "accelerate>=0.34"]
+ocr-qianfan = ["transformers>=5.17,<6", "torch>=2.5", "torchvision", "pillow>=10.4", "accelerate>=0.34"]
+ocr-tele = ["transformers>=5.17,<6", "torch>=2.5", "torchvision", "pillow>=10.4", "accelerate>=0.34"]
 ocr-unlimited = [
-    "transformers==4.57.1",
+    "transformers>=5.17,<6",
     "torch>=2.5",
+    "torchvision",
     "pillow>=10.4",
     "accelerate>=0.34",
     "einops",
@@ -56,23 +64,14 @@ ocr-unlimited = [
     "requests",
 ]
 
-[tool.uv]
-# The OCR extras pin different transformers majors (per model card), so they are
-# mutually exclusive rather than jointly installable — declare it so `uv` can
-# still resolve a universal lock.
-conflicts = [
-  [{ extra = "ocr-ovis" }, { extra = "ocr-tele" }],
-  [{ extra = "ocr-ovis" }, { extra = "ocr-unlimited" }],
-  [{ extra = "ocr-qianfan" }, { extra = "ocr-tele" }],
-  [{ extra = "ocr-qianfan" }, { extra = "ocr-unlimited" }],
-]
-
 [project.entry-points."parsecraft.backends"]
 native-text = "parsecraft.backends.native.text:factory"
 native-markdown = "parsecraft.backends.native.markdown:factory"
 native-html = "parsecraft.backends.native.html:factory"
 native-pdf = "parsecraft.backends.native.pdf:factory"
 liteparse = "parsecraft.backends.liteparse.liteparse:factory"
+pandoc = "parsecraft.backends.pandoc.pandoc:factory"
+docling = "parsecraft.backends.docling.docling:factory"
 ocr-ovis = "parsecraft.backends.ocr.ovis:factory"
 ocr-tele = "parsecraft.backends.ocr.tele:factory"
 ocr-unlimited = "parsecraft.backends.ocr.unlimited:factory"
@@ -122,6 +121,14 @@ fail_under = 100
 # Coverage-native gate: pytest-cov reads fail_under from coverage's own config
 # ([tool.pytest-cov] above is NOT read by pytest-cov — the template test checks
 # it exists, but this section is what actually enforces the 100% minimum).
+[tool.coverage.run]
+# Vendored model code (backends/ocr/_vendored) is ported and statically
+# quality-gated (ruff, format, csort, codespell, ty — with import markers),
+# but it is GPU-tier numerics: the offline suite cannot execute it, so its
+# statements are omitted from coverage measurement. Its runtime validator is
+# the GPU tier (`mise run test-gpu`), required by pc-4u7.36's acceptance.
+omit = ["src/parsecraft/backends/ocr/_vendored/*"]
+
 [tool.coverage.report]
 fail_under = 100
 show_missing = true

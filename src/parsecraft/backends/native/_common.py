@@ -25,6 +25,7 @@ from parsecraft.backends.protocol import (
     ConversionRequest,
     SourceDocument,
 )
+from parsecraft.backends.source import path_from_file_uri
 from parsecraft.ir.models import (
     ChunkKind,
     FailureCode,
@@ -207,7 +208,7 @@ def source_bytes(source: SourceDocument) -> bytes:
     """Raw bytes of a source document (``content`` or a local ``file://`` path)."""
     if source.content is not None:
         return source.content
-    path = Path(source.uri.removeprefix("file://"))
+    path = path_from_file_uri(source.uri) if source.uri.startswith("file://") else Path(source.uri)
     try:
         return path.read_bytes()
     except OSError as exc:

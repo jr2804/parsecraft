@@ -24,6 +24,36 @@ env:
 
 jobs:
 
+  extras:
+    name: extras resolve (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        fetch-tags: true
+
+    - name: Setup Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.13"
+
+    - name: Setup uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        enable-cache: true
+        cache-dependency-glob: pyproject.toml
+
+    # Root AGENTS.md rule 10: every optional extra must install jointly.
+    - name: Assert every extra resolves jointly
+      run: uv sync -U --all-extras --all-groups --all-packages --dry-run
+
   quality:
     runs-on: ubuntu-latest
 

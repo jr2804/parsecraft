@@ -12,14 +12,18 @@ import hashlib
 import importlib
 import time
 from collections.abc import Callable
+from importlib.metadata import version as _package_version
 from io import BytesIO
 from pathlib import Path
 from types import ModuleType
 from typing import Protocol, cast, runtime_checkable
 
+from packaging.specifiers import SpecifierSet
+
 from parsecraft.assets.manager import AssetManager
 from parsecraft.assets.models import AssetPin
-from parsecraft.backends.errors import BackendError, DependencyUnavailableError
+from parsecraft.backends.errors import BackendError, DependencyUnavailableError, UnsupportedDependencyVersionError
+from parsecraft.backends.ocr._models import TRANSFORMERS_RANGE
 from parsecraft.backends.protocol import (
     AnalysisResult,
     BackendConfig,
@@ -31,6 +35,7 @@ from parsecraft.backends.protocol import (
     PageSignal,
     SourceDocument,
 )
+from parsecraft.backends.source import path_from_file_uri
 from parsecraft.ir.models import (
     ChunkKind,
     FailureCode,
@@ -397,7 +402,7 @@ def source_bytes(source: SourceDocument) -> bytes:
     if "://" in source.uri and not source.uri.startswith("file://"):
         msg = f"source {source.uri!r} must carry in-memory content (only file:// URIs are read from disk)"
         raise BackendError(msg)
-    path = Path(source.uri.removeprefix("file://"))
+    path = path_from_file_uri(source.uri) if source.uri.startswith("file://") else Path(source.uri)
     try:
         return path.read_bytes()
     except OSError as exc:
@@ -418,6 +423,7 @@ def load_transformers_pipeline(
     files were pinned and verified by :func:`ensure_assets`) or a hub id
     together with its pinned ``model_revision``.
     """
+    require_transformers()
     kwargs: dict[str, object] = {
         "task": "image-text-to-text",
         "model": model_source,
@@ -433,6 +439,22 @@ def load_transformers_pipeline(
         where = f" at revision {model_revision[:12]}" if model_revision is not None else ""
         msg = f"failed to load model {model_source!r}{where}: {type(exc).__name__}: {exc}"
         raise BackendError(msg) from exc
+
+
+def require_transformers() -> None:
+    """Typed guard: the installed transformers must satisfy the unified window.
+
+    Runs on every model load so a host with an incompatible version gets an
+    actionable :class:`UnsupportedDependencyVersionError` instead of a crash
+    deep inside weight loading. ``packaging`` ships with transformers and is
+    importable by the time this runs; the import stays lazy either way.
+    """
+    actual = _package_version("transformers")
+    # SpecifierSet.contains() returns False for versions it cannot parse (it does
+    # not raise), so garbage versions land in the same typed error below.
+    satisfied = SpecifierSet(TRANSFORMERS_RANGE, prereleases=True).contains(actual, prereleases=True)
+    if not satisfied:
+        raise UnsupportedDependencyVersionError("transformers", actual, TRANSFORMERS_RANGE)
 
 
 def chat_prompt(

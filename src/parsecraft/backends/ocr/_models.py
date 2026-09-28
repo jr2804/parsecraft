@@ -43,6 +43,10 @@ QIANFAN_EXTRA = "ocr-qianfan"
 #: here would exclude every OCR backend from PDF/image sources (found while
 #: wiring `convert --auto`). Exactly the payloads `_common.count_pages` /
 #: `rasterize_page` accept — tiff/webp stay out until the impls handle them.
+#: Unified transformers window for ALL four OCR models (mirrors the four
+#: `ocr-*` extras in pyproject.toml — pinned equal by tests).
+TRANSFORMERS_RANGE = ">=5.17,<6"
+
 OCR_FORMATS: tuple[str, ...] = ("application/pdf", "image/jpeg", "image/png")
 
 OVIS_FILE_PINS: tuple[AssetFilePin, ...] = (

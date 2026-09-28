@@ -5,7 +5,8 @@ an inline import). Model pin + license: ``_models.UNLIMITED_ASSET`` (verified
 against the HF API 2026-09-27).
 
 Call shapes verified against the model card (README, 2026-09-27):
-- remote code via ``auto_map`` → ``trust_remote_code=True`` is mandatory;
+- modeling ported to ``_vendored/unlimited`` (pc-4u7.36) — no
+  ``trust_remote_code``; see ``_vendored/README.md``;
 - ``infer_multi(tokenizer, prompt='<image>Multi page parsing.', image_files=[...],
   output_path=<dir>, image_size=1024, max_length=..., no_repeat_ngram_size=35,
   ngram_window=1024)`` returns ONE long-horizon generation whose pages are
@@ -24,7 +25,7 @@ import tempfile
 from pathlib import Path
 from typing import Protocol
 
-from transformers import AutoModel, AutoTokenizer  # ty: ignore[unresolved-import] — extra not installed in dev/CI; heavy by contract
+from transformers import AutoTokenizer  # ty: ignore[unresolved-import] — extra not installed in dev/CI; heavy by contract
 
 from parsecraft.backends.errors import BackendError
 from parsecraft.backends.ocr._common import (
@@ -33,6 +34,7 @@ from parsecraft.backends.ocr._common import (
     count_pages,
     model_source_and_revision,
     rasterize_page,
+    require_transformers,
     runtime_choice,
 )
 from parsecraft.backends.ocr._models import (
@@ -41,6 +43,10 @@ from parsecraft.backends.ocr._models import (
     UNLIMITED_CAPABILITIES,
     UNLIMITED_MAX_PAGES_PER_CALL,
     UNLIMITED_NAME,
+)
+from parsecraft.backends.ocr._vendored.unlimited.modeling_unlimitedocr import (
+    UnlimitedOCRConfig,
+    UnlimitedOCRForCausalLM,
 )
 from parsecraft.backends.protocol import (
     AnalysisResult,
@@ -66,7 +72,7 @@ _MAX_PAGES_OPTION = "max_pages_per_call"
 
 
 class LongHorizonModel(Protocol):
-    """The card's ``infer_multi()`` surface (remote code behind ``trust_remote_code``)."""
+    """The card's ``infer_multi()`` surface (vendored modeling, pc-4u7.36)."""
 
     def infer_multi(
         self,
@@ -183,18 +189,24 @@ def _load(config: BackendConfig) -> tuple[LongHorizonModel, object]:
     fetch); an unpinned descriptor falls back to the hub id + pinned revision.
     """
     source, revision = model_source_and_revision(UNLIMITED_ASSET, config)
+    # Vendored modeling (pc-4u7.36): explicit config+model classes, no
+    # trust_remote_code (the repo's remote code is 4.x-only) — see
+    # _vendored/README.md. The tokenizer is stock LlamaTokenizerFast.
+    require_transformers()
+    config_kwargs: dict[str, object] = {}
     model_kwargs: dict[str, object] = {
-        "trust_remote_code": True,
         "use_safetensors": True,
         "dtype": "bfloat16",
         "device_map": "auto",
     }
-    tokenizer_kwargs: dict[str, object] = {"trust_remote_code": True}
+    tokenizer_kwargs: dict[str, object] = {}
     if revision is not None:
+        config_kwargs["revision"] = revision
         model_kwargs["revision"] = revision
         tokenizer_kwargs["revision"] = revision
     try:
-        model = AutoModel.from_pretrained(source, **model_kwargs)
+        config = UnlimitedOCRConfig.from_pretrained(source, **config_kwargs)
+        model = UnlimitedOCRForCausalLM.from_pretrained(source, config=config, **model_kwargs)
         model.eval()
         tokenizer = AutoTokenizer.from_pretrained(source, **tokenizer_kwargs)
     except Exception as exc:  # model/stack load boundary — typed, never raw

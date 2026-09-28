@@ -8,6 +8,13 @@ include = [
     "src",
     "tests",
 ]
+# Ported model code (backends/ocr/_vendored) is fully linted, formatted and
+# type-checked like first-party code. Its module-level `import torch` /
+# `import transformers` lines carry per-line `# ty: ignore[unresolved-import]`
+# markers: those packages are heavy GPU-tier dependencies that are deliberately
+# absent from the light dev/CI environment (offline-import contract), so the
+# imports cannot resolve here. Runtime correctness is validated by the GPU
+# tier (pc-4u7.36). Do NOT exclude the files — that would skip all checking.
 
 [terminal]
 error-on-warning = true

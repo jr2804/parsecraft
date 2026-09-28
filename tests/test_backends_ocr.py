@@ -13,6 +13,7 @@ import json
 import re
 import sys
 import time
+import tomllib
 from collections.abc import Callable, Iterator
 from io import BytesIO
 from pathlib import Path
@@ -25,7 +26,7 @@ from pydantic import ValidationError
 from parsecraft.assets.errors import OfflineModeError
 from parsecraft.assets.models import AssetPin
 from parsecraft.backends import registry as registry_module
-from parsecraft.backends.errors import BackendError, DependencyUnavailableError
+from parsecraft.backends.errors import BackendError, DependencyUnavailableError, UnsupportedDependencyVersionError
 from parsecraft.backends.ocr import _common, _models, ovis, qianfan, tele, unlimited
 from parsecraft.backends.ocr._common import VllmCompletion, VllmOutput
 from parsecraft.backends.protocol import (
@@ -271,6 +272,39 @@ class _AutoTokenizerStub:
         return self._state.chat_template
 
 
+class _AutoProcessorStub:
+    def __init__(self, state: _TransformersStub) -> None:
+        self._state = state
+
+    def from_pretrained(self, source: str, **kwargs: object) -> object:
+        self._state.processor_load_calls.append({"source": source, **kwargs})
+        if self._state.processor_error is not None:
+            raise self._state.processor_error
+        return object()
+
+
+class _VendoredTeleModule:
+    Qwen2_5_VLForConditionalGeneration: object = None
+
+
+class _VendoredUnlimitedModule:
+    UnlimitedOCRConfig: object = None
+    UnlimitedOCRForCausalLM: object = None
+
+
+class _FakeEvalModel:
+    """Stands in for UnlimitedOCRForCausalLM: eval() + the infer_multi seam."""
+
+    def __init__(self, state: _TransformersStub) -> None:
+        self._state = state
+
+    def eval(self) -> _FakeEvalModel:
+        return self
+
+    def infer_multi(self, *args: object, **kwargs: object) -> tuple[object, int]:
+        return self._state.model.infer_multi(*args, **kwargs)  # ty: ignore[invalid-argument-type]
+
+
 class _ChatTemplateStub:
     """Offline stand-in for ``tokenizer.apply_chat_template(...)``."""
 
@@ -300,9 +334,15 @@ class _TransformersStub:
         self.model = _FakeLongHorizonModel()
         self.AutoModel = _AutoModelStub(self)
         self.AutoTokenizer = _AutoTokenizerStub(self)
+        self.AutoProcessor = _AutoProcessorStub(self)
         self.tokenizer_load_calls: list[dict[str, object]] = []
         self.tokenizer_error: Exception | None = None
         self.chat_template = _ChatTemplateStub()
+        # Vendored-class load records (pc-4u7.36: no trust_remote_code paths)
+        self.processor_load_calls: list[dict[str, object]] = []
+        self.processor_error: Exception | None = None
+        self.vendored_model_loads: list[dict[str, object]] = []
+        self.vendored_config_loads: list[dict[str, object]] = []
 
     def pipeline(self, **kwargs: object) -> _FakePipeline:
         self.pipeline_calls.append(dict(kwargs))
@@ -377,6 +417,53 @@ def test_factory_descriptor_matches_the_plan_table(
     assert capabilities.supports_multi_page is multi_page
     assert capabilities.supported_formats == ["application/pdf", "image/jpeg", "image/png"]
     assert module.DESCRIPTOR is descriptor
+
+
+def test_transformers_range_guard_accepts_the_unified_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_common, "_package_version", lambda _name: "5.17.0")
+    _common.require_transformers()  # no raise == satisfied
+
+
+def test_transformers_range_guard_rejects_out_of_range_versions(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_common, "_package_version", lambda _name: "4.40.0")
+    with pytest.raises(UnsupportedDependencyVersionError, match=re.escape("transformers==4.40.0 does not satisfy the required range '>=5.17,<6'")) as excinfo:
+        _common.require_transformers()
+    assert (excinfo.value.package, excinfo.value.actual, excinfo.value.expected) == ("transformers", "4.40.0", ">=5.17,<6")
+    assert isinstance(excinfo.value, BackendError)
+
+
+def test_transformers_range_guard_rejects_unparseable_versions(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_common, "_package_version", lambda _name: "not-a-version")
+    with pytest.raises(UnsupportedDependencyVersionError) as excinfo:
+        _common.require_transformers()
+    assert excinfo.value.actual == "not-a-version"
+
+
+def test_transformers_range_matches_the_pyproject_extras() -> None:
+    """One window everywhere: the runtime guard and all four OCR extras agree."""
+    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    extras = data["project"]["optional-dependencies"]
+    expected = f"transformers{_models.TRANSFORMERS_RANGE}"
+    for name in ("ocr-ovis", "ocr-qianfan", "ocr-tele", "ocr-unlimited"):
+        assert expected in extras[name], f"{name} missing unified range {expected!r}"
+
+
+def test_unpinned_tele_descriptor_keeps_the_hub_revision(
+    impl_loader: Callable[[str, _TransformersStub], ModuleType],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """pc-4u7.36: the vendored loaders still honor a hub id + pinned revision."""
+    state = _TransformersStub()
+    impl = impl_loader("parsecraft.backends.ocr._tele_impl", state)
+    monkeypatch.setattr(impl, "TELE_ASSET", _models.TELE_ASSET.model_copy(update={"file_pins": ()}))
+    impl.create(BackendConfig(name="ocr-tele"))
+    model_load = state.vendored_model_loads[0]
+    assert model_load["source"] == _models.TELE_MODEL_ID
+    assert model_load["revision"] == _models.TELE_REVISION
+    processor_load = state.processor_load_calls[0]
+    assert processor_load["source"] == _models.TELE_MODEL_ID
+    assert processor_load["revision"] == _models.TELE_REVISION
 
 
 @pytest.mark.parametrize(("module", "asset", "model_id", "license_name"), _ASSETS)
@@ -986,7 +1073,7 @@ def test_extract_generated_rejects_garbage(result: object) -> None:
     ("module", "impl_module", "name", "prompt_prefix", "thinking", "trust_remote_code"),
     [
         (ovis, "parsecraft.backends.ocr._ovis_impl", "ocr-ovis", "Extract all readable content", False, False),
-        (tele, "parsecraft.backends.ocr._tele_impl", "ocr-tele", "Please output the text content", None, True),
+        (tele, "parsecraft.backends.ocr._tele_impl", "ocr-tele", "Please output the text content", None, None),
         (qianfan, "parsecraft.backends.ocr._qianfan_impl", "ocr-qianfan", "Parse this document to Markdown", None, False),
     ],
 )
@@ -1041,11 +1128,20 @@ def test_pipeline_backends_convert_under_the_stub(
     user_text = text_part["text"]
     assert isinstance(user_text, str)
     assert user_text.strip().startswith(prompt_prefix)
-    # Assets are managed: the pipeline loads the verified LOCAL dir, no hub revision.
     pipeline_call = state.pipeline_calls[0]
-    assert str(pipeline_call["model"]).startswith("fake-assets")
-    assert "revision" not in pipeline_call
-    assert pipeline_call["trust_remote_code"] is trust_remote_code
+    if trust_remote_code is None:
+        # Vendored branch (tele, pc-4u7.36): explicit model class + processor,
+        # no revision on the local dir, and trust_remote_code is gone.
+        model_load = state.vendored_model_loads[0]
+        assert str(model_load["source"]).startswith("fake-assets")
+        assert "revision" not in model_load
+        assert str(state.processor_load_calls[0]["source"]).startswith("fake-assets")
+        assert "trust_remote_code" not in pipeline_call
+    else:
+        # Assets are managed: the pipeline loads the verified LOCAL dir, no hub revision.
+        assert str(pipeline_call["model"]).startswith("fake-assets")
+        assert "revision" not in pipeline_call
+        assert pipeline_call["trust_remote_code"] is trust_remote_code
 
 
 @pytest.mark.parametrize(
@@ -1200,20 +1296,27 @@ def test_unlimited_result_count_mismatch_is_a_typed_failure(
     assert "infer_multi returned 1 page segments for 3 pages" in failure.detail
 
 
-def test_unlimited_loads_with_trust_remote_code_and_card_settings(
+def test_unlimited_loads_vendored_classes_without_remote_code(
     impl_loader: Callable[[str, _TransformersStub], ModuleType],
 ) -> None:
+    """pc-4u7.36: explicit vendored config+model classes, trust_remote_code gone."""
     state = _TransformersStub()
     impl = impl_loader("parsecraft.backends.ocr._unlimited_impl", state)
     impl.create(BackendConfig(name="ocr-unlimited"))
-    load = state.load_calls[0]
-    assert load["trust_remote_code"] is True
-    assert load["dtype"] == "bfloat16"
-    assert load["use_safetensors"] is True
-    assert str(load["model_id"]).startswith("fake-assets")
-    assert "revision" not in load
+    config_load = state.vendored_config_loads[0]
+    model_load = state.vendored_model_loads[0]
+    assert str(config_load["source"]).startswith("fake-assets")
+    assert str(model_load["source"]).startswith("fake-assets")
+    assert model_load["dtype"] == "bfloat16"
+    assert model_load["use_safetensors"] is True
+    assert model_load["device_map"] == "auto"
+    assert "config" in model_load  # explicit config object, no auto-class resolution
+    assert "trust_remote_code" not in config_load
+    assert "trust_remote_code" not in model_load
+    assert "revision" not in config_load
+    assert "revision" not in model_load
     tokenizer_load = state.tokenizer_load_calls[0]
-    assert tokenizer_load["trust_remote_code"] is True
+    assert "trust_remote_code" not in tokenizer_load
     assert "revision" not in tokenizer_load
 
 
@@ -1310,6 +1413,8 @@ def managed_assets(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     _AssetManagerSpy.instances.clear()
     _AssetManagerSpy.error = None
     monkeypatch.setattr(_common, "AssetManager", _AssetManagerSpy)
+    # The transformers version guard must not need transformers installed:
+    monkeypatch.setattr(_common, "_package_version", lambda _name: "5.17.0")
     yield
     _AssetManagerSpy.instances.clear()
     _AssetManagerSpy.error = None
@@ -1441,9 +1546,12 @@ def test_unpinned_unlimited_descriptor_keeps_the_hub_revision(
         _models.UNLIMITED_ASSET.model_copy(update={"file_pins": ()}),
     )
     impl.create(BackendConfig(name="ocr-unlimited"))
-    load = state.load_calls[0]
-    assert load["model_id"] == _models.UNLIMITED_MODEL_ID
-    assert load["revision"] == _models.UNLIMITED_REVISION
+    config_load = state.vendored_config_loads[0]
+    model_load = state.vendored_model_loads[0]
+    assert config_load["source"] == _models.UNLIMITED_MODEL_ID
+    assert config_load["revision"] == _models.UNLIMITED_REVISION
+    assert model_load["source"] == _models.UNLIMITED_MODEL_ID
+    assert model_load["revision"] == _models.UNLIMITED_REVISION
     tokenizer_load = state.tokenizer_load_calls[0]
     assert tokenizer_load["revision"] == _models.UNLIMITED_REVISION
 
@@ -1455,6 +1563,16 @@ def impl_loader(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[[str, _Tra
 
     def _load(module_name: str, transformers: _TransformersStub) -> ModuleType:
         monkeypatch.setitem(sys.modules, "transformers", transformers)
+        monkeypatch.setitem(
+            sys.modules,
+            "parsecraft.backends.ocr._vendored.naviocr.modeling_naviocr",
+            _naviocr_vendored_stub(transformers),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "parsecraft.backends.ocr._vendored.unlimited.modeling_unlimitedocr",
+            _unlimited_vendored_stub(transformers),
+        )
         sys.modules.pop(module_name, None)  # force a fresh top-level import
         module = importlib.import_module(module_name)
         loaded.append(module_name)
@@ -1463,3 +1581,44 @@ def impl_loader(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[[str, _Tra
     yield _load
     for module_name in loaded:
         sys.modules.pop(module_name, None)
+
+
+def _naviocr_vendored_stub(state: _TransformersStub) -> object:
+    """Stand-in for `_vendored.naviocr.modeling_naviocr` (explicit-class loads)."""
+
+    class _VendoredTeleModel:
+        @staticmethod
+        def from_pretrained(source: str, **kwargs: object) -> object:
+            state.vendored_model_loads.append({"source": source, **kwargs})
+            if state.load_error is not None:
+                raise state.load_error
+            return object()
+
+    stub = _VendoredTeleModule()
+    stub.Qwen2_5_VLForConditionalGeneration = _VendoredTeleModel  # type: ignore[attr-defined]
+    return stub
+
+
+def _unlimited_vendored_stub(state: _TransformersStub) -> object:
+    """Stand-in for `_vendored.unlimited.modeling_unlimitedocr`."""
+
+    class _Config:
+        @staticmethod
+        def from_pretrained(source: str, **kwargs: object) -> object:
+            state.vendored_config_loads.append({"source": source, **kwargs})
+            if state.load_error is not None:
+                raise state.load_error
+            return object()
+
+    class _Model:
+        @staticmethod
+        def from_pretrained(source: str, *, config: object, **kwargs: object) -> object:
+            state.vendored_model_loads.append({"source": source, "config": config, **kwargs})
+            if state.load_error is not None:
+                raise state.load_error
+            return _FakeEvalModel(state)
+
+    stub = _VendoredUnlimitedModule()
+    stub.UnlimitedOCRConfig = _Config  # type: ignore[attr-defined]
+    stub.UnlimitedOCRForCausalLM = _Model  # type: ignore[attr-defined]
+    return stub

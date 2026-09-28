@@ -8,17 +8,18 @@ the HF API 2026-09-27). Runtime is pluggable via ``options["runtime"]``:
 
 from __future__ import annotations
 
-from transformers import pipeline  # ty: ignore[unresolved-import] — extra not installed in dev/CI; heavy by contract
+from transformers import AutoProcessor, pipeline  # ty: ignore[unresolved-import] — extra not installed in dev/CI; heavy by contract
 
+from parsecraft.backends.errors import BackendError
 from parsecraft.backends.ocr._common import (
     Transcriber,
     analyze_source,
     chat_prompt,
     convert_pages,
-    load_transformers_pipeline,
     load_vllm,
     model_source_and_revision,
     rasterize_page,
+    require_transformers,
     runtime_choice,
     transformers_transcriber,
     vllm_transcriber,
@@ -30,6 +31,7 @@ from parsecraft.backends.ocr._models import (
     TELE_EXTRA,
     TELE_NAME,
 )
+from parsecraft.backends.ocr._vendored.naviocr.modeling_naviocr import Qwen2_5_VLForConditionalGeneration
 from parsecraft.backends.protocol import (
     AnalysisResult,
     BackendCapabilities,
@@ -92,15 +94,24 @@ def create(config: BackendConfig) -> DocumentBackend:
             image_extra=TELE_EXTRA,
         )
     else:
-        pipe = load_transformers_pipeline(
-            pipeline,
-            model_source=source,
-            model_revision=revision,
-            # The repo ships custom modeling (modeling_naviocr.py via auto_map) so
-            # head_dim=128 is honored — stock qwen2_5_vl code cannot load these
-            # weights (verified live on transformers 4.57.1 and 5.17).
-            trust_remote_code=True,
-        )
+        # Vendored modeling (pc-4u7.36): explicit class, no trust_remote_code.
+        # Stock qwen2_5_vl cannot load these weights (head_dim=128) and the
+        # repo's remote code is 4.x-only — see _vendored/README.md for the
+        # port record. vLLM's own loader keeps using the repo as before.
+        model_kwargs: dict[str, object] = {"device_map": "auto", "dtype": "auto"}
+        processor_kwargs: dict[str, object] = {}
+        if revision is not None:
+            model_kwargs["revision"] = revision
+            processor_kwargs["revision"] = revision
+        where = f" at revision {revision[:12]}" if revision is not None else ""
+        require_transformers()
+        try:
+            model = Qwen2_5_VLForConditionalGeneration.from_pretrained(source, **model_kwargs)
+            processor = AutoProcessor.from_pretrained(source, **processor_kwargs)
+            pipe = pipeline(task="image-text-to-text", model=model, processor=processor)
+        except Exception as exc:  # model/stack load boundary — typed, never raw
+            msg = f"failed to load model {source!r}{where}: {type(exc).__name__}: {exc}"
+            raise BackendError(msg) from exc
         templated = chat_prompt(pipe.tokenizer, user_text=PROMPT, system=SYSTEM)
         transcriber = transformers_transcriber(pipe, prompt=templated, image_extra=TELE_EXTRA)
     return _TeleBackend(config, transcriber)
