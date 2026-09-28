@@ -114,6 +114,10 @@ _Always-injected_ — keep minimal. Everything else → `.agents/` files.
    No markdown TODO lists.
 9. **No references to external consumer/predecessor projects by name** —
    parsecraft is independent; describe their behavior generically.
+10. **Every optional extra must resolve jointly** —
+    `uv sync -U --all-extras --all-groups --all-packages` must succeed; never
+    declare extras mutually exclusive. If a dependency cannot coexist, do not
+    add it — port the wrapper ourselves.
 
 ## Child DOX Index
 
