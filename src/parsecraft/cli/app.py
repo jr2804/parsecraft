@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 
 import typer
 
@@ -72,7 +72,7 @@ def _get_version() -> str:
     """Get application version from package metadata."""
     try:
         return version("parsecraft")
-    except Exception:
+    except PackageNotFoundError:
         return "0.0.0"  # Fallback for development mode
 
 

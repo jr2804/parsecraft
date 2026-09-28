@@ -9,6 +9,7 @@ import io
 import json
 import runpy
 import sys
+from importlib.metadata import PackageNotFoundError
 
 import pytest
 from typer.testing import CliRunner
@@ -201,11 +202,11 @@ def test_version_flag_shows_metadata_version() -> None:
 
 
 def test_version_fallback_branch(monkeypatch: pytest.MonkeyPatch) -> None:
-    def _boom(name: str) -> str:
-        msg = "no dist"
-        raise RuntimeError(msg)
+    def _missing(name: str) -> str:
+        msg = name
+        raise PackageNotFoundError(msg)
 
-    monkeypatch.setattr("parsecraft.cli.app.version", _boom)
+    monkeypatch.setattr("parsecraft.cli.app.version", _missing)
     result = _runner.invoke(app, ["--version"])
     assert result.exit_code == 0
     assert result.output.strip() == "0.0.0"
