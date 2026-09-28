@@ -19,11 +19,9 @@ Design notes:
 from __future__ import annotations
 
 import hashlib
-import os
 from io import BytesIO
 from pathlib import Path
 from time import monotonic
-from urllib.parse import unquote, urlparse
 
 import pypdfium2 as pdfium  # ty: ignore[unresolved-import] — extra not installed in dev/CI; heavy by contract
 from docling.datamodel.document import ConversionResult  # ty: ignore[unresolved-import]
@@ -43,6 +41,7 @@ from parsecraft.backends.protocol import (
     PageSignal,
     SourceDocument,
 )
+from parsecraft.backends.source import path_from_file_uri
 from parsecraft.ir.models import (
     ChunkKind,
     FailureCode,
@@ -188,7 +187,7 @@ def _select(
     for item, _level in document.iterate_items():
         if request.cancellation is not None and request.cancellation():
             return _filled_pages(blocks, request.page_range), _failure(request, started, FailureCode.CANCELLED, "cancelled between items")
-        content, kind = _item_content(item)
+        content, kind = _item_content(item, document)
         if not content:
             continue
         page_number = item.prov[0].page_no if item.prov else 1
@@ -210,10 +209,10 @@ def _select(
     return _filled_pages(blocks, request.page_range), None
 
 
-def _item_content(item: object) -> tuple[str, ChunkKind]:
+def _item_content(item: object, document: DoclingDocument) -> tuple[str, ChunkKind]:
     """Text + chunk kind for one docling item (tables export to Markdown)."""
     if isinstance(item, TableItem):
-        return (item.export_to_markdown() or "").strip(), ChunkKind.TABLE
+        return (item.export_to_markdown(document) or "").strip(), ChunkKind.TABLE
     if isinstance(item, TextItem):
         kind = _LABEL_KINDS.get(str(item.label), ChunkKind.PARAGRAPH)
         return (item.text or "").strip(), kind
@@ -256,8 +255,5 @@ def source_bytes(source: SourceDocument) -> bytes:
 
 
 def _local_path(uri: str) -> Path:
-    """Filesystem path for a ``file://`` URI (strips the Windows drive slash)."""
-    path = unquote(urlparse(uri).path)
-    if os.name == "nt" and path.startswith("/") and path[2:3] == ":":
-        path = path[1:]
-    return Path(path)
+    """Filesystem path for a ``file://`` URI via the shared resolver."""
+    return path_from_file_uri(uri)

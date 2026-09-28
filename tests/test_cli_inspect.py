@@ -12,7 +12,7 @@ from typer.testing import CliRunner, Result
 
 import parsecraft.cli.convert as convert_module
 from parsecraft.backends import BackendRegistry
-from parsecraft.backends.errors import BackendError, DependencyUnavailableError
+from parsecraft.backends.errors import BackendError, DependencyUnavailableError, UnsupportedDependencyVersionError
 from parsecraft.backends.protocol import (
     AnalysisResult,
     BackendCapabilities,
@@ -216,6 +216,25 @@ def test_inspect_prefers_installed_claimer(tmp_path: Path, monkeypatch: pytest.M
     )
     preview = inspect_module.inspect_source(_source_file(tmp_path), registry)
     assert [diagnostic.code for diagnostic in preview.analysis.diagnostics] == ["from-installed"]
+
+
+def test_cli_inspect_unsupported_dependency_version_maps_to_cli_error(tmp_path: Path, offline_probe: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    """UnsupportedDependencyVersionError keeps exit 1 with its own actionable message (pc-4u7.37)."""
+    registry = BackendRegistry()
+
+    class WrongVersionFactory:
+        descriptor = _descriptor()
+
+        @staticmethod
+        def __call__(config: BackendConfig) -> DocumentBackend:
+            raise UnsupportedDependencyVersionError("transformers", "4.57.1", ">=5.17,<6")
+
+    registry.register("native-text", WrongVersionFactory())
+    monkeypatch.setattr(commands_module, "default_registry", registry)
+    result = runner.invoke(app, ["inspect", str(_source_file(tmp_path))])
+    assert result.exit_code == 1
+    assert "unsupported dependency version" in _text(result)
+    assert "transformers==4.57.1 does not satisfy the required range" in _text(result)
 
 
 def test_cli_inspect_missing_dependency_maps_to_cli_error(tmp_path: Path, offline_probe: None, monkeypatch: pytest.MonkeyPatch) -> None:

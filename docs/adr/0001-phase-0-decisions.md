@@ -94,7 +94,8 @@ it enters any profile).
   `pydantic-core` 2.49.0 ships `cp314t` wheels for Linux/macOS/Windows (verified
   2026-09-27 via the PyPI JSON API).
 - GPU/OCR extras (`vllm`, `ocr-*`) may cap the upper bound when upstream wheels
-  lag a new interpreter. Caps are per-extra, documented, never applied to core.
+  lag a new interpreter. Caps live in `pyproject.toml` (the OCR extras share a
+  single `transformers` window), are documented, and are never applied to core.
 
 ### 4. Dependency profiles
 

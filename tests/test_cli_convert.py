@@ -12,7 +12,7 @@ from typer.testing import CliRunner, Result
 
 import parsecraft.cli.convert as convert_module
 from parsecraft.backends import BackendRegistry
-from parsecraft.backends.errors import BackendError, DependencyUnavailableError
+from parsecraft.backends.errors import BackendError, DependencyUnavailableError, UnsupportedDependencyVersionError
 from parsecraft.backends.protocol import (
     AnalysisResult,
     BackendCapabilities,
@@ -252,6 +252,23 @@ def test_convert_image_prefers_installed_claimer(tmp_path: Path, monkeypatch: py
     assert result.exit_code == 0
     assert "installed claimer" in result.output
     assert "missing extra" not in result.output
+
+
+def test_convert_unsupported_dependency_version_is_classified(tmp_path: Path, registry: BackendRegistry) -> None:
+    """UnsupportedDependencyVersionError keeps exit 1 with its own actionable message (pc-4u7.37)."""
+
+    class _WrongVersionFactory:
+        descriptor = _descriptor("native-text", ("text/plain",))
+
+        @staticmethod
+        def __call__(config: BackendConfig) -> DocumentBackend:
+            raise UnsupportedDependencyVersionError("transformers", "4.57.1", ">=5.17,<6")
+
+    registry.register("native-text", _WrongVersionFactory())
+    result = runner.invoke(app, ["convert", str(_source_file(tmp_path))])
+    assert result.exit_code == 1
+    assert "unsupported dependency version" in _text(result)
+    assert "transformers==4.57.1 does not satisfy the required range" in _text(result)
 
 
 def test_convert_unclaimed_media_type_is_usage_error(tmp_path: Path, registry: BackendRegistry, monkeypatch: pytest.MonkeyPatch) -> None:

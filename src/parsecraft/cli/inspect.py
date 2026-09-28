@@ -7,7 +7,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict
 
 from parsecraft.backends import default_registry
-from parsecraft.backends.errors import BackendError, DependencyUnavailableError
+from parsecraft.backends.errors import BackendError, DependencyUnavailableError, UnsupportedDependencyVersionError
 from parsecraft.backends.protocol import AnalysisResult
 from parsecraft.backends.registry import BackendRegistry
 from parsecraft.cli import convert
@@ -53,6 +53,8 @@ def inspect_source(
         raise convert.ConvertError(str(exc), exit_code=2) from exc
     except DependencyUnavailableError as exc:
         raise convert.ConvertError(f"optional dependency missing: {exc}") from exc  # exit 1
+    except UnsupportedDependencyVersionError as exc:
+        raise convert.ConvertError(f"unsupported dependency version: {exc}") from exc  # exit 1
     except BackendError as exc:
         raise convert.ConvertError(f"analysis with {analyzer.name!r} failed: {exc}") from exc
     if not analysis.signals:

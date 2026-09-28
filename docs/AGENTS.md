@@ -63,6 +63,11 @@ one-file-owns-each-definition pattern in `.agents/FILES.md`.
   is recorded as a deferral with a date, the reason (cost/time or scope, never
   "failed"), and the exact command to run it later — never left as silent prose
   in a results page.
+- **Install facts come from `pyproject.toml`.** Quote an extra, specifier, or
+  platform marker once and point at `pyproject.toml` as the source of truth;
+  never restate a different range in prose. Every optional extra must be jointly
+  installable — `uv sync -U --all-extras --all-groups --all-packages` is the
+  standing rule (root `AGENTS.md` rule 10).
 - **ADRs.** Records live only in `docs/adr/`, in the project-docs skill's ADR
   format. Creation and edits are pc-1's call.
 

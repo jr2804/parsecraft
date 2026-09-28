@@ -35,20 +35,42 @@ The native backends are registered through
 
 | Backend | Extra | Formats | Upstream / licence | Strengths | Weaknesses | Availability |
 | ------- | ----- | ------- | ------------------ | --------- | ---------- | ------------ |
-| `pandoc` | `pandoc` (`pypandoc` 1.17, MIT) | docx, odt, epub, rtf, LaTeX, reStructuredText, HTML, and many more | [pandoc.org](https://pandoc.org/) — **GPL-2.0-or-later** | Broadest format coverage | Requires the external Pandoc binary; copyleft gate | Planned |
+| `pandoc` | `parsecraft[pandoc]` (`pypandoc` 1.17, MIT) | docx, pptx, xlsx (read-only), odt, rtf, epub — the verified MIME set | [pandoc.org](https://pandoc.org/) — **GPL-2.0-or-later** binary, MIT wrapper | Broad office and e-book coverage through one wrapper | Needs the external **Pandoc binary**; `.ods`/`.odp` are unsupported by pandoc 3.11; copyleft gate | Available |
 | `liteparse` | `parsecraft[liteparse]` (`liteparse` 2.14.7, Apache-2.0) | `application/pdf`, `image/jpeg`, `image/png`, `image/tiff` | [`run-llama/liteparse`](https://github.com/run-llama/liteparse) — Apache-2.0 | Broad and permissive; no copyleft gate | Office/ODF formats require a system LibreOffice; `.html` is not supported; larger extra dependency surface | Available |
-| `docling` | `docling` (`docling` 2.130.0, MIT) | pdf, docx, pptx, xlsx, html, images | [`docling`](https://pypi.org/project/docling/) — MIT | Layout, tables, and reading order | Heavy dependency graph; ran >1 h on a 113-page PDF without finishing | Planned |
+| `docling` | `parsecraft[docling]` (`docling` 2.130.0, MIT) | `application/pdf`, `text/html`, `text/markdown`, `text/plain` | [`docling`](https://pypi.org/project/docling/) — MIT | Layout, tables, and reading order | Heavy dependency graph; office/image formats are registered upstream but undeclared pending conversion verification; the motivating incident ran >1 h on a 113-page PDF | Available |
 
 ## OCR / document-VLM (GPU)
 
 Model pins and licences are recorded once in
-`src/parsecraft/backends/ocr/_models.py` (verified against the Hugging Face API
-on 2026-09-27). The adapters are implemented but **not yet benchmarked** — GPU
-weights are pending. Each backend has its own extra
-(`pip install "parsecraft[ocr-ovis]"`), pulling `transformers`, `torch`,
-`pillow`, and `accelerate`. The OCR extras exclude PyMuPDF, so **PDF input
-additionally needs `parsecraft[pdf]`** (AGPL — see the warning above). All OCR
-backends accept `application/pdf`, `image/jpeg`, and `image/png`.
+`src/parsecraft/backends/ocr/_models.py`. The adapters are implemented but **not
+yet benchmarked with weights** — GPU runs are pending.
+
+Each backend has its own extra (`pip install "parsecraft[ocr-ovis]"`), and all
+four share **one** `transformers` window — `transformers>=5.17,<6`, declared
+once in `pyproject.toml` (the authoritative source) — plus `torch>=2.5`,
+`torchvision`, `pillow`, and `accelerate`. The per-model card pins
+(`transformers==4.57.1` and similar) are advisory origin only: the project range
+supersedes them, and the TeleOCR/Unlimited models ship as local vendored
+modeling code so they load on the unified major.
+
+The OCR extras are **not** mutually exclusive. Every extra installs jointly, and
+`uv sync -U --all-extras --all-groups --all-packages` is expected to succeed
+(root `AGENTS.md` rule 10). On a GPU host, install `torch`/`torchvision` from
+the PyTorch CUDA index first — the PyPI Windows wheels are CPU builds.
+
+The optional `vllm` extra is **Linux/WSL2-only**: its marker
+(`vllm>=0.11 ; sys_platform != 'win32'`) keeps Windows installs resolvable, but
+the vLLM runtime does not run there, so those backends use the default
+`transformers` runtime on Windows.
+
+A host whose installed `transformers` falls outside the shared window gets a
+typed `UnsupportedDependencyVersionError` before any model load — the detail
+names the package, the actual version, and the required range; it is never a
+crash inside weight loading, and it is distinct from a missing extra.
+
+The OCR extras exclude PyMuPDF, so **PDF input additionally needs
+`parsecraft[pdf]`** (AGPL — see the warning above). All OCR backends accept
+`application/pdf`, `image/jpeg`, and `image/png`.
 
 Every backend declares `supported_formats` as **MIME types** — one
 vocabulary shared with `RoutingConstraints.formats`, which is built from the
@@ -77,7 +99,7 @@ it never excludes a language-agnostic backend (see
 | `liteparse` | agnostic (no claim) |
 | `ocr-tele` | `zh`, `en` |
 | `ocr-ovis`, `ocr-unlimited`, `ocr-qianfan` | agnostic (multilingual) |
-| `pandoc`, `docling` | agnostic (planned) |
+| `pandoc`, `docling` | agnostic (no claim) |
 
 ## Choosing a backend
 

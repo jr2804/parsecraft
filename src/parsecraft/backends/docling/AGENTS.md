@@ -48,3 +48,7 @@ plus a bound-checked `convert()` that maps docling items to typed IR chunks.
 `mise test` — `tests/test_backends_docling.py` (offline; the heavy import is a
 stub in `sys.modules`). Live smoke: `uv pip install "docling>=2.130"` in a
 throwaway venv and convert a fixture PDF/HTML/Markdown.
+
+On-demand measurement (never part of `mise test`/CI, resumable):
+`mise run bench-docling` / `scripts/bench_docling.py`; results live in
+`docs/benchmarks/` (`benchmark-docling-vs-native.json`).

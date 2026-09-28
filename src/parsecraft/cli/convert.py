@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from parsecraft.backends import default_registry
-from parsecraft.backends.errors import BackendError, DependencyUnavailableError
+from parsecraft.backends.errors import BackendError, DependencyUnavailableError, UnsupportedDependencyVersionError
 from parsecraft.backends.protocol import BackendDescriptor, SourceDocument
 from parsecraft.cache import ConversionCache
 from parsecraft.cli.errors import CliError
@@ -81,6 +81,8 @@ def convert_source(
         analysis = analyze_source(source, registry, media_type=media_type, installed_extras=environment.installed_extras)
     except DependencyUnavailableError as exc:
         raise ConvertError(f"optional dependency missing: {exc}") from exc  # exit 1
+    except UnsupportedDependencyVersionError as exc:
+        raise ConvertError(f"unsupported dependency version: {exc}") from exc  # exit 1
     except BackendError as exc:
         raise ConvertError(f"analysis with {analyzer.name!r} failed: {exc}") from exc
     constraints = build_constraints(media_type, max_passes=max_passes, allow_ocr=allow_ocr, environment=environment)
