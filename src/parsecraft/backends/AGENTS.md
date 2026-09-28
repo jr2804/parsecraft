@@ -26,6 +26,16 @@ registration + Python entry points) without editing this package.
 - Discovery is lazy and never raises: at most one metadata scan per registry
   instance; a broken plugin is recorded in `registry.load_errors`, and
   callers (CLI) MUST surface those — silent omission is a bug.
+- **Locking (pc-4u7.32):** registry state (registration, discovery,
+  `load_errors`) is guarded by an internal re-entrant lock; discovery is
+  single-flight (a concurrent first user waits instead of re-scanning). The
+  lock is NEVER held across `factory(config)` or `convert()` — heavy model
+  loads and all backend work run outside it, so lookups never stall behind
+  a load. Instances are caller-owned: `create()` never memoizes and never
+  shares, so residency/VRAM admission stays with the caller — the pipeline
+  executor swaps one instance at a time within the 8 GB VRAM ceiling, and a
+  concurrent caller must budget for every instance it holds itself (no
+  registry-side admission control until Phase 7 GPU).
 - Explicit `register()` beats an entry point of the same name (shadowed entry
   point is never loaded).
 - Entry-point modules stay light. A backend with heavy or optional dependencies

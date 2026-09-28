@@ -16,6 +16,7 @@ Discovery contract:
 from __future__ import annotations
 
 import hashlib
+import threading
 from importlib.metadata import entry_points
 
 from parsecraft.backends.errors import (
@@ -32,17 +33,29 @@ from parsecraft.backends.protocol import (
 
 ENTRY_POINT_GROUP = "parsecraft.backends"
 
-# ponytail: single-process registry, no locking — revisit with Phase 7 GPU
-# admission control if backends get registered concurrently.
+# ponytail (narrowed by pc-4u7.32): registry STATE is lock-guarded and
+# discovery is single-flight, but there is no instance residency or GPU
+# admission control — `create()` hands out a fresh instance per call, so
+# concurrent callers can hold several resident models between them. The
+# pipeline executor currently swaps one instance at a time inside the
+# 8 GB ceiling; revisit admission control with Phase 7 GPU.
 
 
 class BackendRegistry:
-    """Name → (descriptor, factory) binding with lazy plugin discovery."""
+    """Name → (descriptor, factory) binding with lazy plugin discovery.
+
+    Thread-safety: all registry state (factories, ``load_errors``, the
+    discovery flag) is guarded by an internal re-entrant lock and discovery
+    runs single-flight. The lock is NEVER held across ``factory(config)`` —
+    heavy model loads run outside it, so lookups never stall behind a load.
+    Instances are caller-owned: no memoization, no sharing (see AGENTS.md).
+    """
 
     def __init__(self) -> None:
         self._factories: dict[str, BackendFactory] = {}
         self._load_errors: dict[str, BackendLoadError] = {}
         self._entry_points_loaded = False
+        self._lock = threading.RLock()
 
     # ── Registration ─────────────────────────────────────────────────────
 
@@ -55,26 +68,30 @@ class BackendRegistry:
         if descriptor.name != name:
             msg = f"descriptor name {descriptor.name!r} does not match registration name {name!r}"
             raise ValueError(msg)
-        if name in self._factories:
-            raise BackendAlreadyRegisteredError(name)
-        self._factories[name] = factory
+        with self._lock:  # check + insert atomically: one winner per name
+            if name in self._factories:
+                raise BackendAlreadyRegisteredError(name)
+            self._factories[name] = factory
 
     @property
     def load_errors(self) -> dict[str, BackendLoadError]:
         """Copy of recorded entry-point failures — callers must surface these."""
-        return dict(self._load_errors)
+        with self._lock:
+            return dict(self._load_errors)
 
     # ── Public surface ───────────────────────────────────────────────────
 
     def list_backends(self) -> list[BackendDescriptor]:
         """All known descriptors, sorted by name (deterministic output)."""
         self._load_entry_points()
-        return [factory.descriptor for name, factory in sorted(self._factories.items())]
+        with self._lock:  # snapshot: concurrent register() cannot resize mid-iteration
+            return [factory.descriptor for name, factory in sorted(self._factories.items())]
 
     def get(self, name: str) -> BackendDescriptor:
         """Descriptor for ``name``; raises :class:`BackendNotFoundError`."""
         self._load_entry_points()
-        factory = self._factories.get(name)
+        with self._lock:
+            factory = self._factories.get(name)
         if factory is None:
             raise BackendNotFoundError(name)
         return factory.descriptor
@@ -96,28 +113,45 @@ class BackendRegistry:
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
     def create(self, name: str, config: BackendConfig | None = None) -> DocumentBackend:
-        """Instantiate backend ``name`` — the first heavy-import boundary."""
+        """Instantiate backend ``name`` — the first heavy-import boundary.
+
+        A fresh, caller-owned instance per call (no memoization): residency
+        and VRAM admission belong to the caller, and the registry lock is
+        never held across ``factory(config)`` — a multi-minute model load
+        never blocks concurrent lookups or registrations.
+        """
+        factory = self._factory_for(name)
+        return factory(config if config is not None else BackendConfig(name=name))
+
+    def _factory_for(self, name: str) -> BackendFactory:
+        """Locked lookup of ``name``'s factory (discovery first); raises NotFound."""
         self._load_entry_points()
-        factory = self._factories.get(name)
+        with self._lock:
+            factory = self._factories.get(name)
         if factory is None:
             raise BackendNotFoundError(name)
-        return factory(config if config is not None else BackendConfig(name=name))
+        return factory
 
     # ── Discovery ────────────────────────────────────────────────────────
 
     def _load_entry_points(self) -> None:
-        if self._entry_points_loaded:
-            return
-        for entry_point in entry_points(group=ENTRY_POINT_GROUP):
-            if entry_point.name in self._factories:
-                continue  # explicit registration wins
-            try:
-                self.register(entry_point.name, entry_point.load())
-            except Exception as exc:  # one broken plugin must not brick discovery
-                self._load_errors[entry_point.name] = BackendLoadError(entry_point.name, exc)
-        # Set after the loop: a failing *scan* (vs. a failing plugin) stays
-        # retryable; loaded plugins never re-import.
-        self._entry_points_loaded = True
+        with self._lock:
+            if self._entry_points_loaded:
+                return
+            for entry_point in entry_points(group=ENTRY_POINT_GROUP):
+                if entry_point.name in self._factories:
+                    continue  # explicit registration wins
+                try:
+                    # RLock: register() re-enters on this thread; no other
+                    # thread interleaves, so a double scan (and the spurious
+                    # AlreadyRegistered load_errors it would leave) is
+                    # impossible.
+                    self.register(entry_point.name, entry_point.load())
+                except Exception as exc:  # one broken plugin must not brick discovery
+                    self._load_errors[entry_point.name] = BackendLoadError(entry_point.name, exc)
+            # Set after the loop: a failing *scan* (vs. a failing plugin)
+            # stays retryable; loaded plugins never re-import.
+            self._entry_points_loaded = True
 
 
 #: Process-wide registry used by the CLI and default application wiring.
