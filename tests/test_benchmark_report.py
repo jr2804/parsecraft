@@ -28,6 +28,12 @@ _RESULT_FIELDS = {
 }
 
 
+# ── GPU OCR artifacts (delivered passes, same schema) ───────────────────────
+
+_OCR_PASS_A = _ARTIFACTS / "benchmark-ocr-pass-a.json"
+_OCR_PASS_B = _ARTIFACTS / "benchmark-ocr-pass-b.json"
+
+
 def test_committed_json_matches_current_writer_byte_for_byte() -> None:
     # Round-trip guard: the committed artifact must be exactly what today's
     # schema + writer emit for the recorded data — schema drift breaks this.
@@ -77,3 +83,24 @@ def test_cpu_backends_and_licensed_pdfs_are_present() -> None:
 
 def _report() -> BenchmarkReport:
     return BenchmarkReport.model_validate(json.loads(_JSON_PATH.read_text(encoding="utf-8")))
+
+
+def test_ocr_artifacts_validate_sort_and_cover_all_models() -> None:
+    reports = [BenchmarkReport.model_validate_json(path.read_text(encoding="utf-8")) for path in (_OCR_PASS_A, _OCR_PASS_B)]
+    backends: set[str] = set()
+    converted = 0
+    failed = 0
+    for report in reports:
+        rows = [(row.document, row.backend) for row in report.results]
+        assert rows == sorted(rows)
+        assert report.results
+        for row in report.results:
+            backends.add(row.backend)
+            converted += row.pages
+            failed += len(row.failures)
+    # all four OCR models appear across the two transformer-split passes
+    assert {"ocr-ovis", "ocr-qianfan", "ocr-tele", "ocr-unlimited"} <= backends
+    # real conversions happened (2-page fixtures) and typed failures were
+    # recorded for the wrong-major pair — never silently dropped
+    assert converted > 0
+    assert failed > 0

@@ -1,0 +1,441 @@
+{
+  "package_version": "2026.9.21.post1.dev0+2faf967",
+  "results": [
+    {
+      "analyzer_text_chars": 2795,
+      "backend": "liteparse",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 2,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "etsi-ts-103558-p1-2.pdf",
+      "elapsed_s": 0.158462,
+      "emitted_chars": 3457,
+      "failures": [],
+      "pages": 2,
+      "pages_per_second": 12.621322,
+      "peak_memory_bytes": 186759,
+      "selected": true,
+      "text_coverage": 1.236852
+    },
+    {
+      "analyzer_text_chars": 2795,
+      "backend": "ocr-ovis",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 0,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "etsi-ts-103558-p1-2.pdf",
+      "elapsed_s": 117.518774,
+      "emitted_chars": 0,
+      "failures": [
+        {
+          "code": "backend_error",
+          "detail": "ocr-ovis: failed to load model 'C:\\\\Users\\\\jan.reimes\\\\AppData\\\\Local\\\\parsecraft\\\\parsecraft\\\\Cache\\\\models\\\\ATH-MaaS--OvisOCR2\\\\1fc9221b7823a371d6e97f92d527cc847e24e107': ValueError: The checkpoint you are trying to load has model type `qwen3_5` but Transformers does not recognize this architecture. This could be because of an issue with the checkpoint, or because your version of Transformers is out of date.\n\nYou can update Transformers with the command `pip install --upgrade transformers`. If this does not work, and the checkpoint is very new, then there may not be a release version that supports this model yet. In this case, you can get the most up-to-date code by installing Transformers from source with the command `pip install git+https://github.com/huggingface/transformers.git`"
+        }
+      ],
+      "pages": 0,
+      "pages_per_second": null,
+      "peak_memory_bytes": 173196838,
+      "selected": false,
+      "text_coverage": 0.0
+    },
+    {
+      "analyzer_text_chars": 2795,
+      "backend": "ocr-qianfan",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 0,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "etsi-ts-103558-p1-2.pdf",
+      "elapsed_s": 27.548543,
+      "emitted_chars": 0,
+      "failures": [
+        {
+          "code": "backend_error",
+          "detail": "ocr-qianfan: failed to load model 'C:\\\\Users\\\\jan.reimes\\\\AppData\\\\Local\\\\parsecraft\\\\parsecraft\\\\Cache\\\\models\\\\baidu--Qianfan-OCR\\\\623bf5d20d446abdb36606aa4547cd0c18886fe5': ValueError: The checkpoint you are trying to load has model type `qianfan_ocr` but Transformers does not recognize this architecture. This could be because of an issue with the checkpoint, or because your version of Transformers is out of date.\n\nYou can update Transformers with the command `pip install --upgrade transformers`. If this does not work, and the checkpoint is very new, then there may not be a release version that supports this model yet. In this case, you can get the most up-to-date code by installing Transformers from source with the command `pip install git+https://github.com/huggingface/transformers.git`"
+        }
+      ],
+      "pages": 0,
+      "pages_per_second": null,
+      "peak_memory_bytes": 2118815,
+      "selected": false,
+      "text_coverage": 0.0
+    },
+    {
+      "analyzer_text_chars": 2795,
+      "backend": "ocr-tele",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 2,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "etsi-ts-103558-p1-2.pdf",
+      "elapsed_s": 220.180786,
+      "emitted_chars": 382,
+      "failures": [],
+      "pages": 2,
+      "pages_per_second": 0.009083,
+      "peak_memory_bytes": 29683755,
+      "selected": false,
+      "text_coverage": 0.136673
+    },
+    {
+      "analyzer_text_chars": 2795,
+      "backend": "ocr-unlimited",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 2,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "etsi-ts-103558-p1-2.pdf",
+      "elapsed_s": 751.708488,
+      "emitted_chars": 4798,
+      "failures": [],
+      "pages": 2,
+      "pages_per_second": 0.002661,
+      "peak_memory_bytes": 25647416,
+      "selected": false,
+      "text_coverage": 1.716637
+    },
+    {
+      "analyzer_text_chars": 615,
+      "backend": "liteparse",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 2,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "fc63bcd61715d0181dd8e859-p1-2.pdf",
+      "elapsed_s": 0.069109,
+      "emitted_chars": 822,
+      "failures": [],
+      "pages": 2,
+      "pages_per_second": 28.939833,
+      "peak_memory_bytes": 47548,
+      "selected": false,
+      "text_coverage": 1.336585
+    },
+    {
+      "analyzer_text_chars": 615,
+      "backend": "ocr-ovis",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 0,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "fc63bcd61715d0181dd8e859-p1-2.pdf",
+      "elapsed_s": 3.575585,
+      "emitted_chars": 0,
+      "failures": [
+        {
+          "code": "backend_error",
+          "detail": "ocr-ovis: failed to load model 'C:\\\\Users\\\\jan.reimes\\\\AppData\\\\Local\\\\parsecraft\\\\parsecraft\\\\Cache\\\\models\\\\ATH-MaaS--OvisOCR2\\\\1fc9221b7823a371d6e97f92d527cc847e24e107': ValueError: The checkpoint you are trying to load has model type `qwen3_5` but Transformers does not recognize this architecture. This could be because of an issue with the checkpoint, or because your version of Transformers is out of date.\n\nYou can update Transformers with the command `pip install --upgrade transformers`. If this does not work, and the checkpoint is very new, then there may not be a release version that supports this model yet. In this case, you can get the most up-to-date code by installing Transformers from source with the command `pip install git+https://github.com/huggingface/transformers.git`"
+        }
+      ],
+      "pages": 0,
+      "pages_per_second": null,
+      "peak_memory_bytes": 2109713,
+      "selected": true,
+      "text_coverage": 0.0
+    },
+    {
+      "analyzer_text_chars": 615,
+      "backend": "ocr-qianfan",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 0,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "fc63bcd61715d0181dd8e859-p1-2.pdf",
+      "elapsed_s": 23.368994,
+      "emitted_chars": 0,
+      "failures": [
+        {
+          "code": "backend_error",
+          "detail": "ocr-qianfan: failed to load model 'C:\\\\Users\\\\jan.reimes\\\\AppData\\\\Local\\\\parsecraft\\\\parsecraft\\\\Cache\\\\models\\\\baidu--Qianfan-OCR\\\\623bf5d20d446abdb36606aa4547cd0c18886fe5': ValueError: The checkpoint you are trying to load has model type `qianfan_ocr` but Transformers does not recognize this architecture. This could be because of an issue with the checkpoint, or because your version of Transformers is out of date.\n\nYou can update Transformers with the command `pip install --upgrade transformers`. If this does not work, and the checkpoint is very new, then there may not be a release version that supports this model yet. In this case, you can get the most up-to-date code by installing Transformers from source with the command `pip install git+https://github.com/huggingface/transformers.git`"
+        }
+      ],
+      "pages": 0,
+      "pages_per_second": null,
+      "peak_memory_bytes": 2109680,
+      "selected": false,
+      "text_coverage": 0.0
+    },
+    {
+      "analyzer_text_chars": 615,
+      "backend": "ocr-tele",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 2,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "fc63bcd61715d0181dd8e859-p1-2.pdf",
+      "elapsed_s": 81.663192,
+      "emitted_chars": 705,
+      "failures": [],
+      "pages": 2,
+      "pages_per_second": 0.024491,
+      "peak_memory_bytes": 7598857,
+      "selected": false,
+      "text_coverage": 1.146341
+    },
+    {
+      "analyzer_text_chars": 615,
+      "backend": "ocr-unlimited",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 2,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "fc63bcd61715d0181dd8e859-p1-2.pdf",
+      "elapsed_s": 128.020774,
+      "emitted_chars": 1723,
+      "failures": [],
+      "pages": 2,
+      "pages_per_second": 0.015622,
+      "peak_memory_bytes": 16035202,
+      "selected": false,
+      "text_coverage": 2.801626
+    },
+    {
+      "analyzer_text_chars": 1493,
+      "backend": "liteparse",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 2,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "itu-t-p863-p1-2.pdf",
+      "elapsed_s": 0.066491,
+      "emitted_chars": 1757,
+      "failures": [],
+      "pages": 2,
+      "pages_per_second": 30.079214,
+      "peak_memory_bytes": 96685,
+      "selected": false,
+      "text_coverage": 1.176825
+    },
+    {
+      "analyzer_text_chars": 1493,
+      "backend": "ocr-ovis",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 0,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "itu-t-p863-p1-2.pdf",
+      "elapsed_s": 3.640171,
+      "emitted_chars": 0,
+      "failures": [
+        {
+          "code": "backend_error",
+          "detail": "ocr-ovis: failed to load model 'C:\\\\Users\\\\jan.reimes\\\\AppData\\\\Local\\\\parsecraft\\\\parsecraft\\\\Cache\\\\models\\\\ATH-MaaS--OvisOCR2\\\\1fc9221b7823a371d6e97f92d527cc847e24e107': ValueError: The checkpoint you are trying to load has model type `qwen3_5` but Transformers does not recognize this architecture. This could be because of an issue with the checkpoint, or because your version of Transformers is out of date.\n\nYou can update Transformers with the command `pip install --upgrade transformers`. If this does not work, and the checkpoint is very new, then there may not be a release version that supports this model yet. In this case, you can get the most up-to-date code by installing Transformers from source with the command `pip install git+https://github.com/huggingface/transformers.git`"
+        }
+      ],
+      "pages": 0,
+      "pages_per_second": null,
+      "peak_memory_bytes": 2109346,
+      "selected": true,
+      "text_coverage": 0.0
+    },
+    {
+      "analyzer_text_chars": 1493,
+      "backend": "ocr-qianfan",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 0,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "itu-t-p863-p1-2.pdf",
+      "elapsed_s": 19.686035,
+      "emitted_chars": 0,
+      "failures": [
+        {
+          "code": "backend_error",
+          "detail": "ocr-qianfan: failed to load model 'C:\\\\Users\\\\jan.reimes\\\\AppData\\\\Local\\\\parsecraft\\\\parsecraft\\\\Cache\\\\models\\\\baidu--Qianfan-OCR\\\\623bf5d20d446abdb36606aa4547cd0c18886fe5': ValueError: The checkpoint you are trying to load has model type `qianfan_ocr` but Transformers does not recognize this architecture. This could be because of an issue with the checkpoint, or because your version of Transformers is out of date.\n\nYou can update Transformers with the command `pip install --upgrade transformers`. If this does not work, and the checkpoint is very new, then there may not be a release version that supports this model yet. In this case, you can get the most up-to-date code by installing Transformers from source with the command `pip install git+https://github.com/huggingface/transformers.git`"
+        }
+      ],
+      "pages": 0,
+      "pages_per_second": null,
+      "peak_memory_bytes": 2109600,
+      "selected": false,
+      "text_coverage": 0.0
+    },
+    {
+      "analyzer_text_chars": 1493,
+      "backend": "ocr-tele",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 2,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "itu-t-p863-p1-2.pdf",
+      "elapsed_s": 83.96804,
+      "emitted_chars": 687,
+      "failures": [],
+      "pages": 2,
+      "pages_per_second": 0.023819,
+      "peak_memory_bytes": 7550404,
+      "selected": false,
+      "text_coverage": 0.460147
+    },
+    {
+      "analyzer_text_chars": 1493,
+      "backend": "ocr-unlimited",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 2,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "itu-t-p863-p1-2.pdf",
+      "elapsed_s": 133.585401,
+      "emitted_chars": 2848,
+      "failures": [],
+      "pages": 2,
+      "pages_per_second": 0.014972,
+      "peak_memory_bytes": 16036345,
+      "selected": false,
+      "text_coverage": 1.907569
+    }
+  ],
+  "skips": []
+}

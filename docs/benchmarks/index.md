@@ -81,6 +81,39 @@ elapsed figure instead. Coverage may exceed 1.0 (liteparse emits slightly
 more characters than the analyzer counted — different segmentation, not a
 bug).
 
+## GPU OCR legs (bounded fixtures)
+
+The four OCR models ran in the isolated GPU environment (`.venv-gpu`, RTX
+A2000 8 GB) over **2-page fixtures** of the three corpus PDFs
+(`.tmp/ocr-bench/*-p1-2.pdf`) — full-corpus OCR would take hours. The four
+models pin two mutually exclusive `transformers` majors, so the run is two
+passes over the same fixtures:
+
+| fixture | pass A: ovis (5.17) | pass A: qianfan (5.17) | pass B: tele (4.57.1) | pass B: unlimited (4.57.1) |
+| --- | --- | --- | --- | --- |
+| etsi-ts-103558-p1-2 | 197.6 s | 713.7 s | 220.2 s | 751.7 s |
+| nist-…-p1-2 | 212.6 s | `backend_error` | 81.7 s | 128.0 s |
+| itu-t-p863-p1-2 | 413.8 s | 1024.0 s | 84.0 s | 133.6 s |
+
+Cross-version rows behave exactly as typed: the wrong-major pair records
+`backend_error` rows whose detail names the cause (e.g. `qwen3_5`/
+`qianfan_ocr` unknown to transformers 4.57.1), never a silent pass.
+`liteparse` rows (0.07–0.16 s for the fixtures) appear in pass B after an
+entry-point refresh.
+
+Reading rules (also pc-4's run notes):
+
+- `elapsed_s` **includes per-document model load** — the runner constructs
+  the backend per document; these are 2-page fixtures, not per-page rates
+  you can multiply to the full corpus.
+- The two passes are different virtualenvs: merge rows per backend, never
+  sum across passes.
+- Full-corpus `qianfan` remains a documented **not run** (~145 s/page →
+  ≈ 20 h for NIST alone); its weights are now staged and offline-ready.
+- `selected` is recorded before load success/failure: a
+  `selected: true` + `failures: [backend_error]` row means “planner picked
+  it, then it could not load in this transformers” — not a planner bug.
+
 ## Cross-check: the motivating incident
 
 ADR-0001 records the incident this package exists to fix: *Docling ran for
@@ -100,16 +133,14 @@ signals say native extraction cannot do the job (ADR-0001 §6 keeps the
 
 ## Honest gaps
 
-- **GPU OCR legs are not in this snapshot.** `ocr-*` backends need the
-  isolated GPU environment (`.venv-gpu`); the four OCR models also pin two
-  mutually exclusive `transformers` majors, so they run as two passes.
-  Their report artifacts are committed as
-  `benchmark-ocr-pass-a.json` and
-  `benchmark-ocr-pass-b.json` once delivered —
-  bounded 2-page fixtures of the three corpus PDFs, because full-corpus OCR
-  would take hours (ovis ≈ 26 s/page, qianfan ≈ 145 s/page measured).
-- **`qianfan` weights were not staged** at measurement time; its rows are
-  typed dependency/asset failures, not timings.
+- **Full-corpus OCR was not run.** The GPU legs cover 2-page fixtures only
+  (see [GPU OCR legs](#gpu-ocr-legs-bounded-fixtures)); scaling any OCR
+  number here to a whole document would be fabricated. The pinned corpus
+  fetch tier (`mise run test-corpus`) stays opt-in; the licensed PDFs are
+  hand-staged and never downloaded by the harness.
+- **Full-corpus `qianfan` not run** (≈ 145 s/page measured; ≈ 20 h for NIST
+  alone). All four models are staged and sha-verified (20 GB cache), so
+  future runs pass offline asset checks.
 - **VRAM is not measured here.** Peak bytes are `tracemalloc` (host Python
   allocations). GPU VRAM is covered by the separate `gpu` test tier
   (`mise run test-gpu`, RTX A2000 8 GB pins in `pyproject.toml`).
@@ -133,5 +164,5 @@ signals say native extraction cannot do the job (ADR-0001 §6 keeps the
 | --- | --- |
 | [`benchmark.md`](benchmark.md) | full Markdown report (harness output) |
 | [`benchmark.json`](benchmark.json) | full JSON report, schema-guarded by tests |
-| `benchmark-ocr-pass-a.json` | GPU pass A (ovis + qianfan) — pending delivery |
-| `benchmark-ocr-pass-b.json` | GPU pass B (tele + unlimited) — pending delivery |
+| [`benchmark-ocr-pass-a.json`](benchmark-ocr-pass-a.json) | GPU pass A (ovis + qianfan, transformers 5.17.0), 12 rows — schema-guarded |
+| [`benchmark-ocr-pass-b.json`](benchmark-ocr-pass-b.json) | GPU pass B (tele + unlimited, transformers 4.57.1), 15 rows — schema-guarded |

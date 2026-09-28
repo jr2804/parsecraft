@@ -1,0 +1,369 @@
+{
+  "package_version": "2026.9.7.post1.dev0+d75ffd3",
+  "results": [
+    {
+      "analyzer_text_chars": 0,
+      "backend": "ocr-ovis",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 2,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "etsi-ts-103558-p1-2.pdf",
+      "elapsed_s": 197.584965,
+      "emitted_chars": 1221,
+      "failures": [],
+      "pages": 2,
+      "pages_per_second": 0.010122,
+      "peak_memory_bytes": 512254925,
+      "selected": true,
+      "text_coverage": null
+    },
+    {
+      "analyzer_text_chars": 0,
+      "backend": "ocr-qianfan",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 2,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "etsi-ts-103558-p1-2.pdf",
+      "elapsed_s": 713.689449,
+      "emitted_chars": 771,
+      "failures": [],
+      "pages": 2,
+      "pages_per_second": 0.002802,
+      "peak_memory_bytes": 3692484488,
+      "selected": false,
+      "text_coverage": null
+    },
+    {
+      "analyzer_text_chars": 0,
+      "backend": "ocr-tele",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 0,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "etsi-ts-103558-p1-2.pdf",
+      "elapsed_s": 7.379191,
+      "emitted_chars": 0,
+      "failures": [
+        {
+          "code": "backend_error",
+          "detail": "ocr-tele: failed to load model 'C:\\\\Users\\\\jan.reimes\\\\AppData\\\\Local\\\\parsecraft\\\\parsecraft\\\\Cache\\\\models\\\\StarDoc-AI--TeleOCR\\\\a61433186527cb53958bf354e34ae673c19cec4b': KeyError: 'default'"
+        }
+      ],
+      "pages": 0,
+      "pages_per_second": null,
+      "peak_memory_bytes": 6430482,
+      "selected": false,
+      "text_coverage": null
+    },
+    {
+      "analyzer_text_chars": 0,
+      "backend": "ocr-unlimited",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 0,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "etsi-ts-103558-p1-2.pdf",
+      "elapsed_s": 26.18692,
+      "emitted_chars": 0,
+      "failures": [
+        {
+          "code": "backend_error",
+          "detail": "ocr-unlimited: failed to load model 'C:\\\\Users\\\\jan.reimes\\\\AppData\\\\Local\\\\parsecraft\\\\parsecraft\\\\Cache\\\\models\\\\baidu--Unlimited-OCR\\\\07dea832e22aefee32ad281d4b80551282e1c168': ImportError: cannot import name 'is_torch_fx_available' from 'transformers.utils.import_utils' (C:\\Projects\\AI\\parsecraft\\.venv-gpu\\Lib\\site-packages\\transformers\\utils\\import_utils.py)"
+        }
+      ],
+      "pages": 0,
+      "pages_per_second": null,
+      "peak_memory_bytes": 15507519,
+      "selected": false,
+      "text_coverage": null
+    },
+    {
+      "analyzer_text_chars": 0,
+      "backend": "ocr-ovis",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 2,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "fc63bcd61715d0181dd8e859-p1-2.pdf",
+      "elapsed_s": 212.632693,
+      "emitted_chars": 1527,
+      "failures": [],
+      "pages": 2,
+      "pages_per_second": 0.009406,
+      "peak_memory_bytes": 511876262,
+      "selected": true,
+      "text_coverage": null
+    },
+    {
+      "analyzer_text_chars": 0,
+      "backend": "ocr-qianfan",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 0,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "fc63bcd61715d0181dd8e859-p1-2.pdf",
+      "elapsed_s": 66.392411,
+      "emitted_chars": 0,
+      "failures": [
+        {
+          "code": "backend_error",
+          "detail": "page 1: SafetensorError: File does not contain tensor language_model.model.layers.23.self_attn.q_proj.weight"
+        },
+        {
+          "code": "backend_error",
+          "detail": "page 2: SafetensorError: File does not contain tensor language_model.model.layers.23.self_attn.q_proj.weight"
+        }
+      ],
+      "pages": 0,
+      "pages_per_second": null,
+      "peak_memory_bytes": 5332878508,
+      "selected": false,
+      "text_coverage": null
+    },
+    {
+      "analyzer_text_chars": 0,
+      "backend": "ocr-tele",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 0,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "fc63bcd61715d0181dd8e859-p1-2.pdf",
+      "elapsed_s": 8.748608,
+      "emitted_chars": 0,
+      "failures": [
+        {
+          "code": "backend_error",
+          "detail": "ocr-tele: failed to load model 'C:\\\\Users\\\\jan.reimes\\\\AppData\\\\Local\\\\parsecraft\\\\parsecraft\\\\Cache\\\\models\\\\StarDoc-AI--TeleOCR\\\\a61433186527cb53958bf354e34ae673c19cec4b': KeyError: 'default'"
+        }
+      ],
+      "pages": 0,
+      "pages_per_second": null,
+      "peak_memory_bytes": 6022082,
+      "selected": false,
+      "text_coverage": null
+    },
+    {
+      "analyzer_text_chars": 0,
+      "backend": "ocr-unlimited",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 0,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "fc63bcd61715d0181dd8e859-p1-2.pdf",
+      "elapsed_s": 15.577601,
+      "emitted_chars": 0,
+      "failures": [
+        {
+          "code": "backend_error",
+          "detail": "ocr-unlimited: failed to load model 'C:\\\\Users\\\\jan.reimes\\\\AppData\\\\Local\\\\parsecraft\\\\parsecraft\\\\Cache\\\\models\\\\baidu--Unlimited-OCR\\\\07dea832e22aefee32ad281d4b80551282e1c168': ImportError: cannot import name 'is_torch_fx_available' from 'transformers.utils.import_utils' (C:\\Projects\\AI\\parsecraft\\.venv-gpu\\Lib\\site-packages\\transformers\\utils\\import_utils.py)"
+        }
+      ],
+      "pages": 0,
+      "pages_per_second": null,
+      "peak_memory_bytes": 4663875,
+      "selected": false,
+      "text_coverage": null
+    },
+    {
+      "analyzer_text_chars": 0,
+      "backend": "ocr-ovis",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 2,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "itu-t-p863-p1-2.pdf",
+      "elapsed_s": 413.810301,
+      "emitted_chars": 1742,
+      "failures": [],
+      "pages": 2,
+      "pages_per_second": 0.004833,
+      "peak_memory_bytes": 512170619,
+      "selected": true,
+      "text_coverage": null
+    },
+    {
+      "analyzer_text_chars": 0,
+      "backend": "ocr-qianfan",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 2,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "itu-t-p863-p1-2.pdf",
+      "elapsed_s": 1023.999635,
+      "emitted_chars": 1489,
+      "failures": [],
+      "pages": 2,
+      "pages_per_second": 0.001953,
+      "peak_memory_bytes": 4297408747,
+      "selected": false,
+      "text_coverage": null
+    },
+    {
+      "analyzer_text_chars": 0,
+      "backend": "ocr-tele",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 0,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "itu-t-p863-p1-2.pdf",
+      "elapsed_s": 10.035094,
+      "emitted_chars": 0,
+      "failures": [
+        {
+          "code": "backend_error",
+          "detail": "ocr-tele: failed to load model 'C:\\\\Users\\\\jan.reimes\\\\AppData\\\\Local\\\\parsecraft\\\\parsecraft\\\\Cache\\\\models\\\\StarDoc-AI--TeleOCR\\\\a61433186527cb53958bf354e34ae673c19cec4b': KeyError: 'default'"
+        }
+      ],
+      "pages": 0,
+      "pages_per_second": null,
+      "peak_memory_bytes": 6021786,
+      "selected": false,
+      "text_coverage": null
+    },
+    {
+      "analyzer_text_chars": 0,
+      "backend": "ocr-unlimited",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 0,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "itu-t-p863-p1-2.pdf",
+      "elapsed_s": 22.51014,
+      "emitted_chars": 0,
+      "failures": [
+        {
+          "code": "backend_error",
+          "detail": "ocr-unlimited: failed to load model 'C:\\\\Users\\\\jan.reimes\\\\AppData\\\\Local\\\\parsecraft\\\\parsecraft\\\\Cache\\\\models\\\\baidu--Unlimited-OCR\\\\07dea832e22aefee32ad281d4b80551282e1c168': ImportError: cannot import name 'is_torch_fx_available' from 'transformers.utils.import_utils' (C:\\Projects\\AI\\parsecraft\\.venv-gpu\\Lib\\site-packages\\transformers\\utils\\import_utils.py)"
+        }
+      ],
+      "pages": 0,
+      "pages_per_second": null,
+      "peak_memory_bytes": 4663875,
+      "selected": false,
+      "text_coverage": null
+    }
+  ],
+  "skips": []
+}
