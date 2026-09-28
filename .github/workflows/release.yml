@@ -117,6 +117,68 @@ jobs:
         files: dist/*
         generate_release_notes: true
 
+    # AI release notes (LLM-summarised, deterministic fallback). Cosmetic only:
+    # `continue-on-error` keeps the release intact if the API is unreachable,
+    # unconfigured, or returns a bad summary — the auto-generated notes stay.
+    - name: AI release notes (OpenRouter)
+      if: env.OPENROUTER_API_KEY != ''
+      continue-on-error: true
+      env:
+        OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'openai/gpt-4o-mini' }}
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        version="${{ steps.version.outputs.version }}"
+        prev="$(git tag --sort=-version:refname | grep -E '^[0-9]{4}\.[0-9]{1,2}\.[0-9]+$' | sed -n '2p' || true)"
+        range="${prev:+$prev..}$version"
+        git log "$range" --format='- %s' | head -n 120 > commits.txt
+
+        {
+          echo "Write concise, user-facing release notes in Markdown for the"
+          echo "Python package parsecraft (document-intelligence: aligns existing"
+          echo "converters/parsers/OCR models behind one workflow and typed IR)."
+          echo "Rules: use ONLY facts from the commit list below — never invent"
+          echo "features or numbers; group under short Markdown headings (Features,"
+          echo "Improvements, Documentation, CI); start with a 2-3 bullet highlight"
+          echo "list; no preamble, no closing remark. Commit list:"
+          cat commits.txt
+        } > prompt.txt
+
+        python3 - <<'PY' > ai-notes.md
+        import json, os, urllib.request
+
+        request = urllib.request.Request(
+            "https://openrouter.ai/api/v1/chat/completions",
+            data=json.dumps({
+                "model": os.environ["OPENROUTER_MODEL"],
+                "messages": [{"role": "user", "content": open("prompt.txt", encoding="utf-8").read()}],
+            }).encode(),
+            headers={
+                "Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}",
+                "Content-Type": "application/json",
+            },
+        )
+        with urllib.request.urlopen(request, timeout=120) as response:
+            payload = json.load(response)
+        print(payload["choices"][0]["message"]["content"])
+        PY
+
+        {
+          cat ai-notes.md
+          echo
+          echo "<details><summary>Full commit list</summary>"
+          echo
+          cat commits.txt
+          echo
+          echo "</details>"
+          echo
+          echo "**Full Changelog**: https://github.com/jr2804/parsecraft/compare/${range}"
+        } > release-body.md
+        gh release edit "$version" --notes-file release-body.md
+
+        rm -f commits.txt prompt.txt ai-notes.md release-body.md
+
     - name: Upload distributions
       uses: actions/upload-artifact@v4
       with:
