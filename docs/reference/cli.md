@@ -94,6 +94,7 @@ parsecraft convert SOURCE [OPTIONS]
 | `--max-passes N` | `1` | Fallback passes per page group (`N >= 1`) |
 | `--no-ocr` | off | Forbid OCR backends |
 | `--json` | off | Emit the IR as JSON instead of the Markdown projection |
+| `--cache` / `--no-cache` | `--no-cache` | Reuse a content-addressed conversion cache |
 
 Output is the Markdown projection (`parsecraft.ir.markdown.to_markdown`) or the
 `DocumentResult` as JSON (`--json`). Supported suffixes come from the public
@@ -128,6 +129,49 @@ Eligibility matches `RoutingConstraints.formats` against each backend's
 `supported_formats`; both declare MIME media types (`text/plain`,
 `application/pdf`, `image/jpeg`, `image/png`), so a scanned PDF can route to
 OCR and a digital PDF to `native-pdf`.
+
+With `--cache`, a completed conversion is stored under
+`sha256(source bytes + registry.fingerprint() + canonical constraints +
+effective judge identity)`, and a later identical conversion returns the stored
+`DocumentResult` **without dispatching any backend**. Because nothing ran, a hit's
+`PipelineResult.groups` are plan-shaped — the planned pages and candidates with
+`winner=None` and `attempts=[]`; read `plan` for the route, not `groups` for
+evidence of execution.
+
+The key covers the source bytes, the registered backend set
+(`registry.fingerprint()` — names, versions, supported formats), the resolved
+`RoutingConstraints`, and the judge identity, so a fingerprint, constraint, or
+envelope-schema change is a **miss, never stale reuse**. Caching is **off by
+default** and opt-in per invocation; the root is `$PARSECRAFT_CACHE_DIR` or the
+platform user-cache directory followed by `parsecraft/conversions`. Inspect or
+clear it with [`parsecraft cache`](#parsecraft-cache).
+
+### `parsecraft cache`
+
+Inspect or clear the conversion cache used by `convert --cache`.
+
+| Option | Default | Behaviour |
+| ------ | ------- | --------- |
+| `--json` | off | Emit `location`, `entries`, `total_bytes`, and the sorted entry `keys` as JSON |
+| `--clear` | off | Delete every cached conversion |
+
+By default the command prints the cache location, the number of entries, and
+their total size:
+
+```text
+$ parsecraft cache
+location: /home/me/.cache/parsecraft/conversions
+entries: 3
+size: 12.4 KiB
+```
+
+Each entry is one JSON file named by its `sha256` key. `--json` additionally
+lists every key; per-entry sizes come from the library API
+(`parsecraft.cache.ConversionCache.entries()` → `key`, `size_bytes`). With
+`--clear` the output is the single line
+`removed N conversion cache entries from <root>`. The root honours
+`PARSECRAFT_CACHE_DIR` and otherwise defaults to the platform user-cache
+directory plus `parsecraft/conversions`.
 
 ### `parsecraft inspect`
 
@@ -273,6 +317,7 @@ offline = false  (default:<defaults>)
 | -------- | ------- | ----------- |
 | `PARSECRAFT_JSON` | `parsecraft backends`, `parsecraft config` | Default value of `--json` |
 | `PARSECRAFT_CONFIG_*` | `parsecraft config` | Configuration settings (see below) |
+| `PARSECRAFT_CACHE_DIR` | `parsecraft convert --cache`, `parsecraft cache` | Overrides the conversion-cache root |
 
 `PARSECRAFT_JSON` is a CLI flag default. Configuration settings use the
 distinct `PARSECRAFT_CONFIG_` prefix so the flag cannot collide with a setting
@@ -281,7 +326,7 @@ key.
 ## Source
 
 - `src/parsecraft/cli/app.py` — app, callback, command and group registration
-- `src/parsecraft/cli/commands.py` — `backends`, `convert`, `inspect`, `benchmark`, `models_*`, `config_*`
+- `src/parsecraft/cli/commands.py` — `backends`, `convert`, `inspect`, `benchmark`, `cache`, `models_*`, `config_*`
 - `src/parsecraft/cli/convert.py` — `convert_source`, `PreferredBackendJudge`, rendering
 - `src/parsecraft/cli/inspect.py` — `inspect_source`, preview rendering
 - `src/parsecraft/cli/benchmark.py` — harness wrapper + report writers
