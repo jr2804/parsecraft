@@ -7,6 +7,8 @@ judge only ever re-ranks what this module accepts. Rules live in one table
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from pydantic import BaseModel
 
 from parsecraft.backends.protocol import AnalysisResult, BackendDescriptor
@@ -101,6 +103,17 @@ def in_intent_family(intent: Intent, descriptor: BackendDescriptor) -> bool:
     if intent is Intent.NATIVE:
         return True
     return is_ocr(descriptor)
+
+
+def can_degrade_to_native(signal: PageSignal, eligible: Sequence[BackendDescriptor]) -> bool:
+    """OCR-intent fallback: only when the page can actually emit native text.
+
+    Mirror of the planner's NATIVE-lead guard: with no OCR family available,
+    a page that still has native text (not blank, not text-less) degrades to
+    NATIVE with a recorded reason; a genuinely blank/no-native-text page must
+    keep raising, because native would emit nothing.
+    """
+    return not signal.blank and signal.has_native_text and any(not is_ocr(descriptor) for descriptor in eligible)
 
 
 def is_ocr(descriptor: BackendDescriptor) -> bool:

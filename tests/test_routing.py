@@ -34,6 +34,7 @@ from parsecraft.routing.rules import (
     FEATURE_FIGURES_CODE,
     FEATURE_TABLE_CODE,
     INTENT_RULES,
+    can_degrade_to_native,
     classify_page,
     extract_hints,
     in_intent_family,
@@ -353,8 +354,11 @@ def test_plan_no_eligible_backend_raises() -> None:
 
 
 def test_plan_intent_family_empty_raises_with_intent() -> None:
+    # A blank page never degrades (native would emit nothing) — with the OCR
+    # family forbidden, routing still fails loudly.
+    blank = make_analysis([make_signal(1, text_chars=0, native=False, blank=True)], 1)
     with pytest.raises(NoEligibleBackendError) as exc_info:
-        plan_route(make_analysis(garbled(), 1), all_backends(), full_constraints(allow_ocr=False, formats=set()))
+        plan_route(blank, all_backends(), full_constraints(allow_ocr=False, formats=set()))
     assert exc_info.value.intent is Intent.OCR_GENERAL
 
 
@@ -452,6 +456,105 @@ def ocr_backends() -> list[BackendDescriptor]:
     ]
 
 
+def good_native(signals_count: int = 1) -> list[PageSignal]:
+    return [make_signal(index) for index in range(1, signals_count + 1)]
+
+
+def garbled(pages: int = 1) -> list[PageSignal]:
+    return [make_signal(index, text_chars=90, replacement=0.25) for index in range(1, pages + 1)]
+
+
+# ── manifest expectations (the corpus the harness routes against) ──────────
+
+
+def _manifest_sources() -> list[dict[str, Any]]:
+    return list(tomllib.loads(_SOURCES_PATH.read_text(encoding="utf-8"))["sources"])
+
+
+# ── degradation: OCR family empty but the page can emit native text ────────
+
+
+def test_short_native_text_page_degrades_instead_of_erroring() -> None:
+    # 34 chars < NATIVE_MIN_TEXT_CHARS(40) → classification says OCR…
+    signal = make_signal(1, text_chars=34)
+    analysis = make_analysis([signal], 1)
+    hints = extract_hints(analysis)
+    assert classify_page(signal, 1, hints) is Intent.OCR_GENERAL
+    # …but with no OCR family installed, a native backend must serve it.
+    plan = plan_route(
+        analysis,
+        [make_desc("native-text")],
+        full_constraints(formats={"text/plain"}, installed_extras=set()),
+    )
+    page = plan.pages[0]
+    assert page.intent is Intent.NATIVE
+    assert page.chosen == "native-text"
+    assert "OCR unavailable (no eligible OCR backend)" in page.reason
+    assert "degraded to native" in page.reason
+    assert "text_chars=34" in page.reason
+
+
+def test_blank_page_still_errors_when_ocr_family_empty() -> None:
+    signal = make_signal(1, text_chars=0, native=False, blank=True)
+    analysis = make_analysis([signal], 1)
+    assert classify_page(signal, 1, extract_hints(analysis)) is Intent.OCR_GENERAL
+    with pytest.raises(NoEligibleBackendError) as exc_info:
+        plan_route(
+            analysis,
+            [make_desc("native-text")],
+            full_constraints(formats={"text/plain"}, installed_extras=set()),
+        )
+    assert exc_info.value.intent is Intent.OCR_GENERAL  # native would emit nothing
+
+
+def test_textless_nonblank_page_still_errors_when_ocr_family_empty() -> None:
+    signal = make_signal(1, text_chars=0, native=False, blank=False)
+    analysis = make_analysis([signal], 1)
+    with pytest.raises(NoEligibleBackendError) as exc_info:
+        plan_route(
+            analysis,
+            [make_desc("native-text")],
+            full_constraints(formats={"text/plain"}, installed_extras=set()),
+        )
+    assert exc_info.value.intent is Intent.OCR_GENERAL
+
+
+def test_no_degradation_when_ocr_family_is_available() -> None:
+    signal = make_signal(1, text_chars=34)
+    plan = plan_route(
+        make_analysis([signal], 1),
+        [make_desc("native-text"), make_desc("ocr-stub", ALL_FORMATS, group="ocr-stub")],
+        full_constraints(formats={"text/plain"}, installed_extras={"ocr-stub"}),  # its extra IS installed
+    )
+    page = plan.pages[0]
+    assert page.intent is Intent.OCR_GENERAL  # OCR exists → no fallback
+    assert page.chosen == "ocr-stub"
+    assert "degraded to native" not in page.reason
+
+
+def full_constraints(**overrides: Any) -> RoutingConstraints:
+    base: dict[str, Any] = {
+        "installed_extras": set(OCR_EXTRAS),
+        "vram_budget_gb": 8.0,
+        "max_passes": 3,
+    }
+    base.update(overrides)
+    return RoutingConstraints(**base)
+
+
+def make_analysis(signals: list[PageSignal], page_count: int, codes: tuple[str, ...] = ()) -> AnalysisResult:
+    diagnostics = [Diagnostic(level=DiagnosticLevel.INFO, code=code, message=f"synthetic hint {code}") for code in codes]
+    return AnalysisResult(source_hash="0" * 64, page_count=page_count, signals=signals, diagnostics=diagnostics)
+
+
+def test_can_degrade_requires_a_non_ocr_backend() -> None:
+    signal = make_signal(1, text_chars=34)
+    assert can_degrade_to_native(signal, [make_desc("native-text")]) is True
+    assert can_degrade_to_native(signal, [make_desc("ocr-only", ALL_FORMATS, group="ocr-x")]) is False
+    blank = make_signal(1, text_chars=0, native=False, blank=True)
+    assert can_degrade_to_native(blank, [make_desc("native-text")]) is False
+
+
 def make_desc(
     name: str,
     formats: Iterable[str] = ("text/plain",),
@@ -484,29 +587,6 @@ def make_desc(
     )
 
 
-def full_constraints(**overrides: Any) -> RoutingConstraints:
-    base: dict[str, Any] = {
-        "installed_extras": set(OCR_EXTRAS),
-        "vram_budget_gb": 8.0,
-        "max_passes": 3,
-    }
-    base.update(overrides)
-    return RoutingConstraints(**base)
-
-
-def make_analysis(signals: list[PageSignal], page_count: int, codes: tuple[str, ...] = ()) -> AnalysisResult:
-    diagnostics = [Diagnostic(level=DiagnosticLevel.INFO, code=code, message=f"synthetic hint {code}") for code in codes]
-    return AnalysisResult(source_hash="0" * 64, page_count=page_count, signals=signals, diagnostics=diagnostics)
-
-
-def good_native(signals_count: int = 1) -> list[PageSignal]:
-    return [make_signal(index) for index in range(1, signals_count + 1)]
-
-
-def garbled(pages: int = 1) -> list[PageSignal]:
-    return [make_signal(index, text_chars=90, replacement=0.25) for index in range(1, pages + 1)]
-
-
 def make_signal(
     page: int = 1, *, text_chars: int = 500, native: bool = True, blank: bool = False, replacement: float | None = None, images: int = 0
 ) -> PageSignal:
@@ -518,10 +598,3 @@ def make_signal(
         blank=blank,
         replacement_char_ratio=replacement,
     )
-
-
-# ── manifest expectations (the corpus the harness routes against) ──────────
-
-
-def _manifest_sources() -> list[dict[str, Any]]:
-    return list(tomllib.loads(_SOURCES_PATH.read_text(encoding="utf-8"))["sources"])

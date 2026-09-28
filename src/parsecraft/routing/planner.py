@@ -17,6 +17,7 @@ from parsecraft.routing.models import (
     RoutingPlan,
 )
 from parsecraft.routing.rules import (
+    can_degrade_to_native,
     classify_page,
     extract_hints,
     in_intent_family,
@@ -50,6 +51,15 @@ def plan_route(
     for signal in sorted(analysis.signals, key=lambda s: s.page_number):
         intent = classify_page(signal, analysis.page_count, hints)
         family = [descriptor for descriptor in eligible if in_intent_family(intent, descriptor)]
+        degraded = False
+        if not family and intent is not Intent.NATIVE and can_degrade_to_native(signal, eligible):
+            # Mirror of the NATIVE-lead guard: no OCR family is available
+            # (missing extras / allow_ocr off) but this page can still emit
+            # native text → degrade to NATIVE with a recorded reason instead
+            # of failing a valid document (routing/AGENTS.md).
+            degraded = True
+            intent = Intent.NATIVE
+            family = [descriptor for descriptor in eligible if in_intent_family(intent, descriptor)]
         if not family:
             raise NoEligibleBackendError(intent, "intent family empty after hard constraints")
         if intent is Intent.NATIVE and all(is_ocr(descriptor) for descriptor in family):
@@ -65,7 +75,7 @@ def plan_route(
                 intent=intent,
                 candidates=candidates,
                 chosen=candidates[0],
-                reason=_reason(intent, candidates[0], signal),
+                reason=_degraded_reason(signal, candidates[0]) if degraded else _reason(intent, candidates[0], signal),
             )
         )
     return RoutingPlan(primary=_primary(pages), pages=pages)
@@ -89,6 +99,14 @@ def _primary(pages: list[PageRoute]) -> str:
     for page in pages:
         counts[page.chosen] = counts.get(page.chosen, 0) + 1
     return sorted(counts, key=lambda name: (-counts[name], name))[0]
+
+
+def _degraded_reason(signal: PageSignal, chosen: str) -> str:
+    """Recorded when an OCR-intent page falls back to native (no OCR family)."""
+    return (
+        f"page {signal.page_number}: OCR unavailable (no eligible OCR backend); "
+        f"degraded to native (native text present, text_chars={signal.text_chars}); first pass {chosen}"
+    )
 
 
 def _reason(intent: Intent, chosen: str, signal: PageSignal) -> str:
