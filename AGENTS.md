@@ -95,8 +95,11 @@ _Always-injected_ — keep minimal. Everything else → `.agents/` files.
 1. **Type rigor:** concrete types only — no `Any`, no `hasattr`/`isinstance`
    duck-typing outside public `Protocol`s. Schemas are pydantic v2. See
    `docs/adr/0001-phase-0-decisions.md` (§9).
-2. **No commits, no pushes without explicit approval** — the user groups and
-   reviews changes manually; scaffolding must not auto-commit.
+2. **Agents never push — the user pushes.** Agents may create local commits
+   in logical, reviewable units (the user groups and reviews history);
+   `git push` is reserved to the user. Development commits carry
+   `[skip release]` in the tip message (ADR-0002) so a user push never
+   accidentally releases.
 3. **Core stays import-clean offline** — no network or heavy runtimes (torch,
    transformers, vLLM, model weights) at import time; enforced by
    `tests/test_offline_import.py`. Heavy deps belong in extras only.
