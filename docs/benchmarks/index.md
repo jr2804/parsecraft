@@ -85,9 +85,13 @@ bug).
 
 The four OCR models ran in the isolated GPU environment (`.venv-gpu`, RTX
 A2000 8 GB) over **2-page fixtures** of the three corpus PDFs
-(`.tmp/ocr-bench/*-p1-2.pdf`) — full-corpus OCR would take hours. The four
-models pin two mutually exclusive `transformers` majors, so the run is two
-passes over the same fixtures:
+(`.tmp/ocr-bench/*-p1-2.pdf`) — full-corpus OCR would take hours. At run time
+the four models pinned two different `transformers` majors, so the snapshot is
+two passes over the same fixtures. That split was a *pinning* fact,
+not a model requirement: `pc-4u7.36` unified the extras on
+`transformers>=5.17,<6` and the TeleOCR/Unlimited models now load from local
+vendored modeling code, so a re-run needs **one** environment and **one** pass
+(see [Deferred runs](#deferred-runs)).
 
 | fixture | pass A: ovis (5.17) | pass A: qianfan (5.17) | pass B: tele (4.57.1) | pass B: unlimited (4.57.1) |
 | --- | --- | --- | --- | --- |
@@ -123,30 +127,34 @@ the full-corpus runs only cost machine time.
 
 | Run | Deferred on | Reason | Command |
 | --- | --- | --- | --- |
-| Full-corpus OCR, all four models | 2026-09-28 | Cost/time: the 2-page fixtures already take 82–1024 s per document, and the corpus spans two mutually exclusive `transformers` majors (many hours of exclusive GPU time) | [Pass A / Pass B](#full-corpus-ocr-commands) |
-| Full-corpus `ocr-qianfan` | 2026-09-28 | Cost/time: ≈ 145 s/page measured → ≈ 20 h for NIST SP 800-53r5 alone. Weights are staged and sha-verified (20 GB cache), so the run is offline-ready | Pass A below |
+| Full-corpus OCR, all four models | 2026-09-28 | Cost/time only: the 2-page fixtures already take 82–1024 s per document, so the corpus is many hours of exclusive GPU time. Not an install conflict — the extras are jointly installable on one `transformers` window | [Full-corpus command](#full-corpus-ocr-command) |
+| Full-corpus `ocr-qianfan` | 2026-09-28 | Cost/time: ≈ 145 s/page measured → ≈ 20 h for NIST SP 800-53r5 alone. Weights are staged and sha-verified (20 GB cache), so the run is offline-ready | same command (qianfan is one of the measured backends) |
+| Full-corpus docling | 2026-09-28 | Runtime budget: docling is ≈ 8–15 s/page warm on this laptop → ≈ 1.8 h for NIST SP 800-53r5 alone, and the incident shape (>1 h on 113 pp) says hours. Not a CI-shaped job | [Full-corpus docling](#full-corpus-docling-command) |
 | Quantised variants (int8 / 4-bit) | 2026-09-28 | Out of scope by design: quantisation is a backend-installation choice, not a harness dimension | — |
 
-### Full-corpus OCR commands
+### Full-corpus OCR command
 
-The GPU environment is `.venv-gpu` (RTX A2000 8 GB). The four models pin two
-mutually exclusive `transformers` majors — 5.x for `ovis`/`qianfan`, 4.57.x for
-`tele`/`unlimited` — so the full run is two passes. Both commands print JSON on
-stdout and never overwrite the committed CPU report; `--extra pdf` is required
-for PDF rasterisation (PyMuPDF, AGPL — ADR-0003).
+The GPU environment is `.venv-gpu` (RTX A2000 8 GB). All four OCR extras share
+one `transformers>=5.17,<6` window (`pyproject.toml`), so the full run is a
+single pass in a single environment. The command prints JSON on stdout and never
+overwrites the committed CPU report; `--extra pdf` is required for PDF
+rasterisation (PyMuPDF, AGPL — ADR-0003).
 
 ```bash
-# Pass A — transformers 5.x: ovis + qianfan (covers the full-corpus qianfan deferral)
-uv run --project .venv-gpu --extra ocr-ovis --extra ocr-qianfan --extra pdf --extra download \
+uv run --project .venv-gpu --extra ocr-ovis --extra ocr-qianfan \
+  --extra ocr-tele --extra ocr-unlimited --extra pdf --extra download \
   parsecraft benchmark tests/downloads/itu-t-p863.pdf \
     tests/downloads/etsi-ts-103558.pdf tests/downloads/nist-sp-800-53r5.pdf \
-  --json > docs/benchmarks/benchmark-ocr-full-pass-a.json
+  --json > docs/benchmarks/benchmark-ocr-full.json
+```
 
-# Pass B — transformers 4.57.x: tele + unlimited
-uv run --project .venv-gpu --extra ocr-tele --extra ocr-unlimited --extra pdf --extra download \
-  parsecraft benchmark tests/downloads/itu-t-p863.pdf \
-    tests/downloads/etsi-ts-103558.pdf tests/downloads/nist-sp-800-53r5.pdf \
-  --json > docs/benchmarks/benchmark-ocr-full-pass-b.json
+### Full-corpus docling command
+
+Resumable: each `(document, backend)` pair is persisted as it finishes.
+
+```bash
+uv run --extra docling --extra pdf --extra pdf-lite \
+  python scripts/bench_docling.py tests/downloads/*.pdf --backends docling
 ```
 
 The committed bounded runs stay the evidence for adapter correctness:
@@ -169,6 +177,66 @@ full layout/table pipeline. The routing design leans exactly on this gap: run th
 native pass first, escalate to OCR/layout backends only for pages whose
 signals say native extraction cannot do the job (ADR-0001 §6 keeps the
 15-minute cold-cache budget for the whole document, escalations included).
+
+## Docling vs native-pdf (bounded head-to-head)
+
+The gap the incident cross-check only inferred is now measured on **2-page
+fixtures** of the three corpus PDFs (`pc-4u7.39`, docling 2.130.0, 2026-09-28).
+Environment: Windows laptop, CPython 3.13, CPU only. Docling ran its **default
+pipeline untuned** (layout, tables, and its bundled RapidOCR); `native-pdf` used
+PyMuPDF. Both were measured by the in-repo harness.
+
+| fixture (2 pp) | docling | native-pdf | ratio |
+| --- | --- | --- | --- |
+| `itu-t-p863` (of 80) | 20.6 s | 0.014 s | ≈ 1470× |
+| `etsi-ts-103558` (of 68) | 30.5 s | 2.98 s | ≈ 10× |
+| `nist-sp-800-53r5` (of 492) | 15.5 s | 0.024 s | ≈ 650× |
+
+- Docling's **first** conversion in a process is far slower — 191.9 s for the
+  p863 fixture — because it loads its layout/OCR models. The table is warm; its
+  peak Python memory is 158–405 MB against 0.03–15 MB for `native-pdf`.
+- Docling emits more structure (headings, tables) at comparable text coverage;
+  the cost of that is runtime and memory, not correctness.
+- Ratios vary per document (the ETSI fixture is the most docling-favourable of
+  the set) — read the per-row numbers, not a single ratio.
+
+This is an **on-demand measurement, never part of `mise test`/CI**:
+
+```bash
+# 1. two-page fixtures of the pinned corpus PDFs (pymupdf, transient)
+uv run --extra pdf python - <<'PY'
+from pathlib import Path
+
+import pymupdf
+
+out = Path(".tmp/docling-bench")
+out.mkdir(parents=True, exist_ok=True)
+for src in Path("tests/downloads").glob("*.pdf"):
+    doc = pymupdf.open(src)
+    two = pymupdf.open()
+    try:
+        two.insert_pdf(doc, from_page=0, to_page=min(1, doc.page_count - 1))
+        two.save(out / f"{src.stem}-p1-2.pdf")
+    finally:
+        two.close()
+        doc.close()
+PY
+
+# 2. one (document, backend) pair at a time, resumable
+mise run bench-docling
+```
+
+The equivalent explicit command:
+
+```bash
+uv run --extra docling --extra pdf --extra pdf-lite \
+  python scripts/bench_docling.py .tmp/docling-bench/*.pdf
+```
+
+`scripts/bench_docling.py` writes each measured `(document, backend)` pair to
+`.tmp/bench-docling-partial.json` immediately and skips pairs already present on
+re-invocation, so a long run resumes instead of restarting. It **never uses the
+conversion cache** — a cache hit would report ~0 s and falsify the measurement.
 
 ## Honest gaps
 
@@ -207,3 +275,4 @@ signals say native extraction cannot do the job (ADR-0001 §6 keeps the
 | [`benchmark.json`](benchmark.json) | full JSON report, schema-guarded by tests |
 | [`benchmark-ocr-pass-a.json`](benchmark-ocr-pass-a.json) | GPU pass A (ovis + qianfan, transformers 5.17.0), 12 rows — schema-guarded |
 | [`benchmark-ocr-pass-b.json`](benchmark-ocr-pass-b.json) | GPU pass B (tele + unlimited, transformers 4.57.1), 15 rows — schema-guarded |
+| [`benchmark-docling-vs-native.json`](benchmark-docling-vs-native.json) | docling vs native-pdf, 2-page fixtures, 6 rows |

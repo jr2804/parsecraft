@@ -15,6 +15,10 @@ run_windows = ".venv-gpu/Scripts/python -m pytest tests/test_backends_ocr_gpu.py
 description = "Judge tier: live ollaya daemon answers (opt-in; offline by default)"
 run = "uv run pytest -m judge --run-judge"
 
+[tasks.bench-docling]
+description = "Docling vs native-pdf measurement (on-demand, NOT part of the gate; full corpus may take hours)"
+run = "uv run --extra docling --extra pdf --extra pdf-lite python scripts/bench_docling.py .tmp/docling-bench/*.pdf"
+
 [tasks.all]
 description = "Run all quality checks"
 depends = [
