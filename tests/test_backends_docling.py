@@ -46,8 +46,10 @@ class _TableItem:
     def __init__(self, markdown: str, page_no: int = 1) -> None:
         self._markdown = markdown
         self.prov = [_Prov(page_no)]
+        self.last_doc: object = None
 
-    def export_to_markdown(self) -> str:
+    def export_to_markdown(self, doc: object = None) -> str:
+        self.last_doc = doc
         return self._markdown
 
 
@@ -226,9 +228,10 @@ def test_converter_is_created_once_per_process(docling_stub: _State) -> None:
 
 
 def test_convert_builds_typed_ir_per_page(docling_stub: _State) -> None:
+    table = _TableItem("| a | b |", page_no=1)
     docling_stub.items = [
         _TextItem("Title text", label="section_header", page_no=1),
-        _TableItem("| a | b |", page_no=1),
+        table,
         _TextItem("second page", page_no=2),
         _OtherItem(page_no=2),
     ]
@@ -238,6 +241,7 @@ def test_convert_builds_typed_ir_per_page(docling_stub: _State) -> None:
     assert [block.kind for block in result.pages[0].blocks] == [ChunkKind.HEADING, ChunkKind.TABLE]
     assert result.pages[0].blocks[0].id == "docling-1-b0"
     assert result.pages[0].blocks[1].content == "| a | b |"
+    assert table.last_doc is not None  # table export receives the document
     assert result.pages[1].blocks[0].content == "second page"
     assert result.backend.name == "docling"
     assert result.backend.version == docling_module.DOCLING_BACKEND_VERSION
