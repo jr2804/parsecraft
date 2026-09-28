@@ -46,6 +46,7 @@ nav = [
       { "ADR-0002 — Release and distribution" = "adr/0002-release-and-distribution.md" },
       { "ADR-0003 — Optional AGPL PyMuPDF" = "adr/0003-optional-agpl-pymupdf.md" },
       { "ADR-0004 — Routing and auto mode" = "adr/0004-routing-and-auto-mode.md" },
+      { "ADR-0005 — pandoc GPL system binary" = "adr/0005-pandoc-gpl-system-binary.md" },
     ] },
   ] },
 ]
