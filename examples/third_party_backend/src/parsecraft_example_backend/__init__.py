@@ -11,13 +11,14 @@ ParseCraft source.
 
 from __future__ import annotations
 
+import importlib
+
 from parsecraft.backends import (
     BackendCapabilities,
     BackendConfig,
     BackendDescriptor,
     DocumentBackend,
 )
-from parsecraft_example_backend.impl import EchoBackend  # lazy by contract
 
 DESCRIPTOR = BackendDescriptor(
     name="example-echo",
@@ -36,8 +37,13 @@ class EchoFactory:
     descriptor: BackendDescriptor = DESCRIPTOR
 
     def __call__(self, config: BackendConfig) -> DocumentBackend:
-
-        return EchoBackend(config, DESCRIPTOR.capabilities)
+        # Heavy import stays inside the factory boundary. It MUST be an
+        # ``importlib.import_module`` call, never an ``import`` statement:
+        # a function-body ``import`` is hoisted to module top level by the
+        # format pass (csort ``hoist_inline_imports``), which would pull the
+        # heavy impl into discovery and break the laziness contract.
+        module = importlib.import_module("parsecraft_example_backend.impl")
+        return module.EchoBackend(config, DESCRIPTOR.capabilities)
 
 
 factory = EchoFactory()
