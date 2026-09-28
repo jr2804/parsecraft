@@ -1,32 +1,4 @@
-# Auto-detect text files and normalize to LF
-* text=auto
-
-# Shell scripts must be LF
-*.sh text eol=lf
-
-# Python source
-*.py text diff=python
-
-# Markdown
-*.md text diff=markdown
-
-# Configuration
-*.yml text
-*.yaml text
-*.toml text
-*.ini text
-*.cfg text
-*.conf text
-
-# Images
-*.png binary
-*.jpg binary
-*.jpeg binary
-*.gif binary
-*.svg text
-*.ico binary
-
-# Archives
-*.zip binary
-*.tar.gz binary
-*.gz binary
+# Keep the repository LF everywhere. Committed artifacts (benchmark reports,
+# fixtures) are compared byte-for-byte, so a CRLF checkout on Windows breaks
+# them — and git's autocrlf default would rewrite every text file on checkout.
+* text=auto eol=lf
