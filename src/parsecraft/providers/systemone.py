@@ -20,6 +20,13 @@ The option set is the candidate names and the distribution IS the ranking — a
 candidate the answer omits scores ``0.0``, and the stable sort keeps the
 planner's name order for ties, so identical inputs give identical orders.
 
+Bounding defaults are the SDK's, not ours (verified on typesafe-sdk 0.7.2 and
+deliberately not overridden): 10 s per HTTP operation, and a retry policy of 3
+attempts (``max_retries=2``) with exponential backoff 0.5 s → 5 s, 0.25 jitter,
+and a 30 s total retry budget per call (tenacity ``stop_after_attempt |
+stop_before_delay``). A future SDK default change would shift that bound; no
+constructor argument exists to tune it until a real need appears.
+
 Contract: the judge only re-ranks candidates ``plan_route`` already deemed
 eligible (ADR-0004 decisions 3-5) — ``_validate_order`` stays the sole
 eligibility enforcement point. ``typesafe_sdk`` is imported through
@@ -114,19 +121,35 @@ class _SdkModule(Protocol):
 
 
 class JevJudge:
-    """Ranks eligible candidates by one System One Choice distribution."""
+    """Ranks eligible candidates by one System One Choice distribution.
+
+    Memoized per judge instance, keyed ``(intent value, candidate names)``: a
+    page shape that repeats within one plan reuses the verdict already paid
+    for, so a four-shape document costs at most four calls instead of one per
+    page. ``resolve_judge`` builds a fresh judge per ``convert`` invocation, so
+    the memo lives for exactly one plan — never across documents, and never
+    across a changed candidate set because the key carries the names. The
+    trade-off is deliberate: memoized pages share one verdict. The model cannot
+    tell them apart anyway — the request carries the intent and the candidates'
+    declared capabilities, never page content.
+    """
 
     def __init__(self, *, client_factory: _ClientFactory, choice_factory: _ChoiceFactory, api_key: str, model: str) -> None:
         self._client_factory = client_factory
         self._choice_factory = choice_factory
         self._api_key = api_key
         self._model = model
+        self._memo: dict[tuple[str, tuple[str, ...]], list[str]] = {}
 
     def rank(self, intent: Intent, candidates: Sequence[BackendDescriptor]) -> Sequence[str]:
         """Candidate names, best first, by the choice distribution (never widened)."""
         names = [descriptor.name for descriptor in candidates]
         if len(names) < 2:
             return names  # nothing to rank — one candidate is already the answer
+        key = (intent.value, tuple(names))
+        memoized = self._memo.get(key)
+        if memoized is not None:
+            return list(memoized)  # a copy: a caller must not mutate the memo
         try:
             with self._client_factory(api_key=self._api_key, model=self._model) as client:
                 response = client.system_one(
@@ -136,7 +159,9 @@ class JevJudge:
         except Exception as exc:  # SDK boundary — typed, never raw
             msg = f"system one call failed: {type(exc).__name__}: {exc}"
             raise JevJudgeError(msg) from exc
-        return _rank_from_response(response, candidates)
+        order = _rank_from_response(response, candidates)
+        self._memo[key] = order
+        return list(order)
 
 
 def load_judge(spec: JudgeSpec) -> RoutingJudge:

@@ -6,21 +6,20 @@ Auto mode is the default path of `parsecraft convert`: analyze first, decide
 per page, then convert. The decision consumes four inputs — the host probe, a
 fast complexity analysis, the deterministic rule table, and an optional
 LLM-backed seam — and produces a `RoutingPlan` before any backend runs. This
-page explains what each input contributes today, what is in flight, and which
-knobs tune the outcome. Stage-by-stage mechanics live in
+page explains what each input contributes today and which knobs tune the
+outcome. Stage-by-stage mechanics live in
 [Routing and auto mode](routing.md); the decision record is
 [ADR-0004](../adr/0004-routing-and-auto-mode.md) (decisions 1–7 plus the
 2026-10-01 amendment A1–A7).
 
-Status labels used below: **current** (shipped and reachable today),
-**in flight** (accepted design under active implementation, gh-3), **planned**
-(agreed direction, nothing built).
+Status labels used below: **current** (shipped and reachable today) and
+**planned** (agreed direction, nothing built).
 
 ```mermaid
 flowchart TD
     H["Host probe — environment/probe.py"] --> C["RoutingConstraints"]
     A["analyze() — PageSignal + diagnostics"] --> T["Rule table INTENT_RULES"]
-    X["Classifier facts (in flight, gh-3)"] -. augment-only OCR-need .-> T
+    X["Classifier facts (pdf-inspector)"] -. augment-only OCR-need .-> T
     C --> F["Code-owned eligibility funnel"]
     T --> F
     F --> J{"judge spec given?"}
@@ -119,10 +118,11 @@ documents therefore route on text statistics and image mass alone.
 
 ### Structural classifier facts
 
-**Status:** in flight (gh-3; beads `pc-rzm` → `pc-1ow`).
+**Status:** current (gh-3 closed; beads `pc-rzm`/`pc-1ow`; seam `8858012`,
+provider `f5387a0`, CLI flags `6ace6a8`).
 
-The accepted design (ADR-0004 amendment A1–A5) adds a second optional seam
-beside the judge: `detect_pdf` from the `pdf-inspector` extra reports
+The second optional seam beside the judge (ADR-0004 amendment A1–A7) is
+`detect_pdf` from the `pdf-inspector` extra: it reports
 `pdf_type`, `confidence`, `pages_needing_ocr`, `pages_with_tables`, and
 machine-readable OCR reasons. A pure fold (`apply_classifier()` in
 `src/parsecraft/pipeline/analysis.py`) merges them at the analysis boundary;
@@ -297,7 +297,7 @@ deterministic rule table plus, where configured, a judge spec.
 | `PARSECRAFT_OFFLINE=1` | environment | offline constraint: backends carrying a `model_asset` are excluded |
 | `--cache` | `convert` | content-addressed cache keyed on source bytes + registry fingerprint + canonical constraints + judge identity, so a changed knob naturally misses the old entry |
 | `parsecraft inspect` | command | previews per-page signals, diagnostics, intent, chosen backend, candidates, and reason without converting; `--json` emits the same as JSON |
-| judge / classifier spec | `resolve_judge` today; `--classifier` with gh-3 | swaps ordering (or OCR-need evidence) without touching the rules |
+| judge / classifier spec | `resolve_judge` / `resolve_classifier`; `--judge` / `--classifier` | swaps ordering (or OCR-need evidence) without touching the rules |
 | thresholds `40` / `0.05` / `5` | `src/parsecraft/routing/rules.py` | code-owned constants, not config keys — tuning them is a code change with tests (ADR-0004 decision 2) |
 | `RoutingConstraints.language` | library callers | BCP-47 narrowing of language-declaring backends; the detector is opt-in |
 

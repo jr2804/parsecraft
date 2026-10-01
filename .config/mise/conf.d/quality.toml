@@ -12,7 +12,7 @@ run = ".venv-gpu/bin/python -m pytest tests/test_backends_ocr_gpu.py -m gpu --ru
 run_windows = ".venv-gpu/Scripts/python -m pytest tests/test_backends_ocr_gpu.py -m gpu --run-gpu"
 
 [tasks.test-judge]
-description = "Judge tier: live ollaya daemon answers (opt-in; offline by default)"
+description = "Judge tier: live judge providers — ollaya daemon (OLLAYA_BASE_URL) or systemone/jev (TYPESAFE_API_KEY); opt-in, offline by default"
 run = "uv run pytest -m judge --run-judge"
 
 [tasks.bench-docling]

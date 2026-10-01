@@ -85,7 +85,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         _RUN_JUDGE,
         action="store_true",
         default=False,
-        help=f"run the '{_JUDGE_MARKER}' tier (a live judge daemon at OLLAYA_BASE_URL)",
+        help=f"run the '{_JUDGE_MARKER}' tier (a live judge provider: ollaya at OLLAYA_BASE_URL, or systemone/jev with TYPESAFE_API_KEY)",
     )
 
 
@@ -105,7 +105,7 @@ def pytest_configure(config: pytest.Config) -> None:
     )
     config.addinivalue_line(
         "markers",
-        f"{_JUDGE_MARKER}: needs a live judge daemon; skipped unless {_RUN_JUDGE} is passed",
+        f"{_JUDGE_MARKER}: needs a live judge provider (ollaya daemon or TYPESAFE_API_KEY); skipped unless {_RUN_JUDGE} is passed",
     )
 
 
@@ -118,7 +118,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     skip_network = pytest.mark.skip(reason=f"network tests are opt-in: pass {_RUN_DOWNLOADS}")
     skip_corpus = pytest.mark.skip(reason=f"corpus tier is opt-in: pass {_RUN_CORPUS}")
     skip_gpu = pytest.mark.skip(reason=f"gpu tier is opt-in: pass {_RUN_GPU} (CUDA host + .venv-gpu)")
-    skip_judge = pytest.mark.skip(reason=f"judge tier is opt-in: pass {_RUN_JUDGE} (live daemon)")
+    skip_judge = pytest.mark.skip(reason=f"judge tier is opt-in: pass {_RUN_JUDGE} (live judge provider)")
     for item in items:
         if _NETWORK_MARKER in item.keywords and not network_allowed:
             item.add_marker(skip_network)

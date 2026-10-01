@@ -121,6 +121,14 @@ class _ReversingJudge:
         return [descriptor.name for descriptor in reversed(candidates)]
 
 
+class _ExplodingJudge:
+    """Judge stub that fails the test if the planner ever consumes it."""
+
+    @staticmethod
+    def rank(intent: Intent, candidates: Sequence[BackendDescriptor]) -> Sequence[str]:
+        raise AssertionError("no judge spec was given — the deterministic default must plan")
+
+
 def test_media_type_for_supported_and_unsupported(tmp_path: Path) -> None:
     assert media_type_for(tmp_path / "a.TXT") == "text/plain"
     assert media_type_for(tmp_path / "a.md") == "text/markdown"
@@ -405,7 +413,7 @@ def test_no_judge_spec_resolves_no_provider(registry: BackendRegistry, tmp_path:
 
     def loader(spec: JudgeSpec) -> RoutingJudge:
         resolved.append(spec.provider)
-        return DeterministicJudge()
+        return _ExplodingJudge()  # any use of it fails the test loudly
 
     register_judge_provider("cli-unused-judge", loader)
     _register(registry, _descriptor("native-text", ("text/plain",)), content="native content")

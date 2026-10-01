@@ -47,6 +47,7 @@ _SCRIPT = textwrap.dedent(
     import parsecraft.providers
     import parsecraft.providers.ollaya
     import parsecraft.providers.pdfinspector
+    import parsecraft.providers.systemone
     import parsecraft.routing.classifier
 
     heavy = [
@@ -57,6 +58,7 @@ _SCRIPT = textwrap.dedent(
             "vllm",
             "docling",
             "pdf_inspector",
+            "typesafe_sdk",
             "huggingface_hub",
         )
         if m in sys.modules

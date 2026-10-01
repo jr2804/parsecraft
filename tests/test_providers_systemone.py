@@ -186,6 +186,27 @@ def test_rank_keeps_planner_order_for_ties_and_non_numeric_probabilities(stub: _
     assert list(judge.rank(Intent.OCR_GENERAL, candidates)) == ["alpha", "beta", "gamma", "delta"]
 
 
+def test_rank_memoizes_identical_page_shapes(stub: _SdkStub) -> None:
+    """One verdict per (intent, candidate set) shape — not one request per page."""
+    judge = provider.load_judge(JudgeSpec(provider="systemone", model=_MODEL))
+    first = list(judge.rank(Intent.NATIVE, [_OCR, _NATIVE]))
+    second = list(judge.rank(Intent.NATIVE, [_OCR, _NATIVE]))
+    assert first == second
+    assert first is not second  # callers get a copy, never the memo itself
+    assert len(stub.calls) == 1
+    assert len(stub.clients) == 1
+
+
+def test_rank_does_not_share_a_verdict_across_shapes(stub: _SdkStub) -> None:
+    """The memo key carries both the intent and the candidate names."""
+    judge = provider.load_judge(JudgeSpec(provider="systemone", model=_MODEL))
+    judge.rank(Intent.NATIVE, [_OCR, _NATIVE])
+    judge.rank(Intent.OCR_GENERAL, [_OCR, _NATIVE])  # same candidates, other intent
+    judge.rank(Intent.NATIVE, [_OCR, _descriptor("native-text", ocr=False)])  # other candidate set
+    judge.rank(Intent.NATIVE, [_OCR])  # one candidate: short-circuits, no request
+    assert len(stub.calls) == 3
+
+
 def test_rank_sends_one_bounded_choice_question(stub: _SdkStub) -> None:
     judge = provider.load_judge(JudgeSpec(provider="systemone", model=_MODEL))
     judge.rank(Intent.OCR_VISION, [_OCR, _NATIVE])
@@ -244,10 +265,11 @@ def test_rank_is_deterministic_and_never_invents_a_candidate(stub: _SdkStub) -> 
     assert "ghost" not in first  # an option the planner never offered is dropped
 
 
-def test_client_is_closed_after_each_call(stub: _SdkStub) -> None:
+def test_client_is_closed_after_each_request(stub: _SdkStub) -> None:
+    """Every request opens and closes its own client (a memoized shape opens none)."""
     judge = provider.load_judge(JudgeSpec(provider="systemone", model=_MODEL))
     judge.rank(Intent.NATIVE, [_OCR, _NATIVE])
-    judge.rank(Intent.NATIVE, [_OCR, _NATIVE])
+    judge.rank(Intent.OCR_GENERAL, [_OCR, _NATIVE])  # a distinct shape: a second request
     assert (stub.entered, stub.exited) == (2, 2)
 
 

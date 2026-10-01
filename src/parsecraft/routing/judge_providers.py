@@ -35,7 +35,13 @@ class JudgeSpecError(JudgeError):
 
 
 class JudgeProviderUnavailableError(JudgeError):
-    """No loader is registered and the provider module cannot be loaded."""
+    """No loader is registered and the provider module cannot be loaded.
+
+    ``module_name`` names the module that would resolve the provider, so a
+    credential gap found while resolving it (a missing ``TYPESAFE_API_KEY``,
+    say) reports that module too — resolution-time unavailability, not a
+    missing import.
+    """
 
     def __init__(self, provider: str, module_name: str, hint: str) -> None:
         self.provider = provider
