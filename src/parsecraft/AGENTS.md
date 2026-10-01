@@ -25,8 +25,9 @@ Markdown as a deterministic projection.
   aggregate (see `pipeline/AGENTS.md`).
 - `environment/` — host probe (installed extras, GPU/VRAM) → `RoutingConstraints`
   bridge (see `environment/AGENTS.md`).
-- `providers/` — optional `RoutingJudge` provider implementations, resolved from a
-  `provider/model` string and imported lazily (see `providers/AGENTS.md`).
+- `providers/` — optional judge and OCR-need classifier provider
+  implementations, resolved from a `provider/model` string and imported lazily
+  (see `providers/AGENTS.md`).
 - `benchmark/` — reproducible backend benchmarks over real documents (see
   `benchmark/AGENTS.md`).
 - `cli/` — Typer CLI; commands are plain functions in `commands.py`,

@@ -46,6 +46,7 @@ _SCRIPT = textwrap.dedent(
     import parsecraft.environment.probe
     import parsecraft.providers
     import parsecraft.providers.ollaya
+    import parsecraft.providers.pdfinspector
     import parsecraft.routing.classifier
 
     heavy = [

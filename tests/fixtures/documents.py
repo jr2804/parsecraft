@@ -63,6 +63,8 @@ _PDF_PAGE_WIDTH = 612
 _PDF_PAGE_HEIGHT = 792
 _PDF_FONT_SIZE = 18
 _PDF_LEADING = 24
+#: Side of the grayscale image object in :func:`mixed_scanned_pdf` (square pixels).
+_IMAGE_SIDE = 8
 
 
 class DocumentFactory:
@@ -144,7 +146,64 @@ def minimal_pdf(pages: Sequence[Sequence[str]] | None = None) -> bytes:
         stream = _page_content(lines)
         objects.append(f"<< /Length {len(stream)} >>\nstream\n".encode("ascii") + stream + b"\nendstream")
     objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+    return _assemble(objects)
 
+
+def mixed_scanned_pdf(text_pages: Sequence[Sequence[str]] | None = None) -> bytes:
+    """Build a PDF whose first page is an image-only scan and the rest carry text.
+
+    Page 1 has no text layer at all (one grayscale image), so a text-layer scan
+    reports page 1 as needing OCR while the text pages do not — the fixture for
+    mixed-intent routing and for pinning 1-based page indexing. Text pages
+    default to two pages, as in :func:`minimal_pdf`.
+    """
+    page_lines = [list(lines) for lines in (text_pages if text_pages is not None else [_DEFAULT_PAGE_LINES, ["Second text page."]])]
+    if not page_lines:
+        msg = "text_pages must contain at least one page"
+        raise ValueError(msg)
+
+    page_count = len(page_lines) + 1
+    kids = " ".join(f"{3 + index} 0 R" for index in range(page_count))
+    image_number = 3 + page_count
+    first_content = image_number + 1
+    font_number = first_content + page_count
+    objects: list[bytes] = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        f"<< /Type /Pages /Kids [{kids}] /Count {page_count} >>".encode("ascii"),
+        (
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {_PDF_PAGE_WIDTH} {_PDF_PAGE_HEIGHT}] "
+            f"/Resources << /XObject << /Im0 {image_number} 0 R >> >> /Contents {first_content} 0 R >>"
+        ).encode("ascii"),
+    ]
+    for index in range(len(page_lines)):
+        objects.append(
+            (
+                f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {_PDF_PAGE_WIDTH} {_PDF_PAGE_HEIGHT}] "
+                f"/Resources << /Font << /F1 {font_number} 0 R >> >> "
+                f"/Contents {first_content + 1 + index} 0 R >>"
+            ).encode("ascii")
+        )
+    image_data = bytes(range(_IMAGE_SIDE * _IMAGE_SIDE))
+    objects.append(
+        (
+            f"<< /Type /XObject /Subtype /Image /Width {_IMAGE_SIDE} /Height {_IMAGE_SIDE} "
+            f"/ColorSpace /DeviceGray /BitsPerComponent 8 /Length {len(image_data)} >>"
+        ).encode("ascii")
+        + b"\nstream\n"
+        + image_data
+        + b"\nendstream"
+    )
+    image_stream = f"q {_PDF_PAGE_WIDTH - 72} 0 0 {_PDF_PAGE_HEIGHT - 144} 36 72 cm /Im0 Do Q".encode("ascii")
+    objects.append(f"<< /Length {len(image_stream)} >>\nstream\n".encode("ascii") + image_stream + b"\nendstream")
+    for lines in page_lines:
+        stream = _page_content(lines)
+        objects.append(f"<< /Length {len(stream)} >>\nstream\n".encode("ascii") + stream + b"\nendstream")
+    objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+    return _assemble(objects)
+
+
+def _assemble(objects: Sequence[bytes]) -> bytes:
+    """Wrap numbered objects into a PDF with an exact xref table (byte-identical per call)."""
     out = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
     offsets: list[int] = []
     for number, obj in enumerate(objects, start=1):
