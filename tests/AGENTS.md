@@ -10,7 +10,8 @@ tests, and keep the 100% coverage gate green.
 - `conftest.py` — shared fixtures (`doc_factory`, `cache_subdir`,
   `downloads_dir`) plus the opt-in gates for network and corpus tests.
 - `fixtures/documents.py` — deterministic synthetic document generators
-  (.txt/.md/.csv/.json/.html + a minimal PDF built from stdlib bytes).
+  (.txt/.md/.csv/.json/.html + a minimal PDF built from stdlib bytes, plus an
+  image-only-first-page scan PDF for mixed-OCR fixtures).
 - `fixtures/sources.py` + `fixtures/sources.toml` — public test-document
   manifest: license, URL, why suitable, documented local download step, plus
   corpus expectations as data (`difficulty`, `pages`, `approx_size`,
@@ -20,6 +21,10 @@ tests, and keep the 100% coverage gate green.
 - `test_backends_registry.py`, `test_example_backend.py`, `test_backends_ocr.py`
   — backend protocol, registry precedence, third-party example, OCR/VLM
   adapters (heavy stacks stubbed through `sys.modules`, fully offline).
+- `test_routing_classifier.py`, `test_providers_pdfinspector.py` — the OCR-need
+  classifier seam and its pdf-inspector provider (`pdf_inspector` stubbed
+  through `sys.modules`; the live 1-based indexing test skips without the
+  extra).
 - `test_smoke.py` — CLI surface (`backends --json`, `--version`, bare
   invocation shows help).
 - `test_document_fixtures.py`, `test_sources_manifest.py` — fixture
