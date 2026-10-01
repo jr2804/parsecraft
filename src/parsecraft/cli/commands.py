@@ -91,7 +91,7 @@ def convert(
     backend: Annotated[str | None, typer.Option("--backend", "-b", help="Non-auto: prefer this backend")] = None,
     judge: Annotated[
         str | None,
-        typer.Option("--judge", help="Route with a judge provider (`provider/model[:variant]`); mutually exclusive with --backend"),
+        typer.Option("--judge", help="Route with a judge provider (`provider/model[:variant]`); mutually exclusive with --backend; may use the network"),
     ] = None,
     classifier: Annotated[
         str | None,

@@ -201,6 +201,13 @@ The user decision behind this section (ADR-0004 A7): **a no-heuristic LLM path
 must be configurable**, and the heuristic path remains the default whenever no
 spec is given.
 
+Neither seam is gated by `RoutingConstraints.offline`: that flag excludes
+model-asset **backends** from candidacy (decision 3) and never blocks a provider
+the caller named explicitly. A judge spec is the opt-in — judges may reach the
+network (`systemone/jev` does) — while classifiers stay local-only by A4. No
+provider is resolved at all unless a spec is given, so an offline-declared run
+with no `--judge`/`--classifier` never leaves the process.
+
 ### Judge spec — ordering
 
 **Status:** current, at library and CLI level.

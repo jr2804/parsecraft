@@ -90,7 +90,7 @@ parsecraft convert SOURCE [OPTIONS]
 | Option | Default | Behaviour |
 | ------ | ------- | --------- |
 | `--backend`, `-b NAME` | unset | Non-auto: lead with this backend (it must be eligible) |
-| `--judge SPEC` | unset | Route with a judge provider (`provider/model[:variant]`); mutually exclusive with `--backend` |
+| `--judge SPEC` | unset | Route with a judge provider (`provider/model[:variant]`); mutually exclusive with `--backend`; may use the network |
 | `--classifier SPEC` | unset | Fold OCR-need facts from a classifier provider (`provider/model[:variant]`) into the analysis |
 | `--auto` / `--no-auto` | `--auto` | Route automatically; `--no-auto` requires `--backend` |
 | `--max-passes N` | `1` | Fallback passes per page group (`N >= 1`) |
@@ -133,6 +133,10 @@ text-layer scan whose verdicts can only add OCR-need, never remove it. The
 shipped judge providers are `ollaya/laya` (a local daemon reading
 `OLLAYA_BASE_URL`) and `systemone/jev` (TypeSafe's System One API, needs the
 `systemone` extra and `TYPESAFE_API_KEY` — resolution exits `1` without it).
+`--judge` is an explicit opt-in to whatever that provider does — the System One
+provider reaches the network — and is **not** gated by `PARSECRAFT_OFFLINE`,
+which excludes model-asset *backends* from candidacy rather than the judge seam.
+With no `--judge`/`--classifier` spec, no provider is resolved at all.
 
 Exit codes: `0` success, `1` analysis or routing failure, `2` usage error
 (unsupported suffix, missing file, `--no-auto` without `--backend`, a `--backend`

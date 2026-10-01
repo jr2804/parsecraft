@@ -36,7 +36,7 @@ from parsecraft.routing.classifier import (
     PageOcrClassifier,
     register_classifier_provider,
 )
-from parsecraft.routing.judge import JudgeSpec
+from parsecraft.routing.judge import DeterministicJudge, JudgeSpec
 from parsecraft.routing.judge_providers import register_judge_provider
 from tests.fixtures.documents import minimal_pdf
 
@@ -377,6 +377,41 @@ def test_convert_backend_and_judge_are_mutually_exclusive(pdf_registry: Path) ->
     result = runner.invoke(app, ["convert", str(pdf_registry), "--backend", "native-pdf", "--judge", "cli-fake-judge/j"])
     assert result.exit_code == 2
     assert "mutually exclusive" in _text(result)
+
+
+def test_judge_seam_is_not_gated_by_the_offline_constraint(registry: BackendRegistry, tmp_path: Path) -> None:
+    """`offline` excludes model-asset backends; naming a judge IS the network opt-in.
+
+    The `registry` fixture declares an offline host, so a resolved judge here can
+    only mean the constraint never governed the seam (ADR-0004 decision 3).
+    """
+    resolved: list[str] = []
+
+    def loader(spec: JudgeSpec) -> RoutingJudge:
+        resolved.append(spec.model)
+        return DeterministicJudge()
+
+    register_judge_provider("cli-offline-judge", loader)
+    _register(registry, _descriptor("native-text", ("text/plain",)), content="native content")
+    assert convert_module.probe_environment().offline is True  # the fixture's premise
+    result = runner.invoke(app, ["convert", str(_source_file(tmp_path)), "--judge", "cli-offline-judge/j"])
+    assert result.exit_code == 0
+    assert resolved == ["j"]
+
+
+def test_no_judge_spec_resolves_no_provider(registry: BackendRegistry, tmp_path: Path) -> None:
+    """No spec: the deterministic default plans, so nothing reaches a provider."""
+    resolved: list[str] = []
+
+    def loader(spec: JudgeSpec) -> RoutingJudge:
+        resolved.append(spec.provider)
+        return DeterministicJudge()
+
+    register_judge_provider("cli-unused-judge", loader)
+    _register(registry, _descriptor("native-text", ("text/plain",)), content="native content")
+    result = runner.invoke(app, ["convert", str(_source_file(tmp_path))])
+    assert result.exit_code == 0
+    assert resolved == []
 
 
 def _text(result: Result) -> str:
