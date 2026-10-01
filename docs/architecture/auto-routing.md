@@ -59,8 +59,15 @@ Routing itself never probes hardware: descriptors *declare* what a backend can
 do, the probe *detects* what this host has, and the planner reads both as plain
 data.
 
-**Planned:** RAM probing and disk-speed probing. Neither exists today —
-`EnvironmentInfo` carries only `backends`, `installed_extras`,
+**Deferred, not planned:** RAM and disk-speed probing were designed (2026-10-01)
+and intentionally not built. Nothing consumes them: no backend declares a RAM
+floor, so a probe would feed a field no rule reads. RAM probing has a written
+design and a trigger — a registered backend declares a RAM floor that
+eligibility actually checks. Disk-speed probing is rejected as a routing
+input: it is a runtime side effect (I/O load, cache pollution) and cannot
+yield honest cold-start numbers in-process; disk *capacity* is already
+enforced where it matters (`InsufficientDiskSpaceError` before model
+downloads). `EnvironmentInfo` carries only `backends`, `installed_extras`,
 `vram_budget_gb`, and `offline`, and `RoutingConstraints` has no field that
 could carry a RAM or disk figure.
 
