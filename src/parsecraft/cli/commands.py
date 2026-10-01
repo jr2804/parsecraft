@@ -89,6 +89,14 @@ def convert(
     source: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True, help="Source document to convert")],
     *,
     backend: Annotated[str | None, typer.Option("--backend", "-b", help="Non-auto: prefer this backend")] = None,
+    judge: Annotated[
+        str | None,
+        typer.Option("--judge", help="Route with a judge provider (`provider/model[:variant]`); mutually exclusive with --backend"),
+    ] = None,
+    classifier: Annotated[
+        str | None,
+        typer.Option("--classifier", help="Fold OCR-need facts from a classifier provider (`provider/model[:variant]`) into the analysis"),
+    ] = None,
     auto: Annotated[bool, typer.Option("--auto/--no-auto", help="Route automatically (default); --no-auto requires --backend")] = True,
     as_json: args.JsonFlag = False,
     max_passes: Annotated[int, typer.Option("--max-passes", min=1, help="Fallback passes per page group")] = 1,
@@ -103,6 +111,8 @@ def convert(
         document = convert_source(
             source,
             backend=backend,
+            judge=judge,
+            classifier=classifier,
             max_passes=max_passes,
             allow_ocr=False if no_ocr else None,
             use_cache=use_cache,

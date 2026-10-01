@@ -4,7 +4,9 @@ Auto mode builds host constraints from :mod:`parsecraft.environment`, plans
 with :mod:`parsecraft.routing`, and executes through
 :mod:`parsecraft.pipeline`. The non-auto path (``--backend``) uses a CLI-owned
 judge that leads with the named backend while keeping other eligible candidates
-as fallbacks.
+as fallbacks. Both optional routing seams accept spec strings: ``--judge``
+(re-rank eligible candidates) and ``--classifier`` (fold OCR-need facts into the
+analysis).
 """
 
 from __future__ import annotations
@@ -34,7 +36,15 @@ from parsecraft.routing import (
     NoEligibleBackendError,
     RoutingConstraints,
     RoutingError,
+    RoutingJudge,
 )
+from parsecraft.routing.classifier import (
+    ClassifierError,
+    ClassifierSpecError,
+    PageOcrClassifier,
+    resolve_classifier,
+)
+from parsecraft.routing.judge_providers import JudgeError, JudgeSpecError, resolve_judge
 
 _USAGE_EXIT_CODE = 2
 
@@ -61,11 +71,22 @@ def convert_source(
     path: Path,
     *,
     backend: str | None = None,
+    judge: str | None = None,
+    classifier: str | None = None,
     max_passes: int = 1,
     allow_ocr: bool | None = None,
     use_cache: bool = False,
 ) -> DocumentResult:
-    """Analyze, plan, and execute a source, returning the aggregated IR."""
+    """Analyze, plan, and execute a source, returning the aggregated IR.
+
+    ``judge``/``classifier`` are seam spec strings (``provider/model[:variant]``)
+    resolved here, before any I/O: a malformed spec is a usage error (exit 2), an
+    unavailable provider is a runtime failure (exit 1). ``backend`` and ``judge``
+    are mutually exclusive — both choose the lead candidate. Both flags default to
+    ``None``, which is exactly the historical behaviour.
+    """
+    resolved_classifier = _resolve_classifier(classifier)
+    resolved_judge = _resolve_judge(backend, judge)
     try:
         media_type = media_type_for(path)
     except UnsupportedSourceError as exc:
@@ -78,7 +99,13 @@ def convert_source(
     except NoAnalyzerError as exc:
         raise ConvertError(str(exc), exit_code=_USAGE_EXIT_CODE) from exc
     try:
-        analysis = analyze_source(source, registry, media_type=media_type, installed_extras=environment.installed_extras)
+        analysis = analyze_source(
+            source,
+            registry,
+            media_type=media_type,
+            installed_extras=environment.installed_extras,
+            classifier=resolved_classifier,
+        )
     except DependencyUnavailableError as exc:
         raise ConvertError(f"optional dependency missing: {exc}") from exc  # exit 1
     except UnsupportedDependencyVersionError as exc:
@@ -86,14 +113,42 @@ def convert_source(
     except BackendError as exc:
         raise ConvertError(f"analysis with {analyzer.name!r} failed: {exc}") from exc
     constraints = build_constraints(media_type, max_passes=max_passes, allow_ocr=allow_ocr, environment=environment)
-    judge = PreferredBackendJudge(backend) if backend is not None else None
     try:
         cache = ConversionCache() if use_cache else None
-        return execute(analysis, registry, constraints, source, judge, cache=cache).document
+        return execute(analysis, registry, constraints, source, resolved_judge, cache=cache).document
     except JudgeViolationError as exc:
         raise ConvertError(f"backend {backend!r} is not eligible for this source: {exc}", exit_code=_USAGE_EXIT_CODE) from exc
     except (NoEligibleBackendError, RoutingError) as exc:
         raise ConvertError(f"routing failed: {exc}") from exc
+
+
+def _resolve_classifier(spec: str | None) -> PageOcrClassifier | None:
+    """Resolve a classifier spec: malformed is a usage error, unavailable is not."""
+    try:
+        return resolve_classifier(spec)
+    except ClassifierSpecError as exc:
+        raise ConvertError(str(exc), exit_code=_USAGE_EXIT_CODE) from exc
+    except ClassifierError as exc:
+        raise ConvertError(f"classifier unavailable: {exc}") from exc  # exit 1
+
+
+def _resolve_judge(backend: str | None, spec: str | None) -> RoutingJudge | None:
+    """Resolve the judge seam: ``--backend`` builds the CLI's own lead-candidate judge.
+
+    ``None`` (neither flag) stays ``None`` so ``execute`` keeps its default
+    deterministic judge — byte-identical to the pre-flag behaviour.
+    """
+    if backend is not None and spec is not None:
+        msg = "--backend and --judge are mutually exclusive: both choose the lead candidate"
+        raise ConvertError(msg, exit_code=_USAGE_EXIT_CODE)
+    if spec is None:
+        return PreferredBackendJudge(backend) if backend is not None else None
+    try:
+        return resolve_judge(spec)
+    except JudgeSpecError as exc:
+        raise ConvertError(str(exc), exit_code=_USAGE_EXIT_CODE) from exc
+    except JudgeError as exc:
+        raise ConvertError(f"judge unavailable: {exc}") from exc  # exit 1
 
 
 def read_source(path: Path, media_type: str) -> SourceDocument:
