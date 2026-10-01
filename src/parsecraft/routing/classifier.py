@@ -1,5 +1,5 @@
-"""Optional per-page OCR-need classifier — an injectable seam, never imported by
-the core as a dependency.
+"""Optional per-page OCR-need classifier — an injectable seam; the core never
+imports a classifier implementation.
 
 A classifier produces :class:`OcrFacts` from a source document; a pure fold
 (:func:`parsecraft.pipeline.analysis.apply_classifier`) merges those facts into
@@ -55,6 +55,7 @@ class OcrFacts(BaseModel):
     pages_with_tables: frozenset[int] = Field(default_factory=frozenset[int])
     pdf_type: str | None = None
     confidence: float | None = Field(default=None, ge=0, le=1)
+    #: Provenance: classifier name AND upstream version (e.g. "pdf-inspector 1.25.2").
     source: str = Field(min_length=1)
 
     model_config = {"frozen": True}
