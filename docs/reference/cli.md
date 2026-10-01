@@ -125,13 +125,16 @@ measured VRAM, `PARSECRAFT_OFFLINE`). `--max-passes` and `--no-ocr` map to
 Both optional routing seams accept a `provider/model` spec string, resolved
 before any I/O. Both default to off, which is exactly the rule-table
 behaviour, and `--backend` cannot be combined with `--judge` — both choose
-the lead candidate. The shipped values:
+the lead candidate. `parsecraft judges` prints the live provider catalog (model
+tokens, credentials, extras, and whether this host has them), and
+[Steer the auto-backend selector](../guides/auto-backend-selector.md) walks
+through the flags with worked examples. The shipped values:
 
 #### Judge providers (`--judge`)
 
 | Spec | Endpoint | Credential | Extra | Notes |
 | --- | --- | --- | --- | --- |
-| `systemone/jev-latest`, `systemone/jev-preview` | TypeSafe cloud System One API | `TYPESAFE_API_KEY` | `systemone` | typed Choice ranking; exit `1` without the key |
+| `typesafe-ai/jev-latest`, `typesafe-ai/jev-preview` | TypeSafe cloud, System One models | `TYPESAFE_API_KEY` | `systemone` | typed Choice ranking; exit `1` without the key |
 | `zen/jev-1.13`, `zen/jev-1.13-free` | OpenCode Zen, same System One wire | `OPENCODE_API_KEY` | `systemone` | the `-free` model is quota-free |
 | `ollama/<model>` | local Ollama daemon (`:11434`), same System One wire | none | — | any local Nimble/Tev scoring model (`nimble`, `tev`); other GGUFs answer `400`; bare name resolves to the daemon's `:latest` tag |
 
@@ -254,6 +257,23 @@ page 1: chars=131 images=0 blank=False replacement=n/a
 routing: primary=native-text
   page 1: intent=native chosen=native-text candidates=native-text
     reason: page 1: native text sufficient (text_chars=131); first pass native-text
+```
+
+### `parsecraft judges`
+
+List the built-in judge providers: each provider's spec spelling, model tokens,
+credential, the extra that ships it, and whether this host has them. Pure
+description — nothing is resolved, no credential is read beyond its presence,
+and no endpoint is contacted.
+
+| Option | Default | Behaviour |
+| ------ | ------- | --------- |
+| `--json` | off | Emit the provider profiles plus availability as JSON |
+
+```text
+$ parsecraft judges
+no --judge: the deterministic rule table decides; no provider is resolved and no network is used
+typesafe-ai/jev-latest   TYPESAFE_API_KEY (unset)   extra systemone (missing)   SDK default base URL
 ```
 
 ### `parsecraft models`

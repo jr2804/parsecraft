@@ -130,7 +130,7 @@ A page needs OCR when it is blank, has no native text, has fewer than
 `MAX_REPLACEMENT_RATIO`. An optional classifier can add OCR-need for a page
 (`PageSignal.classifier_needs_ocr is True`) but never remove it: a `text_based`
 verdict cannot force a page that fails the tests above onto `NATIVE` (see
-[auto routing](auto-routing.md#classifier-spec-ocr-need-facts)). The OCR
+[auto routing](auto-routing.md#classifier-spec--ocr-need-facts)). The OCR
 flavor comes from document-level diagnostics
 (`feature:tables`, `feature:equations`, `feature:figures`) or from
 `sum(image_count) >= HEAVY_IMAGE_COUNT`:
@@ -349,8 +349,11 @@ and never calls a detector; filling the request is the caller's job. See
 ## Status
 
 The routing engine (`parsecraft.routing`) and the executor
-(`parsecraft.pipeline`) are implemented and exported. Execution is library-only
-for now: the `convert --auto` CLI wiring is planned (bead `pc-4u7.14`). Also
-planned: a Jev / System One-backed `RoutingJudge` (the seam is the hook; it
-would be an optional extra) and cancellation/timeout passthrough into
-`ConversionRequest`. Tracking bead: `pc-5ub`.
+(`parsecraft.pipeline`) are implemented and exported, and wired into the CLI:
+`convert --auto` (the default), `--backend`, `--preference`, `--max-passes`,
+`--no-ocr`, `--judge` and `--classifier` are all current. The judge seam ships
+three System One providers (see [Auto routing](auto-routing.md)). Still planned:
+cancellation/timeout passthrough into `ConversionRequest`. Tracking bead:
+`pc-5ub`.
+
+Worked examples live in [Steer the auto-backend selector](../guides/auto-backend-selector.md).

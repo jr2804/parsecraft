@@ -215,7 +215,7 @@ spec is given.
 Neither seam is gated by `RoutingConstraints.offline`: that flag excludes
 model-asset **backends** from candidacy (decision 3) and never blocks a provider
 the caller named explicitly. A judge spec is the opt-in — judges may reach the
-network (`systemone/jev-latest` does) — while classifiers stay local-only by A4. No
+network (`typesafe-ai/jev-latest` does) — while classifiers stay local-only by A4. No
 provider is resolved at all unless a spec is given, so an offline-declared run
 with no `--judge`/`--classifier` never leaves the process.
 
@@ -237,7 +237,7 @@ Failures are typed: `JudgeSpecError` (malformed spec),
 `JudgeProviderUnavailableError` (names the provider extra to install), and
 `JudgeProviderLoadError` (loader failed or returned a non-judge). Three judge
 providers ship, all System One endpoints sharing one implementation
-(`src/parsecraft/providers/_jev.py`) — `systemone/jev-latest` (the TypeSafe
+(`src/parsecraft/providers/_jev.py`) — `typesafe-ai/jev-latest` (the TypeSafe
 cloud serves `jev-latest`/`jev-preview`; a bare `jev` is unknown;
 `TYPESAFE_API_KEY`), `zen/<model>` (OpenCode Zen, `OPENCODE_API_KEY`), and
 `ollama/<model>` (a local daemon, no key).
@@ -253,14 +253,14 @@ provider that cannot be loaded exits `1`.
 
 **Status:** current.
 
-1. Install parsecraft with the provider extra — `systemone` (TypeSafe cloud,
-   `typesafe-sdk`); `zen` and `ollama` need **no extra** (zen rides
-   `systemone`, ollama talks to a local daemon).
+1. Install parsecraft with the provider extra — `systemone` (the System One
+   scoring stack, `typesafe-sdk`); all three providers ride it (the cloud, Zen
+   and the local daemon reach the wire through the same SDK).
 2. Export the credential of the endpoint you named: `TYPESAFE_API_KEY`
    (cloud) or `OPENCODE_API_KEY` (zen; `jev-1.13-free` is quota-free). The
    local `ollama/<model>` needs no credential — pull a scoring-capable model
    (`nimble`, or the 4B `tev`) with ollama ≥ 0.35.
-3. Run with a spec: `parsecraft convert doc.pdf --judge systemone/jev-latest`
+3. Run with a spec: `parsecraft convert doc.pdf --judge typesafe-ai/jev-latest`
    (or `zen/jev-1.13-free`, `ollama/nimble`). Without `--judge`, the
    deterministic judge stays in charge.
 
@@ -299,14 +299,14 @@ IR-1-based facts, with `pdf_type`, `confidence`, and table pages feeding the
 
 ### System One / Jev providers
 
-**Status:** current, three endpoints (`systemone/jev-latest`, `zen/<model>`,
+**Status:** current, three endpoints (`typesafe-ai/jev-latest`, `zen/<model>`,
 `ollama/<model>`); a Jev-backed classifier is not shipped.
 
 ADR-0004 decision 7 and A7 make the judge seam the integration point for a
 System One / Jev-backed judge. One implementation (`src/parsecraft/providers/_jev.py`)
 serves three endpoints behind the optional `systemone` extra (`typesafe-sdk`,
 MIT, pure Python) — the SDK is injected per endpoint rather than hand-rolled:
-`systemone/<model>` is the TypeSafe cloud (SDK default base URL,
+`typesafe-ai/<model>` is the TypeSafe cloud (SDK default base URL,
 `TYPESAFE_API_KEY`), `zen/<model>` is OpenCode Zen (`base_url`
 `https://opencode.ai/zen`, `OPENCODE_API_KEY`; the SDK appends its
 `/v1/systemone` path and sends `Authorization: Bearer …`, exactly what Zen
@@ -326,7 +326,7 @@ name order, so identical inputs give identical orders. Verdicts are memoized per
 invocation), so a repeated page shape costs nothing extra. The judge stays
 inside the code-owned funnel: it only re-ranks what `plan_route` already found
 eligible (decisions 3-5), and the host budget is a ranking signal, never a
-filter. The model id is the spec's model token (`systemone/jev-latest`,
+filter. The model id is the spec's model token (`typesafe-ai/jev-latest`,
 `zen/jev-1.13-free`, `ollama/nimble`); a `:variant` is rejected rather than
 ignored — note that this makes Ollama's tag form unusable
 (`ollama/nimble:latest` parses as a variant), which is harmless because the
@@ -371,4 +371,6 @@ deterministic rule table plus, where configured, a judge spec.
 - [ADR-0004](../adr/0004-routing-and-auto-mode.md) — decisions 1–7 and
   amendment A1–A7
 - [CLI reference](../reference/cli.md) — command flags and exit codes
+- [Steer the auto-backend selector](../guides/auto-backend-selector.md) — the
+  task-oriented walkthrough with worked examples
 - [Backends](backends.md) — descriptor capabilities and the registry

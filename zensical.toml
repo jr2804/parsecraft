@@ -24,6 +24,7 @@ nav = [
     { "Auto routing" = "architecture/auto-routing.md" },
   ] },
   { "Guides" = [
+    { "Steer the auto-backend selector" = "guides/auto-backend-selector.md" },
     { "Write a backend" = "guides/backend-authoring.md" },
   ] },
   { "Reference" = [
