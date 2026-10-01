@@ -65,6 +65,7 @@ skills-lock.json
 .mcp.json
 opencode.json
 mcporter.json
+.pi/
 
 # .agents/ DOX files — track .md and history/, ignore everything else tools may drop
 /.agents/*
