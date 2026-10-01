@@ -29,7 +29,7 @@ from parsecraft.cli.app import app
 from parsecraft.environment import EnvironmentInfo
 from parsecraft.ir import ChunkKind, PageResult, PageSignal, StructuredChunk
 from parsecraft.pipeline.analysis import NoAnalyzerError, UnsupportedSourceError, choose_analyzer, media_type_for
-from parsecraft.routing import Intent, MachineProfile, RoutingJudge
+from parsecraft.routing import Intent, MachineProfile, RoutingJudge, RoutingPreference
 from parsecraft.routing.classifier import (
     ClassifierSpec,
     OcrFacts,
@@ -367,7 +367,69 @@ def test_convert_judge_flag_reorders_candidates(pdf_registry: Path) -> None:
     assert "ocr content" in result.output
 
 
-def _load_reversing_judge(spec: JudgeSpec, machine: MachineProfile | None = None) -> RoutingJudge:
+def test_convert_preference_reaches_the_resolved_judge(pdf_registry: Path) -> None:
+    """The flag crosses into the seam: the loader is asked with the requested axis."""
+    seen: list[RoutingPreference] = []
+
+    def loader(spec: JudgeSpec, machine: MachineProfile | None = None, preference: RoutingPreference = RoutingPreference.BALANCED) -> RoutingJudge:
+        seen.append(preference)
+        return _ReversingJudge()
+
+    register_judge_provider("cli-preference-judge", loader)
+    result = runner.invoke(app, ["convert", str(pdf_registry), "--judge", "cli-preference-judge/j", "--preference", "quality"])
+    assert result.exit_code == 0
+    assert seen == [RoutingPreference.QUALITY]
+
+
+def test_convert_preference_defaults_to_balanced(pdf_registry: Path) -> None:
+    seen: list[RoutingPreference] = []
+
+    def loader(spec: JudgeSpec, machine: MachineProfile | None = None, preference: RoutingPreference = RoutingPreference.BALANCED) -> RoutingJudge:
+        seen.append(preference)
+        return _ReversingJudge()
+
+    register_judge_provider("cli-preference-default-judge", loader)
+    result = runner.invoke(app, ["convert", str(pdf_registry), "--judge", "cli-preference-default-judge/j"])
+    assert result.exit_code == 0
+    assert seen == [RoutingPreference.BALANCED]
+
+
+def test_convert_rejects_an_unknown_preference(pdf_registry: Path) -> None:
+    """A StrEnum option means the CLI validates the axis for free (typer usage error)."""
+    result = runner.invoke(app, ["convert", str(pdf_registry), "--preference", "extreme"])
+    assert result.exit_code == 2
+    assert "extreme" in _text(result)
+
+
+def test_convert_preference_quality_flips_the_lead_within_a_family(
+    registry: BackendRegistry,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """End to end with no judge: the planner's own judge honours the flag.
+
+    Two OCR candidates with different declared size and an OCR-intent page (text
+    under the native threshold), so the pair really is the family the flag
+    orders — and the executed backend's own content shows who led.
+    """
+    _register(registry, _descriptor("ocr-ovis", ("text/plain",), group="ocr-ovis", gpu=True, vram=6.0), content="ovis output")
+    _register(registry, _descriptor("ocr-unlimited", ("text/plain",), group="ocr-unlimited", gpu=True, vram=4.0), content="unlimited output")
+    monkeypatch.setattr(
+        convert_module,
+        "probe_environment",
+        lambda: EnvironmentInfo(installed_extras=frozenset({"ocr-ovis", "ocr-unlimited"}), vram_budget_gb=8.0, offline=True),
+    )
+    source = str(_source_file(tmp_path, text="hi"))  # below NATIVE_MIN_TEXT_CHARS -> OCR intent
+    balanced = runner.invoke(app, ["convert", source])
+    quality = runner.invoke(app, ["convert", source, "--preference", "quality"])
+    speed = runner.invoke(app, ["convert", source, "--preference", "speed"])
+    assert balanced.exit_code == quality.exit_code == speed.exit_code == 0
+    assert "unlimited output" in balanced.output  # smallest declared size first
+    assert "unlimited output" in speed.output
+    assert "ovis output" in quality.output  # largest declared size first
+
+
+def _load_reversing_judge(spec: JudgeSpec, machine: MachineProfile | None = None, preference: RoutingPreference = RoutingPreference.BALANCED) -> RoutingJudge:
     return _ReversingJudge()
 
 
@@ -395,7 +457,7 @@ def test_judge_seam_is_not_gated_by_the_offline_constraint(registry: BackendRegi
     """
     resolved: list[str] = []
 
-    def loader(spec: JudgeSpec, machine: MachineProfile | None = None) -> RoutingJudge:
+    def loader(spec: JudgeSpec, machine: MachineProfile | None = None, preference: RoutingPreference = RoutingPreference.BALANCED) -> RoutingJudge:
         resolved.append(spec.model)
         return DeterministicJudge()
 
@@ -411,7 +473,7 @@ def test_no_judge_spec_resolves_no_provider(registry: BackendRegistry, tmp_path:
     """No spec: the deterministic default plans, so nothing reaches a provider."""
     resolved: list[str] = []
 
-    def loader(spec: JudgeSpec, machine: MachineProfile | None = None) -> RoutingJudge:
+    def loader(spec: JudgeSpec, machine: MachineProfile | None = None, preference: RoutingPreference = RoutingPreference.BALANCED) -> RoutingJudge:
         resolved.append(spec.provider)
         return _ExplodingJudge()  # any use of it fails the test loudly
 

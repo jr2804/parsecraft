@@ -38,6 +38,7 @@ from parsecraft.routing import (
     RoutingConstraints,
     RoutingError,
     RoutingJudge,
+    RoutingPreference,
 )
 from parsecraft.routing.classifier import (
     ClassifierError,
@@ -76,6 +77,7 @@ def convert_source(
     classifier: str | None = None,
     max_passes: int = 1,
     allow_ocr: bool | None = None,
+    preference: RoutingPreference = RoutingPreference.BALANCED,
     use_cache: bool = False,
 ) -> DocumentResult:
     """Analyze, plan, and execute a source, returning the aggregated IR.
@@ -85,8 +87,11 @@ def convert_source(
     spec strings (``provider/model[:variant]``) resolved from that probe before
     the source is read: a malformed spec is a usage error (exit 2), an
     unavailable provider is a runtime failure (exit 1). ``backend`` and
-    ``judge`` are mutually exclusive — both choose the lead candidate. Both
-    flags default to ``None``, which is exactly the historical behaviour.
+    ``judge`` are mutually exclusive — both choose the lead candidate.
+    ``preference`` reaches the plan both as a constraint (the judge the planner
+    builds itself) and as the resolved judge's ranking axis, so one flag drives
+    both paths. All flags default to their neutral values, which is exactly the
+    historical behaviour.
     """
     try:
         media_type = media_type_for(path)
@@ -94,7 +99,7 @@ def convert_source(
         raise ConvertError(str(exc), exit_code=_USAGE_EXIT_CODE) from exc
     environment = probe_environment()  # a single probe per invocation, shared by analysis and the seams
     resolved_classifier = _resolve_classifier(classifier)
-    resolved_judge = _resolve_judge(backend, judge, environment)
+    resolved_judge = _resolve_judge(backend, judge, environment, preference)
     source = read_source(path, media_type)
     registry = default_registry
     try:
@@ -115,7 +120,7 @@ def convert_source(
         raise ConvertError(f"unsupported dependency version: {exc}") from exc  # exit 1
     except BackendError as exc:
         raise ConvertError(f"analysis with {analyzer.name!r} failed: {exc}") from exc
-    constraints = build_constraints(media_type, max_passes=max_passes, allow_ocr=allow_ocr, environment=environment)
+    constraints = build_constraints(media_type, max_passes=max_passes, allow_ocr=allow_ocr, environment=environment, preference=preference)
     try:
         cache = ConversionCache() if use_cache else None
         return execute(analysis, registry, constraints, source, resolved_judge, cache=cache).document
@@ -135,13 +140,21 @@ def _resolve_classifier(spec: str | None) -> PageOcrClassifier | None:
         raise ConvertError(f"classifier unavailable: {exc}") from exc  # exit 1
 
 
-def _resolve_judge(backend: str | None, spec: str | None, environment: EnvironmentInfo) -> RoutingJudge | None:
+def _resolve_judge(
+    backend: str | None,
+    spec: str | None,
+    environment: EnvironmentInfo,
+    preference: RoutingPreference,
+) -> RoutingJudge | None:
     """Resolve the judge seam: ``--backend`` builds the CLI's own lead-candidate judge.
 
-    ``None`` (neither flag) stays ``None`` so ``execute`` keeps its default
-    deterministic judge — byte-identical to the pre-flag behaviour. The host
-    facts from ``environment`` reach a machine-aware judge, so it can weigh
-    hardware fit among the eligible candidates without probing the host again.
+    ``None`` (no seam flag) stays ``None`` so ``execute`` keeps its default
+    deterministic judge — byte-identical to the pre-flag behaviour — and that
+    judge reads the preference from the constraints. The host facts from
+    ``environment`` reach a machine-aware judge, so it can weigh hardware fit
+    among the eligible candidates without probing the host again, and
+    ``preference`` reaches a preference-aware one; both are ignored by judges
+    that have no use for them.
     """
     if backend is not None and spec is not None:
         msg = "--backend and --judge are mutually exclusive: both choose the lead candidate"
@@ -150,7 +163,7 @@ def _resolve_judge(backend: str | None, spec: str | None, environment: Environme
         return PreferredBackendJudge(backend) if backend is not None else None
     machine = MachineProfile(vram_budget_gb=environment.vram_budget_gb)
     try:
-        return resolve_judge(spec, machine=machine)
+        return resolve_judge(spec, machine=machine, preference=preference)
     except JudgeSpecError as exc:
         raise ConvertError(str(exc), exit_code=_USAGE_EXIT_CODE) from exc
     except JudgeError as exc:
@@ -172,6 +185,7 @@ def build_constraints(
     max_passes: int,
     allow_ocr: bool | None,
     environment: EnvironmentInfo | None = None,
+    preference: RoutingPreference = RoutingPreference.BALANCED,
 ) -> RoutingConstraints:
     """Distill detected host facts plus plan inputs into routing constraints.
 
@@ -183,6 +197,7 @@ def build_constraints(
         formats={media_type},
         allow_ocr=allow_ocr,
         max_passes=max_passes,
+        preference=preference,
     )
 
 

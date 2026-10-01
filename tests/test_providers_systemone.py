@@ -20,7 +20,7 @@ import pytest
 from parsecraft.backends.protocol import BackendCapabilities, BackendDescriptor
 from parsecraft.providers import _jev
 from parsecraft.providers import systemone as provider
-from parsecraft.routing import Intent
+from parsecraft.routing import Intent, RoutingPreference
 from parsecraft.routing.judge import JudgeSpec, MachineProfile, RoutingJudge
 from parsecraft.routing.judge_providers import (
     JudgeProviderUnavailableError,
@@ -153,6 +153,7 @@ def test_rank_sends_one_bounded_choice_question(jev_sdk: StubSdk, ts_key: str) -
     state, questions = jev_sdk.calls[0]
     assert state == {
         "intent": "ocr-vision",
+        "preference": "balanced",
         "candidates": {
             "ocr-ovis": {"family": "ocr", "requires_gpu": True, "estimated_vram_gb": 6.0, "formats": ["application/pdf", "image/png"]},
             "native-pdf": {"family": "native", "requires_gpu": False, "estimated_vram_gb": None, "formats": ["application/pdf"]},
@@ -165,6 +166,26 @@ def test_rank_sends_one_bounded_choice_question(jev_sdk: StubSdk, ts_key: str) -
         "ocr-ovis": "OCR backend; requires ~6 GB VRAM; handles application/pdf, image/png",
         "native-pdf": "native backend; runs on CPU; handles application/pdf",
     }
+
+
+def test_rank_carries_the_preference_verbatim_in_state_and_instructions(jev_sdk: StubSdk, ts_key: str) -> None:
+    """The preference steers the question AND is inspectable in the payload."""
+    judge = provider.load_judge(JudgeSpec(provider="systemone", model=_MODEL), None, RoutingPreference.QUALITY)
+    judge.rank(Intent.OCR_GENERAL, [_OCR, _NATIVE])
+    state, _questions = jev_sdk.calls[0]
+    assert state["preference"] == "quality"  # verbatim, not a repr or an ordinal
+    instructions, _criteria = jev_sdk.choices[0]
+    assert "`quality`" in instructions
+    assert "most capable" in instructions
+
+
+def test_rank_defaults_the_preference_to_balanced(jev_sdk: StubSdk, ts_key: str) -> None:
+    judge = provider.load_judge(JudgeSpec(provider="systemone", model=_MODEL))
+    judge.rank(Intent.OCR_GENERAL, [_OCR, _NATIVE])
+    state, _questions = jev_sdk.calls[0]
+    assert state["preference"] == RoutingPreference.BALANCED.value == "balanced"
+    instructions, _criteria = jev_sdk.choices[0]
+    assert "`balanced`" in instructions
 
 
 def test_rank_reports_the_host_budget_when_known(jev_sdk: StubSdk, ts_key: str) -> None:

@@ -18,6 +18,7 @@ from parsecraft.routing.models import (
     RoutingConstraints,
     RoutingError,
     RoutingPlan,
+    RoutingPreference,
 )
 from parsecraft.routing.planner import plan_route
 
@@ -35,5 +36,6 @@ __all__ = [
     "RoutingError",
     "RoutingJudge",
     "RoutingPlan",
+    "RoutingPreference",
     "plan_route",
 ]

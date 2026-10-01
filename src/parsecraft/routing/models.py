@@ -16,6 +16,19 @@ class Intent(StrEnum):
     OCR_VISION = "ocr-vision"
 
 
+class RoutingPreference(StrEnum):
+    """How hard the caller wants the ranking to lean towards capability.
+
+    A *preference*, never a permission: it only orders candidates the hard
+    constraints already admitted, and it never crosses the family precedence
+    (a native lead stays ahead of OCR for ``Intent.NATIVE``).
+    """
+
+    SPEED = "speed"
+    BALANCED = "balanced"
+    QUALITY = "quality"
+
+
 class RoutingError(Exception):
     """Base class for all routing-harness failures."""
 
@@ -57,6 +70,9 @@ class RoutingConstraints(BaseModel):
     #: Requested document language (BCP-47); ``None`` places no language
     #: restriction. A language-agnostic candidate is never excluded by it.
     language: str | None = None
+    #: Ranking preference *within* the eligible family (see
+    #: :class:`RoutingPreference`); it orders candidates, it never widens them.
+    preference: RoutingPreference = RoutingPreference.BALANCED
 
 
 class PageRoute(BaseModel):

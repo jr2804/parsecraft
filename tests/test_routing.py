@@ -26,6 +26,7 @@ from parsecraft.routing import (
     PageRoute,
     RoutingConstraints,
     RoutingError,
+    RoutingPreference,
     plan_route,
 )
 from parsecraft.routing.judge import PREFERRED_BACKENDS, RoutingJudge
@@ -247,6 +248,67 @@ def test_deterministic_judge_prefers_model_per_intent() -> None:
 
 def test_judge_protocol_runtime_conformance() -> None:
     assert isinstance(DeterministicJudge(), RoutingJudge)
+
+
+# ── preference: a ranking axis, never a permission ─────────────────────────
+
+
+def test_routing_preference_is_a_lowercase_str_enum() -> None:
+    """A StrEnum, so the values are the wire/CLI spelling and no Literal is needed."""
+    assert [member.value for member in RoutingPreference] == ["speed", "balanced", "quality"]
+    assert all(isinstance(member, str) for member in RoutingPreference)
+    assert RoutingPreference("quality") is RoutingPreference.QUALITY  # typer/pydantic parse free
+    assert f"{RoutingPreference.SPEED}" == "speed"  # str identity, not "RoutingPreference.SPEED"
+    assert RoutingConstraints().preference is RoutingPreference.BALANCED
+
+
+def test_preference_quality_reverses_the_vram_tiebreak_within_a_family() -> None:
+    """QUALITY takes the largest declared model first; unsized candidates stay last."""
+    balanced = list(DeterministicJudge().rank(Intent.OCR_GENERAL, ocr_backends()))
+    quality = list(DeterministicJudge(RoutingPreference.QUALITY).rank(Intent.OCR_GENERAL, ocr_backends()))
+    assert balanced == ["ocr-unlimited", "ocr-ovis", "ocr-qianfan", "ocr-tele"]  # 4.0 GB, then 6.0 GB
+    assert quality == ["ocr-ovis", "ocr-unlimited", "ocr-qianfan", "ocr-tele"]  # 6.0 GB first
+    # No declared size is unknown strength, not zero: those two stay last either way.
+    assert balanced[2:] == quality[2:] == ["ocr-qianfan", "ocr-tele"]
+
+
+def test_speed_matches_balanced_and_is_the_explicit_cheapest() -> None:
+    heavy = make_desc("native-heavy", ("text/plain",), gpu=True, vram=7.5)
+    light = make_desc("native-light", ("text/plain",), gpu=True, vram=1.0)
+    candidates = [heavy, light]
+    assert list(DeterministicJudge(RoutingPreference.SPEED).rank(Intent.NATIVE, candidates)) == ["native-light", "native-heavy"]
+    assert list(DeterministicJudge(RoutingPreference.BALANCED).rank(Intent.NATIVE, candidates)) == ["native-light", "native-heavy"]
+
+
+def test_preference_never_crosses_the_family_precedence() -> None:
+    """A big OCR model never overtakes the native lead for a NATIVE-intent page."""
+    heavy = make_desc("native-heavy", ("text/plain",), gpu=True, vram=7.5)
+    plain = make_desc("native-aaa", ("text/plain",))
+    ocr = make_desc("ocr-tele", ALL_FORMATS, gpu=True, vram=200.0)
+    for preference in RoutingPreference:
+        assert list(DeterministicJudge(preference).rank(Intent.NATIVE, [ocr, heavy, plain]))[-1] == "ocr-tele"
+
+
+def test_preference_never_overrides_the_preferred_model() -> None:
+    """The code-owned preferred backend for a flavor stays first under any preference."""
+    for preference in RoutingPreference:
+        order = DeterministicJudge(preference).rank(Intent.OCR_TABLES, ocr_backends())
+        assert order[0] == "ocr-unlimited"
+
+
+def test_plan_uses_the_constraint_preference_for_its_own_judge() -> None:
+    """With no injected judge, the planner's default judge reads the constraint."""
+    heavy = make_desc("ocr-ovis", ALL_FORMATS, gpu=True, vram=6.0, group="ocr-ovis")
+    light = make_desc("ocr-unlimited", ALL_FORMATS, gpu=True, vram=4.0, group="ocr-unlimited")
+    analysis = make_analysis(garbled(), 1)
+    balanced = plan_route(analysis, [heavy, light], full_constraints(formats=ALL_FORMATS, allow_ocr=True))
+    quality = plan_route(
+        analysis,
+        [heavy, light],
+        full_constraints(formats=ALL_FORMATS, allow_ocr=True, preference=RoutingPreference.QUALITY),
+    )
+    assert balanced.pages[0].chosen == "ocr-unlimited"
+    assert quality.pages[0].chosen == "ocr-ovis"
 
 
 # ── planner: happy paths ───────────────────────────────────────────────────

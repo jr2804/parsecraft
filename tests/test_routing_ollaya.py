@@ -21,7 +21,7 @@ from parsecraft.providers.ollaya import (
 )
 from parsecraft.routing.judge import JudgeSpec, RoutingJudge
 from parsecraft.routing.judge_providers import resolve_judge
-from parsecraft.routing.models import Intent, RoutingConstraints, RoutingError
+from parsecraft.routing.models import Intent, RoutingConstraints, RoutingError, RoutingPreference
 from parsecraft.routing.planner import plan_route
 
 _PostSpy = list[tuple[str, dict[str, object]]]
@@ -106,6 +106,24 @@ def test_wire_payload_matches_the_verified_decide_shape(monkeypatch: pytest.Monk
     assert "OCR backend" in description
     assert "1 GB VRAM" in description
     assert Intent.OCR_VISION.value in description
+
+
+def test_load_judge_accepts_the_preference_and_keeps_its_pinned_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The shared loader contract passes a preference; this daemon's wire has no field for it.
+
+    Deliberate: ``ollaya``'s payload shape is pinned by its own wire tests, and
+    the preference axis was wired into the System One template only (bead
+    pc-nb3). Accepting-and-ignoring keeps the loader contract uniform without
+    inventing a field this daemon never agreed to.
+    """
+    monkeypatch.delenv("OLLAYA_BASE_URL", raising=False)
+    captured = _post_that(monkeypatch, _response({"a": 0.6, "b": 0.4}))
+    judge = load_judge(JudgeSpec(provider="ollaya", model="laya", variant=None), None, RoutingPreference.QUALITY)
+    judge.rank(Intent.OCR_GENERAL, [_descriptor("a", vram=1.0), _descriptor("b", vram=4.5)])
+    _url, payload = captured[0]
+    state = payload["state"]
+    assert isinstance(state, dict)
+    assert "preference" not in state
 
 
 def test_descriptions_declare_cpu_and_formats_for_native_candidates(monkeypatch: pytest.MonkeyPatch) -> None:

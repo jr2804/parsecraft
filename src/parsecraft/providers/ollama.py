@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from parsecraft.providers._jev import load_endpoint_judge
 from parsecraft.routing.judge import JudgeSpec, MachineProfile, RoutingJudge
+from parsecraft.routing.models import RoutingPreference
 
 #: Spec provider token (also the module name under ``parsecraft.providers``).
 PROVIDER_NAME = "ollama"
@@ -29,7 +30,11 @@ BASE_URL = "http://localhost:11434"
 _TIMEOUT_S = 120.0
 
 
-def load_judge(spec: JudgeSpec, machine: MachineProfile | None = None) -> RoutingJudge:
+def load_judge(
+    spec: JudgeSpec,
+    machine: MachineProfile | None = None,
+    preference: RoutingPreference = RoutingPreference.BALANCED,
+) -> RoutingJudge:
     """Provider entry point required by ``routing.judge_providers`` (pc-2's contract).
 
     No ``api_key_env``: this endpoint needs no credential, and the shared loader
@@ -39,6 +44,7 @@ def load_judge(spec: JudgeSpec, machine: MachineProfile | None = None) -> Routin
         provider=PROVIDER_NAME,
         spec=spec,
         machine=machine,
+        preference=preference,
         base_url=BASE_URL,
         timeout_s=_TIMEOUT_S,
     )

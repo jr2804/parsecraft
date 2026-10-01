@@ -18,7 +18,7 @@ from parsecraft.environment import probe as probe_module
 from parsecraft.environment.constraints import constraints_from_environment
 from parsecraft.environment.models import EnvironmentInfo
 from parsecraft.environment.probe import EXTRA_IMPORTS, probe_environment
-from parsecraft.routing.models import RoutingConstraints
+from parsecraft.routing.models import RoutingConstraints, RoutingPreference
 
 
 class _Completed:
@@ -262,10 +262,16 @@ def test_constraints_pass_plan_inputs_through() -> None:
         formats=("pdf", "md"),
         allow_ocr=False,
         max_passes=3,
+        preference=RoutingPreference.QUALITY,
     )
     assert constraints.formats == {"pdf", "md"}
     assert constraints.allow_ocr is False
     assert constraints.max_passes == 3
+    assert constraints.preference is RoutingPreference.QUALITY
+
+
+def test_constraints_default_to_the_balanced_preference() -> None:
+    assert constraints_from_environment(_environment()).preference is RoutingPreference.BALANCED
 
 
 def test_allow_ocr_derivation_and_override() -> None:

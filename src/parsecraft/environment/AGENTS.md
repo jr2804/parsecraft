@@ -11,7 +11,8 @@ capabilities in `backends/` descriptors.
 - `models.py` — `EnvironmentInfo` (frozen value object).
 - `probe.py` — `probe_environment()` and `EXTRA_IMPORTS` (the declared
   extra → import-package map).
-- `constraints.py` — `constraints_from_environment()` bridge.
+- `constraints.py` — `constraints_from_environment()` bridge: host facts plus
+  the plan inputs `formats`, `allow_ocr`, `max_passes`, and `preference`.
 - `__init__.py` — curated re-exports (keep `__all__` sorted, `RUF022`).
 
 ## Local Contracts

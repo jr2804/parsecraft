@@ -17,6 +17,7 @@ from parsecraft.cli import models as models_module
 from parsecraft.cli.convert import ConvertError, convert_source, render
 from parsecraft.cli.errors import CliError
 from parsecraft.config import ConfigError
+from parsecraft.routing import RoutingPreference
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Commands are plain top-level functions; registration happens in app.py
@@ -98,6 +99,10 @@ def convert(
         typer.Option("--classifier", help="Fold OCR-need facts from a classifier provider (`provider/model[:variant]`) into the analysis"),
     ] = None,
     auto: Annotated[bool, typer.Option("--auto/--no-auto", help="Route automatically (default); --no-auto requires --backend")] = True,
+    preference: Annotated[
+        RoutingPreference,
+        typer.Option("--preference", help="Ranking axis inside the eligible family: speed, balanced, or quality"),
+    ] = RoutingPreference.BALANCED,
     as_json: args.JsonFlag = False,
     max_passes: Annotated[int, typer.Option("--max-passes", min=1, help="Fallback passes per page group")] = 1,
     no_ocr: Annotated[bool, typer.Option("--no-ocr", help="Forbid OCR backends")] = False,
@@ -115,6 +120,7 @@ def convert(
             classifier=classifier,
             max_passes=max_passes,
             allow_ocr=False if no_ocr else None,
+            preference=preference,
             use_cache=use_cache,
         )
     except ConvertError as exc:

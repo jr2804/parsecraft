@@ -95,6 +95,7 @@ parsecraft convert SOURCE [OPTIONS]
 | `--auto` / `--no-auto` | `--auto` | Route automatically; `--no-auto` requires `--backend` |
 | `--max-passes N` | `1` | Fallback passes per page group (`N >= 1`) |
 | `--no-ocr` | off | Forbid OCR backends |
+| `--preference AXIS` | `balanced` | Ranking axis inside the eligible family: `speed`, `balanced`, or `quality`. Reachable in auto mode with or without `--judge`; ignored by `--backend`, which already names the lead |
 | `--json` | off | Emit the IR as JSON instead of the Markdown projection |
 | `--cache` / `--no-cache` | `--no-cache` | Reuse a content-addressed conversion cache |
 
@@ -143,6 +144,13 @@ name (`ollama/nimble`), which the daemon resolves to its `:latest` tag.
 providers reach the network — and is **not** gated by `PARSECRAFT_OFFLINE`,
 which excludes model-asset *backends* from candidacy rather than the judge seam.
 With no `--judge`/`--classifier` spec, no provider is resolved at all.
+
+`--preference` is a ranking axis, never a permission: it reorders the
+candidates the hard constraints already admitted (smallest declared VRAM first
+for `speed`/`balanced`, largest first for `quality`) and cannot move a
+candidate across an intent family. It reaches both the planner's own
+`DeterministicJudge` — through `RoutingConstraints.preference` — and a resolved
+System One judge, whose Choice question carries the axis verbatim.
 
 Exit codes: `0` success, `1` analysis or routing failure, `2` usage error
 (unsupported suffix, missing file, `--no-auto` without `--backend`, a `--backend`

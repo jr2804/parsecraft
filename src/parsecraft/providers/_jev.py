@@ -37,16 +37,11 @@ from typing import Protocol, runtime_checkable
 from parsecraft.backends.protocol import BackendDescriptor
 from parsecraft.routing.judge import JudgeSpec, MachineProfile
 from parsecraft.routing.judge_providers import JudgeProviderUnavailableError, JudgeSpecError
-from parsecraft.routing.models import Intent, RoutingError
+from parsecraft.routing.models import Intent, RoutingError, RoutingPreference
 from parsecraft.routing.rules import is_ocr
 
 #: Single choice question id — the judge only ever asks who should lead.
 QUESTION_ID = "lead"
-#: The one question every System One endpoint is asked.
-INSTRUCTIONS = (
-    "Which single eligible backend should lead pass 1 for a page whose intent is the one in `state`? "
-    "Rank every candidate by how likely it is to convert the page correctly at the lowest cost."
-)
 
 _MODULE_NAME = "typesafe_sdk"
 #: Extra that declares the SDK; all three endpoints share it (root AGENTS.md rule 10).
@@ -161,13 +156,21 @@ class JevJudge:
     tell them apart anyway — the request carries the intent, the candidates'
     declared capabilities, and (when known) the host budget, never page content.
 
-    ``machine`` is the host profile the caller already probed; because it is
-    constant for one judge instance, it stays out of the memo key.
+    ``machine`` is the host profile the caller already probed, and
+    ``preference`` the caller's ranking axis; because both are constant for one
+    judge instance, they stay out of the memo key.
     """
 
-    def __init__(self, *, endpoint: SdkEndpoint, machine: MachineProfile | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        endpoint: SdkEndpoint,
+        machine: MachineProfile | None = None,
+        preference: RoutingPreference = RoutingPreference.BALANCED,
+    ) -> None:
         self._endpoint = endpoint
         self._machine = machine
+        self._preference = preference
         self._memo: dict[tuple[str, tuple[str, ...]], list[str]] = {}
 
     def rank(self, intent: Intent, candidates: Sequence[BackendDescriptor]) -> Sequence[str]:
@@ -182,8 +185,8 @@ class JevJudge:
         try:
             with self._endpoint.client() as client:
                 response = client.system_one(
-                    request_state(intent, candidates, self._machine),
-                    {QUESTION_ID: self._endpoint.choice(instructions=INSTRUCTIONS, criteria=choice_criteria(candidates))},
+                    request_state(intent, candidates, self._machine, self._preference),
+                    {QUESTION_ID: self._endpoint.choice(instructions=instructions(self._preference), criteria=choice_criteria(candidates))},
                 )
         except Exception as exc:  # SDK boundary — typed, never a raw SDK/transport error
             msg = f"system one call failed: {type(exc).__name__}: {exc}"
@@ -193,12 +196,29 @@ class JevJudge:
         return list(order)
 
 
+def instructions(preference: RoutingPreference) -> str:
+    """The one question every System One endpoint is asked, naming the preference.
+
+    The preference is spelled out here as well as carried in ``state``: the
+    instruction is what steers the answer, the state field is what the endpoint
+    (and any log) can verify it was steered by.
+    """
+    return (
+        "Which single eligible backend should lead pass 1 for a page whose intent and caller preference "
+        "are the ones in `state`? The caller's preference is "
+        f"`{preference.value}`: `speed` favours the cheapest sufficient backend, `quality` the most "
+        "capable one, `balanced` the middle. Rank every candidate by how likely it is to convert the "
+        "page correctly under that preference."
+    )
+
+
 def load_endpoint_judge(
     *,
     provider: str,
     spec: JudgeSpec,
     api_key_env: str | None = None,
     machine: MachineProfile | None = None,
+    preference: RoutingPreference = RoutingPreference.BALANCED,
     base_url: str | None = None,
     timeout_s: float | None = None,
 ) -> JevJudge:
@@ -223,7 +243,7 @@ def load_endpoint_judge(
     module = sdk_module(provider)
     api_key = LOCAL_API_KEY if api_key_env is None else _required_api_key(provider, api_key_env)
     endpoint = SdkEndpoint(module=module, api_key=api_key, model=spec.model, base_url=base_url, timeout_s=timeout_s)
-    return JevJudge(endpoint=endpoint, machine=machine)
+    return JevJudge(endpoint=endpoint, machine=machine, preference=preference)
 
 
 def sdk_module(provider: str) -> _SdkModule:
@@ -251,15 +271,18 @@ def request_state(
     intent: Intent,
     candidates: Sequence[BackendDescriptor],
     machine: MachineProfile | None,
+    preference: RoutingPreference = RoutingPreference.BALANCED,
 ) -> dict[str, object]:
-    """Bounded request state: intent, declared capabilities, and the host budget.
+    """Bounded request state: intent, preference, declared capabilities, host budget.
 
     Never document content: the model sees which candidates exist, what they
-    declare, and how much VRAM this machine has. An unknown host contributes no
-    ``machine`` key at all rather than a misleading zero.
+    declare, how much VRAM this machine has, and which axis the caller asked to
+    optimise. An unknown host contributes no ``machine`` key at all rather than a
+    misleading zero.
     """
     state: dict[str, object] = {
         "intent": intent.value,
+        "preference": preference.value,
         "candidates": {descriptor.name: describe(descriptor) for descriptor in candidates},
     }
     if machine is not None:

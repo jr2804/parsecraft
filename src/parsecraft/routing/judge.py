@@ -18,7 +18,7 @@ from typing import Protocol, override, runtime_checkable
 from pydantic import BaseModel, Field
 
 from parsecraft.backends.protocol import BackendDescriptor
-from parsecraft.routing.models import Intent
+from parsecraft.routing.models import Intent, RoutingPreference
 from parsecraft.routing.rules import is_ocr
 
 #: Preferred backend per OCR flavor (code-owned naming contract).
@@ -40,11 +40,28 @@ class RoutingJudge(Protocol):
 
 
 class DeterministicJudge(RoutingJudge):
-    """Cheapest eligible: preferred model → native before OCR → lowest VRAM → name."""
+    """Cheapest sufficient, family first: preferred model → native before OCR → VRAM → name.
+
+    ``preference`` turns the VRAM tiebreak inside one family: ``SPEED`` and
+    ``BALANCED`` (the default) take the smallest declared
+    ``estimated_vram_gb`` first, ``QUALITY`` the largest. **VRAM is a proxy,
+    not a measurement** — parsecraft holds no quality metadata for backends, so
+    the declared model size stands in for strength; it is a real if crude
+    signal, not a benchmark. An undeclared size sorts last in *both*
+    directions: unknown strength is not zero strength, and inventing a score
+    for it would be worse than admitting we have none.
+
+    Preference never reorders across families: for ``Intent.NATIVE`` a
+    native-capable candidate stays ahead of every OCR one however large that
+    model is, and a preferred backend for an OCR flavor stays first.
+    """
+
+    def __init__(self, preference: RoutingPreference = RoutingPreference.BALANCED) -> None:
+        self._preference = preference
 
     @override
     def rank(self, intent: Intent, candidates: Sequence[BackendDescriptor]) -> Sequence[str]:
-        ordered = sorted(candidates, key=lambda descriptor: _sort_key(descriptor, intent))
+        ordered = sorted(candidates, key=lambda descriptor: _sort_key(descriptor, intent, self._preference))
         return [descriptor.name for descriptor in ordered]
 
 
@@ -70,17 +87,23 @@ class MachineProfile(BaseModel):
 
 
 class JudgeProviderLoader(Protocol):
-    """What a registered judge provider exports: spec plus host facts → judge.
+    """What a registered judge provider exports: spec, host facts, preference → judge.
 
-    ``machine`` is optional so a loader stays callable with the spec alone:
-    ``None`` means the caller had no host facts to offer (a library embedding),
-    which is not the same as a host with no GPU.
+    ``machine`` and ``preference`` are optional so a loader stays callable with
+    the spec alone: ``machine=None`` means the caller had no host facts to offer
+    (a library embedding), which is not the same as a host with no GPU, and the
+    defaulted ``preference`` is the neutral one.
     """
 
-    def __call__(self, spec: JudgeSpec, machine: MachineProfile | None = None) -> RoutingJudge: ...
+    def __call__(
+        self,
+        spec: JudgeSpec,
+        machine: MachineProfile | None = None,
+        preference: RoutingPreference = RoutingPreference.BALANCED,
+    ) -> RoutingJudge: ...
 
 
-def _sort_key(descriptor: BackendDescriptor, intent: Intent) -> tuple[int, float, str]:
+def _sort_key(descriptor: BackendDescriptor, intent: Intent, preference: RoutingPreference) -> tuple[int, float, str]:
     preferred = PREFERRED_BACKENDS[intent]
     ocr = is_ocr(descriptor)
     if intent is Intent.NATIVE:
@@ -89,5 +112,15 @@ def _sort_key(descriptor: BackendDescriptor, intent: Intent) -> tuple[int, float
         family_rank = 0 if descriptor.name == preferred else (1 if ocr else 2)
     else:
         family_rank = 0 if ocr else 1
-    vram = descriptor.capabilities.estimated_vram_gb
-    return (family_rank, vram if vram is not None else float("inf"), descriptor.name)
+    return (family_rank, _strength(descriptor.capabilities.estimated_vram_gb, preference), descriptor.name)
+
+
+def _strength(vram: float | None, preference: RoutingPreference) -> float:
+    """Sort value for a candidate's declared size: bigger is stronger for QUALITY.
+
+    An undeclared size is unknown strength rather than zero strength, so it sorts
+    last in both directions.
+    """
+    if vram is None:
+        return float("inf")
+    return -vram if preference is RoutingPreference.QUALITY else vram

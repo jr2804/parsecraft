@@ -45,10 +45,17 @@ identical plan.
   `feature:tables` / `feature:equations` / `feature:figures` (or
   `image_count` mass ≥ `HEAVY_IMAGE_COUNT`); backends/tests emit them.
 - The judge is an injectable seam: `DeterministicJudge` is the default
-  (preferred model → native before OCR → lowest VRAM → name). Shipped judge
+  (preferred model → native before OCR → VRAM direction → name). Shipped judge
   providers live in `parsecraft.providers` (`ollaya`, plus the three System One
   endpoints `systemone`/`zen`/`ollama` sharing `providers/_jev.py`); this
   package must never import one.
+- `RoutingConstraints.preference` (`RoutingPreference`, default `BALANCED`) is a
+  ranking axis, never a permission: it reorders candidates inside the family the
+  rules already picked and never moves one across a family boundary. The judge
+  the planner builds itself honours it (`DeterministicJudge(constraints.preference)`);
+  an injected judge carries its own policy, resolved by the caller with the same
+  value. `QUALITY` flips the VRAM direction — a **documented proxy** for model
+  strength, not a measurement (an undeclared size sorts last either way).
 - Degradation is the mirror of the NATIVE-lead guard: when an OCR-intent
   page finds no OCR family (missing extras / `allow_ocr` off) but the page
   still has native text (not blank, not text-less) and a non-OCR backend
@@ -74,13 +81,13 @@ identical plan.
   ADR-0004 A1-A7.
 - Judge resolution lives in `judge_providers.py`:
   `resolve_judge(spec: str | RoutingJudge | None, *, machine: MachineProfile |
-  None = None) -> RoutingJudge` —
+  None = None, preference: RoutingPreference = RoutingPreference.BALANCED) -> RoutingJudge` —
   `None` → `DeterministicJudge`, instance → passthrough, else parse
   `provider/model[:variant]` (`parse_judge_spec` → `JudgeSpec` in
   `judge.py`) and dispatch. Loaders register via
   `register_judge_provider(name, loader)` (last wins; explicit beats the
   lazy path); unresolved providers lazy-load
-  `parsecraft.providers.<provider>.load_judge(spec, machine)` through
+  `parsecraft.providers.<provider>.load_judge(spec, machine, preference)` through
   `import_module` at resolve time only — never at module import, never
   inline (pyreorder), never network. Typed errors: `JudgeSpecError` (malformed
   spec), `JudgeProviderUnavailableError` (names the provider extra to

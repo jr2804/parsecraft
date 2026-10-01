@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from parsecraft.providers._jev import load_endpoint_judge
 from parsecraft.routing.judge import JudgeSpec, MachineProfile, RoutingJudge
+from parsecraft.routing.models import RoutingPreference
 
 #: Spec provider token (also the module name under ``parsecraft.providers``).
 PROVIDER_NAME = "zen"
@@ -26,12 +27,17 @@ BASE_URL = "https://opencode.ai/zen"
 _API_KEY_ENV = "OPENCODE_API_KEY"
 
 
-def load_judge(spec: JudgeSpec, machine: MachineProfile | None = None) -> RoutingJudge:
+def load_judge(
+    spec: JudgeSpec,
+    machine: MachineProfile | None = None,
+    preference: RoutingPreference = RoutingPreference.BALANCED,
+) -> RoutingJudge:
     """Provider entry point required by ``routing.judge_providers`` (pc-2's contract)."""
     return load_endpoint_judge(
         provider=PROVIDER_NAME,
         spec=spec,
         machine=machine,
+        preference=preference,
         api_key_env=_API_KEY_ENV,
         base_url=BASE_URL,
     )

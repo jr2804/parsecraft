@@ -178,6 +178,17 @@ design or code exists for it.
   judge runs; a judge only re-ranks and can never widen the set — an
   ineligible, duplicate, or empty order raises `JudgeViolationError`
   (decisions 3–5).
+- **Ranking preference.** `RoutingConstraints.preference` (`speed` | `balanced`
+  | `quality`, default `balanced`) is a *ranking* axis, never a filter: it
+  reorders candidates inside the family the rules already chose and cannot move
+  one across a family boundary (a big OCR model never overtakes the native lead
+  for a native page). `DeterministicJudge` reads it as the VRAM direction — a
+  proxy for model strength, not a measurement, so an undeclared size sorts last
+  in both directions — and the System One judge templates carry it into the
+  Choice question, both in `state.preference` and in the instruction text, so an
+  LLM judge actually weighs it. One `--preference` flag drives both the
+  planner's own judge (via the constraints) and a resolved provider (via
+  `resolve_judge`).
 - **Degradation mirror.** When an OCR-intent page finds no eligible OCR
   backend but still has native text, `plan_route` degrades it to `NATIVE` with
   a recorded reason and a `degraded-garbled-text` /
@@ -346,6 +357,7 @@ deterministic rule table plus, where configured, a judge spec.
 | --- | --- | --- |
 | `--max-passes N` (default `1`) | `convert`, `inspect`, `benchmark` | caps `PageRoute.candidates`: `1` = no fallback pass, `N` = up to `N-1` ordered fallbacks per page |
 | `--no-ocr` | `convert`, `inspect`, `benchmark` | `allow_ocr=False`: OCR intents degrade to native where the page still has native text, otherwise `NoEligibleBackendError` |
+| `--preference speed\|balanced\|quality` (default `balanced`) | `convert` | ranking axis *inside* the eligible family: `speed`/`balanced` take the smallest declared VRAM first, `quality` the largest; reaches the planner's own judge through `RoutingConstraints.preference` and a resolved System One judge through its Choice question |
 | `--backend NAME` / `--no-auto` | `convert` | non-auto lead: `NAME` first on every eligible page; `--no-auto` without `--backend` exits with code 2 |
 | `PARSECRAFT_OFFLINE=1` | environment | offline constraint: backends carrying a `model_asset` are excluded |
 | `--cache` | `convert` | content-addressed cache keyed on source bytes + registry fingerprint + canonical constraints + judge identity, so a changed knob naturally misses the old entry |

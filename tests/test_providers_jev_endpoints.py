@@ -18,7 +18,7 @@ import pytest
 from parsecraft.backends.protocol import BackendCapabilities, BackendDescriptor
 from parsecraft.environment import probe_environment
 from parsecraft.providers import _jev, ollama, zen
-from parsecraft.routing import Intent
+from parsecraft.routing import Intent, RoutingPreference
 from parsecraft.routing.judge import JudgeSpec, MachineProfile
 from parsecraft.routing.judge_providers import JudgeProviderUnavailableError, JudgeSpecError, resolve_judge
 from tests.fixtures.jev_sdk import StubSdk
@@ -135,6 +135,18 @@ def test_machine_profile_is_sent_to_the_endpoint(jev_sdk: StubSdk, monkeypatch: 
     judge.rank(Intent.OCR_GENERAL, [_OCR_GPU, _NATIVE])
     state, _ = jev_sdk.calls[0]
     assert cast("dict[str, object]", state["machine"]) == {"vram_budget_gb": 32.0}
+
+
+@pytest.mark.parametrize("module", [zen, ollama])
+def test_preference_reaches_every_system_one_endpoint(jev_sdk: StubSdk, monkeypatch: pytest.MonkeyPatch, module: Any) -> None:
+    """One shared payload builder: every System One endpoint carries the axis verbatim."""
+    monkeypatch.setenv(zen._API_KEY_ENV, _ZEN_KEY)
+    judge = module.load_judge(JudgeSpec(provider=module.PROVIDER_NAME, model="m"), None, RoutingPreference.SPEED)
+    judge.rank(Intent.OCR_GENERAL, [_OCR_GPU, _NATIVE])
+    state, _ = jev_sdk.calls[0]
+    assert state["preference"] == "speed"
+    instructions, _criteria = jev_sdk.choices[0]
+    assert "`speed`" in instructions
 
 
 def test_ollama_accepts_the_same_loader_contract(jev_sdk: StubSdk) -> None:

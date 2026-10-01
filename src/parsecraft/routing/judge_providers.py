@@ -16,7 +16,7 @@ from typing import cast
 from pydantic import ValidationError
 
 from parsecraft.routing.judge import DeterministicJudge, JudgeProviderLoader, JudgeSpec, MachineProfile, RoutingJudge
-from parsecraft.routing.models import RoutingError
+from parsecraft.routing.models import RoutingError, RoutingPreference
 
 #: Lazy default module path for a provider's loader (export: ``load_judge``).
 DEFAULT_PROVIDER_MODULE = "parsecraft.providers.{provider}"
@@ -72,18 +72,24 @@ def register_judge_provider(name: str, loader: JudgeProviderLoader) -> None:
     _PROVIDERS[name] = loader
 
 
-def resolve_judge(spec: str | RoutingJudge | None, *, machine: MachineProfile | None = None) -> RoutingJudge:
+def resolve_judge(
+    spec: str | RoutingJudge | None,
+    *,
+    machine: MachineProfile | None = None,
+    preference: RoutingPreference = RoutingPreference.BALANCED,
+) -> RoutingJudge:
     """Turn a config/CLI judge spec into a judge instance.
 
-    ``None`` → :class:`DeterministicJudge` (unchanged default); a judge
-    instance passes through; a string is parsed and dispatched to its
+    ``None`` → :class:`DeterministicJudge` (unchanged default), built with
+    ``preference`` so the deterministic fallback honours the caller's axis too; a
+    judge instance passes through; a string is parsed and dispatched to its
     provider (runtime registry first, then the lazy module path). ``machine``
     carries the host facts the caller already probed, so a machine-aware
     provider never has to probe again; ``None`` means the caller offered none.
     The result still only re-ranks — ``plan_route`` validates every order.
     """
     if spec is None:
-        return DeterministicJudge()
+        return DeterministicJudge(preference)
     if isinstance(spec, RoutingJudge):
         return spec
     if not isinstance(spec, str):
@@ -93,7 +99,7 @@ def resolve_judge(spec: str | RoutingJudge | None, *, machine: MachineProfile | 
     if loader is None:
         loader = _lazy_loader(parsed.provider)
     try:
-        judge = loader(parsed, machine)
+        judge = loader(parsed, machine, preference)
     except JudgeError:
         raise
     except Exception as exc:
