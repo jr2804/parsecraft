@@ -155,7 +155,7 @@ System One judge, whose Choice question carries the axis verbatim.
 Exit codes: `0` success, `1` analysis or routing failure, `2` usage error
 (unsupported suffix, missing file, `--no-auto` without `--backend`, a `--backend`
 that is not eligible for the source, a malformed `--judge`/`--classifier` spec,
-or `--backend` combined with `--judge`). A missing optional backend dependency
+an invalid `--preference` value, or `--backend` combined with `--judge`). A missing optional backend dependency
 also exits `1` with an actionable `optional dependency missing: …` message
 naming the extra to install; a spec whose provider cannot be loaded exits `1`
 with `judge unavailable: …` or `classifier unavailable: …`.
