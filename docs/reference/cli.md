@@ -90,7 +90,7 @@ parsecraft convert SOURCE [OPTIONS]
 | Option | Default | Behaviour |
 | ------ | ------- | --------- |
 | `--backend`, `-b NAME` | unset | Non-auto: lead with this backend (it must be eligible) |
-| `--judge SPEC` | unset | Route with a judge provider (`provider/model[:variant]`); mutually exclusive with `--backend`; may use the network (except `ollama/<model>`, which is local) |
+| `--judge SPEC` | unset | Route with a judge provider (`provider/model[:variant]`); mutually exclusive with `--backend`, combinable with `--classifier`; may use the network (except `ollama/<model>`, which is local) |
 | `--classifier SPEC` | unset | Fold OCR-need facts from a classifier provider (`provider/model[:variant]`) into the analysis |
 | `--auto` / `--no-auto` | `--auto` | Route automatically; `--no-auto` requires `--backend` |
 | `--max-passes N` | `1` | Fallback passes per page group (`N >= 1`) |
