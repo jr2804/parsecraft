@@ -1,5 +1,9 @@
 """Offline tests for the TypeSafe cloud System One provider (``systemone/<model>``).
 
+The live tier uses ``jev-latest``, the id the cloud actually serves (a bare
+``jev`` answers ``400 Unknown model``); the offline tests use a stub model token
+because nothing reaches the cloud.
+
 The SDK is a stub in ``sys.modules`` (``tests/fixtures/jev_sdk.py``), so the real
 provider code runs with no network and no optional dependency. The live tier is
 marked ``judge`` and skips without ``TYPESAFE_API_KEY`` — no key exists in CI.
@@ -249,7 +253,7 @@ def test_live_typesafe_ranks_real_candidates() -> None:
     pytest.importorskip("typesafe_sdk")
     if not os.environ.get(provider._API_KEY_ENV):  # the REAL environment: no fixture plants a key here
         pytest.skip(f"{provider._API_KEY_ENV} is not set")
-    judge = resolve_judge("systemone/jev", machine=MachineProfile(vram_budget_gb=0.0))
+    judge = resolve_judge("systemone/jev-latest", machine=MachineProfile(vram_budget_gb=0.0))
     candidates = [_descriptor("ocr-ovis"), _descriptor("ocr-tele", ocr=False), _descriptor("native-pdf", ocr=False)]
     order = list(judge.rank(Intent.OCR_GENERAL, candidates))
     assert sorted(order) == sorted(descriptor.name for descriptor in candidates)

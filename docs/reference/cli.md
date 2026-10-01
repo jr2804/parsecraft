@@ -131,7 +131,7 @@ lead candidate. The one shipped classifier provider is
 `pdfinspector/detect_pdf` (needs the `pdf-inspector` extra): a local, model-free
 text-layer scan whose verdicts can only add OCR-need, never remove it. The
 shipped judge providers are `ollaya/laya` (a local daemon reading
-`OLLAYA_BASE_URL`), `systemone/jev` (TypeSafe's System One API, needs the
+`OLLAYA_BASE_URL`), `systemone/jev-latest` (TypeSafe's System One API, needs the
 `systemone` extra and `TYPESAFE_API_KEY`), and `zen/<model>` (the same System One
 wire on OpenCode Zen, needs the same extra and `OPENCODE_API_KEY`). The two
 cloud endpoints exit `1` at resolution without their key; `ollaya/laya` and

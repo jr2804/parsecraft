@@ -12,7 +12,7 @@ run = ".venv-gpu/bin/python -m pytest tests/test_backends_ocr_gpu.py -m gpu --ru
 run_windows = ".venv-gpu/Scripts/python -m pytest tests/test_backends_ocr_gpu.py -m gpu --run-gpu"
 
 [tasks.test-judge]
-description = "Judge tier: live ollaya daemon (OLLAYA_BASE_URL), systemone/jev (TYPESAFE_API_KEY), zen/<model> (OPENCODE_API_KEY), or the semi-live local ollama/<model> (needs the systemone extra: uv run --isolated --extra systemone pytest -m judge --run-judge)"
+description = "Judge tier: live ollaya daemon (OLLAYA_BASE_URL), systemone/jev-latest (TYPESAFE_API_KEY), zen/<model> (OPENCODE_API_KEY), or the semi-live local ollama/<model> (needs the systemone extra: uv run --isolated --extra systemone pytest -m judge --run-judge)"
 run = "uv run pytest -m judge --run-judge"
 
 [tasks.bench-docling]

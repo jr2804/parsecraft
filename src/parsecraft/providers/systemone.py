@@ -8,8 +8,9 @@ CLI reports ``judge unavailable: …`` before any backend runs.
 
 The request shape, the SDK's timing/retry bounds, the per-shape memo, and the
 ranking all live in :mod:`parsecraft.providers._jev` — this module only names
-the endpoint and its credential. Spec: ``systemone/jev`` (or any other upstream
-model id the account serves).
+the endpoint and its credential. Spec: ``systemone/jev-latest`` — the TypeSafe
+cloud is served by ``jev-latest`` and ``jev-preview`` (verified against the live
+``/v1/models``; a bare ``jev`` answers ``400 Unknown model``).
 """
 
 from __future__ import annotations

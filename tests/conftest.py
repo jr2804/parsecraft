@@ -97,7 +97,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         _RUN_JUDGE,
         action="store_true",
         default=False,
-        help=f"run the '{_JUDGE_MARKER}' tier (live providers: ollaya daemon, systemone/jev, zen/<model>, or the semi-live local ollama/<model>)",
+        help=f"run the '{_JUDGE_MARKER}' tier (live providers: ollaya daemon, systemone/jev-latest, zen/<model>, or the semi-live local ollama/<model>)",
     )
 
 

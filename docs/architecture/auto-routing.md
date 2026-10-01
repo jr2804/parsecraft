@@ -204,7 +204,7 @@ spec is given.
 Neither seam is gated by `RoutingConstraints.offline`: that flag excludes
 model-asset **backends** from candidacy (decision 3) and never blocks a provider
 the caller named explicitly. A judge spec is the opt-in — judges may reach the
-network (`systemone/jev` does) — while classifiers stay local-only by A4. No
+network (`systemone/jev-latest` does) — while classifiers stay local-only by A4. No
 provider is resolved at all unless a spec is given, so an offline-declared run
 with no `--judge`/`--classifier` never leaves the process.
 
@@ -228,7 +228,8 @@ Failures are typed: `JudgeSpecError` (malformed spec),
 providers ship: `ollaya/laya` (`src/parsecraft/providers/ollaya.py`), a
 daemon-backed judge reading `OLLAYA_BASE_URL` at call time (default
 `http://localhost:11435`), and three System One endpoints that share one
-implementation (`src/parsecraft/providers/_jev.py`) — `systemone/jev` (TypeSafe
+implementation (`src/parsecraft/providers/_jev.py`) — `systemone/jev-latest`
+(the TypeSafe cloud serves `jev-latest`/`jev-preview`; a bare `jev` is unknown)
 cloud, `TYPESAFE_API_KEY`), `zen/<model>` (OpenCode Zen, `OPENCODE_API_KEY`),
 and `ollama/<model>` (a local daemon, no key).
 
@@ -265,7 +266,7 @@ IR-1-based facts, with `pdf_type`, `confidence`, and table pages feeding the
 
 ### System One / Jev providers
 
-**Status:** current, three endpoints (`systemone/jev`, `zen/<model>`,
+**Status:** current, three endpoints (`systemone/jev-latest`, `zen/<model>`,
 `ollama/<model>`); a Jev-backed classifier is not shipped.
 
 ADR-0004 decision 7 and A7 make the judge seam the integration point for a
