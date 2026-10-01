@@ -29,8 +29,12 @@ from time import monotonic
 
 # Heavy library, imported at module level: this module is the sanctioned
 # import boundary and loads only at backend instantiation (factory catches
-# ImportError -> DependencyUnavailableError when the extra is absent).
-import pdf_inspector
+# ImportError -> DependencyUnavailableError when the extra is absent). Learned
+# the hard way (595100b): the marker is REQUIRED while the extra is absent —
+# `mise dev`/CI install light extras only (download/web/pdf-lite), so without
+# it ty reports unresolved-import; with `--all-extras` synced the same marker
+# reads as unused under error-on-warning. Same pattern as liteparse/docling.
+import pdf_inspector  # ty: ignore[unresolved-import] — extra absent from the light dev/CI env
 
 from parsecraft.backends.errors import BackendError
 from parsecraft.backends.pdf_inspector.pdf_inspector import DESCRIPTOR, PDF_INSPECTOR_BACKEND_VERSION
