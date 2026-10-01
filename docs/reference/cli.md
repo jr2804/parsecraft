@@ -133,8 +133,9 @@ text-layer scan whose verdicts can only add OCR-need, never remove it. The
 shipped judge providers are `ollaya/laya` (a local daemon reading
 `OLLAYA_BASE_URL`), `systemone/jev` (TypeSafe's System One API, needs the
 `systemone` extra and `TYPESAFE_API_KEY`), and `zen/<model>` (the same System One
-wire on OpenCode Zen, needs the same extra and `OPENCODE_API_KEY`) — all three
-exit `1` at resolution without their key. `ollama/<model>` is the same wire on a
+wire on OpenCode Zen, needs the same extra and `OPENCODE_API_KEY`). The two
+cloud endpoints exit `1` at resolution without their key; `ollaya/laya` and
+`ollama/<model>` are local and need none. `ollama/<model>` is the same wire on a
 **local** Ollama daemon: no key, and no network beyond localhost. Model tokens
 are upstream ids, so a `:variant` is rejected — for Ollama that means the bare
 name (`ollama/nimble`), which the daemon resolves to its `:latest` tag.

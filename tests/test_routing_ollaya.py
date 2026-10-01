@@ -324,7 +324,12 @@ def test_live_daemon_is_discoverable_via_models_endpoint(live_daemon: str) -> No
 
 @pytest.fixture
 def live_daemon() -> str:
-    """Base URL of a responding ollaya daemon, else skip."""
+    """Base URL of a responding ollaya daemon **with a decision model loaded**, else skip.
+
+    A real daemon with zero models loaded answers the models endpoint happily but
+    cannot rank anything, so an empty list is an environment gap, not a failure:
+    a daemon that is up but empty must skip exactly like an absent one.
+    """
     base_url = (os.environ.get("OLLAYA_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
     try:
         payload = _daemon_models(base_url)
@@ -332,6 +337,9 @@ def live_daemon() -> str:
         pytest.skip(f"no ollaya daemon at {base_url}: {exc}")
     if not isinstance(payload, dict) or "models" not in payload:
         pytest.skip(f"{base_url} answered without a models list")
+    models = payload["models"]
+    if not isinstance(models, list) or not models:
+        pytest.skip(f"{base_url} answers but has no decision models loaded")
     return base_url
 
 
