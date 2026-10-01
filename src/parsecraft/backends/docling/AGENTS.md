@@ -24,7 +24,7 @@ plus a bound-checked `convert()` that maps docling items to typed IR chunks.
   and tests pin cell agreement. Non-table items carry `rows=None`.
 - Entry point: `parsecraft.backends.docling.docling:factory`; heavy imports
   load through `importlib.import_module` at instantiation, never inline
-  (`csort` would hoist an inline import to module level and break the
+  (`pyreorder` would hoist an inline import to module level and break the
   offline-import gate).
 - `supported_formats` lists only inputs **conversion-verified** against the
   real library (2026-09-28, docling 2.130.0): `application/pdf`,

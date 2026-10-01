@@ -845,7 +845,7 @@ def add_stub(
     convert_fn: Any | None = None,
     create_error: Exception | None = None,
 ) -> list[ConversionRequest]:
-    # Resolved at call time, not def time: csort's stepdown reorders functions.
+    # Resolved at call time, not def time: pyreorder's stepdown reorders functions.
     behavior = convert_fn if convert_fn is not None else echo_ok
     calls: list[ConversionRequest] = []
     registry.register(descriptor.name, _StubFactory(descriptor, behavior, calls, create_error))

@@ -3,7 +3,7 @@
 Resolution is lazy and offline: a provider module
 (``parsecraft.providers.<provider>``) is imported via ``import_module``
 only when a judge is actually resolved — never at import time, never by an
-inline ``import`` (csort hoists those). Judge validity is enforced by
+inline ``import`` (pyreorder hoists those). Judge validity is enforced by
 ``plan_route``'s ``_validate_order``; this module only produces a
 :class:`~parsecraft.routing.judge.RoutingJudge` instance.
 """

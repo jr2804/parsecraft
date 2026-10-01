@@ -40,7 +40,7 @@ class EchoFactory:
         # Heavy import stays inside the factory boundary. It MUST be an
         # ``importlib.import_module`` call, never an ``import`` statement:
         # a function-body ``import`` is hoisted to module top level by the
-        # format pass (csort ``hoist_inline_imports``), which would pull the
+        # format pass (pyreorder ``hoist_inline_imports``), which would pull the
         # heavy impl into discovery and break the laziness contract.
         module = importlib.import_module("parsecraft_example_backend.impl")
         return module.EchoBackend(config, DESCRIPTOR.capabilities)

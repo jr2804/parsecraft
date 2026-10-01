@@ -39,7 +39,7 @@ Dev tooling is not part of the distribution.
 | [ty](https://github.com/google/ty) | mise | Type checker |
 | [codespell](https://github.com/codespell-project/codespell) | mise | Spell checker |
 | [rumdl](https://github.com/rvben/rumdl) | mise | Markdown linter and formatter |
-| [clean-sort](https://codeberg.org/jr2804/clean-sort) | mise | Import sorter |
+| [pyreorder](https://github.com/jr2804/pyreorder) | mise | Structural sorter |
 | [pre-commit](https://pre-commit.com/) | manually | Git hook runner |
 | [Zensical](https://github.com/zensical/zensical) + [mkdocstrings](https://mkdocstrings.github.io/) + [markdown-exec](https://github.com/pawamoy/markdown-exec) + [markdown-callouts](https://github.com/oprypin/markdown-callouts) | dev group | Documentation site and API reference |
 | [ghp-import](https://github.com/cpburnz/python-ghp-import) | dev group | Template-provided Pages helper |

@@ -32,7 +32,7 @@ mise test
 mise lint       # ruff check
 mise typecheck  # ty check
 mise spell      # codespell
-mise format     # ruff format + isort + clean-sort
+mise format     # ruff format + isort + pyreorder
 ```
 
 ### Pull Requests

@@ -1,7 +1,7 @@
 [tasks.format]
-description = "Format code (ruff, isort, clean-sort)"
+description = "Format code (ruff, isort, pyreorder)"
 run = [
-	"csort run src/ tests/ scripts/ examples/ --config .config/csort.toml",
+	"pyreorder run src/ tests/ scripts/ examples/ --config .config/pyreorder.toml",
 	"ruff format src/ tests/ examples/",
 	"ruff check src/ tests/ examples/ --select I --fix",
 ]

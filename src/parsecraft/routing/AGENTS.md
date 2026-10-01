@@ -65,7 +65,7 @@ identical plan.
   lazy path); unresolved providers lazy-load
   `parsecraft.providers.<provider>.load_judge(spec)` through
   `import_module` at resolve time only — never at module import, never
-  inline (csort), never network. Typed errors: `JudgeSpecError` (malformed
+  inline (pyreorder), never network. Typed errors: `JudgeSpecError` (malformed
   spec), `JudgeProviderUnavailableError` (names the provider extra to
   install), `JudgeProviderLoadError` (loader failed / non-judge return).
   Resolution only produces a judge — `plan_route`'s `_validate_order`

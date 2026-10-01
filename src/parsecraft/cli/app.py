@@ -17,7 +17,7 @@ app = typer.Typer(
 
 # Register commands. Commands are plain functions in commands.py — no
 # @app.command() decorators there, no import of `app`: this avoids the
-# circular import (commands.py <-> app.py) and keeps clean-sort from
+# circular import (commands.py <-> app.py) and keeps pyreorder from
 # re-sorting this file into a broken state. Register with:
 # `app.command()(commands.your_command)`.
 app.command()(commands.backends)

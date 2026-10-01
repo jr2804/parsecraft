@@ -3,7 +3,7 @@
 No heavy imports live here. Model stacks belong in the ``_<name>_impl`` modules
 (loaded only via :func:`load_impl`); optional tooling (PDF rasterization, vLLM)
 is imported on demand through :func:`optional_module`, which is ``importlib``
--call based and therefore safe from ``csort``'s inline-import hoisting.
+-call based and therefore safe from ``pyreorder``'s inline-import hoisting.
 """
 
 from __future__ import annotations

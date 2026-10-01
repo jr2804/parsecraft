@@ -41,7 +41,7 @@ registration + Python entry points) without editing this package.
 - Entry-point modules stay light. A backend with heavy or optional dependencies
   keeps them in a **separate implementation module** imported only at
   instantiation via `importlib.import_module(...)` — never an inline `import`,
-  which `csort` (`hoist_inline_imports`) hoists to module level and breaks.
+  which `pyreorder` (`hoist_inline_imports`) hoists to module level and breaks.
   Dependency-free backends may import their implementation at module top level.
 - Built-in backends live under `backends/<family>/<name>.py` with a light
   `factory` object (descriptor + `__call__`) declared in `pyproject.toml` under

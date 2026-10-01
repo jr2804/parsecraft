@@ -30,7 +30,7 @@ Markdown as a deterministic projection.
   `benchmark/AGENTS.md`).
 - `cli/` — Typer CLI; commands are plain functions in `commands.py`,
   registered in `app.py` (never decorators in `commands.py`, never import
-  `app` there — circular import breaks clean-sort).
+  `app` there — circular import breaks pyreorder).
 - `__about__.py` — package metadata; `__version__` re-exported from
   `parsecraft.__init__` (distribution metadata, fallback `0.0.0`).
 - `py.typed` — PEP 561 marker; must stay in the wheel

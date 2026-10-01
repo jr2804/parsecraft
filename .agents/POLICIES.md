@@ -38,7 +38,7 @@ Universal defaults. Project-specific standards live in child AGENTS.md.
   params/imports before finishing.
 - **Duplication vs. abstraction** — prefer duplication over wrong premature
   abstraction.
-- **No forward-referenced default arguments** — `csort` stepdown reorders
+- **No forward-referenced default arguments** — `pyreorder` stepdown reorders
   functions, so a default value must never name a function defined later; use
   `= None` and resolve in the body (call-time lookup is order-safe).
 - No new code-quality tooling by default — opt in per project.
@@ -114,7 +114,7 @@ rationale. Cut first; split the subtree only as a last resort.
 mise all        # test + lint + format (composite task)
 mise test       # pytest with coverage gate (100%)
 mise lint       # ruff + ty + codespell
-mise format     # ruff format + isort + clean-sort
+mise format     # ruff format + isort + pyreorder
 mise format-md  # rumdl over docs/, .agents/, ./ (Markdown only)
 ```
 

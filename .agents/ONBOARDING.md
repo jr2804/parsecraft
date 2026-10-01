@@ -13,7 +13,7 @@ Document intelligence: convert any document into typed structured chunks, with M
 mise dev        # install dependencies (uv sync --dev)
 mise test       # run pytest with coverage
 mise lint       # ruff + ty + codespell
-mise format     # ruff format + isort + clean-sort
+mise format     # ruff format + isort + pyreorder
 mise all        # test + lint + format in one pass
 ```
 

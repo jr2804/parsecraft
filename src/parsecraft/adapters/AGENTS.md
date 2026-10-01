@@ -43,7 +43,7 @@ the single source of truth (ADR-0001 §11, `parsecraft.ir.AGENTS.md`).
 - Optional deps never import at module import time: front modules use
   `import_module` + typed `Protocol` seams and raise `MissingDependencyError`
   with an actionable hint. Impl modules are the only place their dep is
-  imported, at module top level (csort-compatible).
+  imported, at module top level (pyreorder-compatible).
 
 ## Verification
 

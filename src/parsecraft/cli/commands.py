@@ -22,7 +22,7 @@ from parsecraft.config import ConfigError
 # Commands are plain top-level functions; registration happens in app.py
 # (`app.command()(commands.your_cmd)`). Do NOT add @app.command() decorators
 # here and do NOT import `app` from app.py: that creates a circular import
-# and makes clean-sort reorder this module into a broken state.
+# and makes pyreorder reorder this module into a broken state.
 # ═══════════════════════════════════════════════════════════════════════════
 
 

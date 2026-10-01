@@ -50,7 +50,7 @@ NATIVE_NAMES = ("native-html", "native-markdown", "native-pdf", "native-text")
 
 _SOURCES_PATH = Path(__file__).parent / "fixtures" / "sources.toml"
 # Module constant, not a helper call: decorators evaluate at import time and
-# csort's stepdown reorders functions (callers before callees).
+# pyreorder's stepdown reorders functions (callers before callees).
 _MANIFEST_SOURCES: list[dict[str, Any]] = list(tomllib.loads(_SOURCES_PATH.read_text(encoding="utf-8"))["sources"])
 
 

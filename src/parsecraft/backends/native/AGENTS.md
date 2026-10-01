@@ -32,7 +32,7 @@ Four entry-point backends, each a light `factory` (descriptor + `__call__`):
   `import_module` seams only — `pdf_inspect` at factory instantiation,
   `pdf_text` at conversion time (missing extra → typed
   `DEPENDENCY_MISSING` pass failure, never an import crash). No inline
-  imports (`csort` hoists them).
+  imports (`pyreorder` hoists them).
 - `analyze()` must work with only `pdf-lite` installed; the descriptor
   carries `optional_dependency_group="pdf-lite"`.
 - Descriptors set `version=NATIVE_BACKEND_VERSION` (feeds

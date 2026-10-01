@@ -44,7 +44,7 @@ re-run the task to change the toolset.
 | `dev` | debug-skill, rtk (output token compression) |
 | `tracking` | beads, dolt, beads-mcp |
 | `general` | desktop-commander, sequential-thinking |
-| `coding` | clean-sort, python-ultimate, code-deduplication, uv |
+| `coding` | pyreorder, python-ultimate, code-deduplication, uv |
 | `docs` | project-docs, good-readme, visual-explainer, beautify-github-readme, scientific-figures, mermaid-diagrams |
 | `rust` | rust-skills, rust-pyo3-bindings, rust-dsp-stack |
 

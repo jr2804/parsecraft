@@ -123,7 +123,7 @@ fail_under = 100
 # it exists, but this section is what actually enforces the 100% minimum).
 [tool.coverage.run]
 # Vendored model code (backends/ocr/_vendored) is ported and statically
-# quality-gated (ruff, format, csort, codespell, ty — with import markers),
+# quality-gated (ruff, format, pyreorder, codespell, ty — with import markers),
 # but it is GPU-tier numerics: the offline suite cannot execute it, so its
 # statements are omitted from coverage measurement. Its runtime validator is
 # the GPU tier (`mise run test-gpu`), required by pc-4u7.36's acceptance.

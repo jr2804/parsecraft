@@ -18,7 +18,7 @@ mise test       # pytest with the 100% coverage gate
 ```
 
 `mise dev` is idempotent; re-run it after dependency changes. `mise install`
-provisions the dev toolchain (ruff, ty, rumdl, codespell, clean-sort, and the
+provisions the dev toolchain (ruff, ty, rumdl, codespell, pyreorder, and the
 optional AI tooling). See [Tech stack](tech-stack.md).
 
 ## Tasks
@@ -30,7 +30,7 @@ optional AI tooling). See [Tech stack](tech-stack.md).
 | `mise lint` | `ruff check src/ tests/ --fix` | Lint and autofix |
 | `mise typecheck` | `ty check src/ tests/` | Static type checking |
 | `mise spell` | `codespell src/ tests/` | Spell check |
-| `mise format` | clean-sort + `ruff format` + import sort | Format Python |
+| `mise format` | pyreorder + `ruff format` + import sort | Format Python |
 | `mise format-md` | `rumdl fmt` | Lint and format Markdown |
 | `mise docs` | `uv run --link-mode=copy zensical build` | Build the docs site |
 | `mise all` | `test` + `lint` + `spell` + `format` + `format-md` + `docs` | Full quality gate |

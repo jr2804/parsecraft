@@ -1,9 +1,11 @@
-# Vendored model code — do not lint, sort, format, or type-check
+# Vendored model code — ported GPU-tier numerics, upstream style rules relaxed
 
-Excluded from ruff (`ruff.toml`), codespell (`pyproject.toml`), clean-sort
-(`.config/csort.toml`) and ty (`ty.toml`) as of pc-4u7.36. Every file here is
-third-party modeling code, byte-verified against the descriptor's pinned
-revision at vendoring time, plus the minimal patches listed below. Patch any
+Processed by every gate, not excluded from any: ruff (`ruff.toml`, upstream
+style families relaxed), codespell (`pyproject.toml`), pyreorder
+(`.config/pyreorder.toml`) and ty (`ty.toml`, heavy imports carry per-line
+ignore markers) as of pc-4u7.36. Every file here is third-party modeling
+code, byte-verified against the descriptor's pinned revision at vendoring
+time, plus the minimal patches listed below. Patch any
 problem in this README's list — never silently edit, never reformat.
 
 ## Why
