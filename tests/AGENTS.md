@@ -25,6 +25,9 @@ tests, and keep the 100% coverage gate green.
   classifier seam and its pdf-inspector provider (`pdf_inspector` stubbed
   through `sys.modules`; the live 1-based indexing test skips without the
   extra).
+- `test_providers_systemone.py` — the System One / Jev judge provider
+  (`typesafe_sdk` stubbed through `sys.modules`; the live Jev tier needs the
+  `systemone` extra plus `TYPESAFE_API_KEY` and skips without them).
 - `test_smoke.py` — CLI surface (`backends --json`, `--version`, bare
   invocation shows help).
 - `test_document_fixtures.py`, `test_sources_manifest.py` — fixture

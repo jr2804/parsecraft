@@ -129,7 +129,10 @@ OCR-need facts into the analysis ahead of routing (lazy-loaded from
 behaviour, and `--backend` cannot be combined with `--judge` — both choose the
 lead candidate. The one shipped classifier provider is
 `pdfinspector/detect_pdf` (needs the `pdf-inspector` extra): a local, model-free
-text-layer scan whose verdicts can only add OCR-need, never remove it.
+text-layer scan whose verdicts can only add OCR-need, never remove it. The
+shipped judge providers are `ollaya/laya` (a local daemon reading
+`OLLAYA_BASE_URL`) and `systemone/jev` (TypeSafe's System One API, needs the
+`systemone` extra and `TYPESAFE_API_KEY` — resolution exits `1` without it).
 
 Exit codes: `0` success, `1` analysis or routing failure, `2` usage error
 (unsupported suffix, missing file, `--no-auto` without `--backend`, a `--backend`

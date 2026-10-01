@@ -65,6 +65,10 @@ ocr-unlimited = [
     "matplotlib",
     "requests",
 ]
+# TypeSafe System One / Jev judge provider: pure-Python MIT SDK behind the
+# optional `systemone` routing extra; `load_judge` imports it via importlib, so
+# it stays out of the core import path and out of the dev/CI venv.
+systemone = ["typesafe-sdk>=0.7.2"]
 
 [project.entry-points."parsecraft.backends"]
 native-text = "parsecraft.backends.native.text:factory"

@@ -27,6 +27,7 @@ EXTRA_IMPORTS: dict[str, tuple[str, ...]] = {
     "pdf": ("pymupdf",),
     "pdf-inspector": ("pdf_inspector",),
     "pdf-lite": ("pypdf",),
+    "systemone": ("typesafe_sdk",),
     "vllm": ("vllm",),
     "web": ("httpx",),
 }

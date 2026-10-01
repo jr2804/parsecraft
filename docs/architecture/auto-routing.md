@@ -217,10 +217,12 @@ spec is given.
 
 Failures are typed: `JudgeSpecError` (malformed spec),
 `JudgeProviderUnavailableError` (names the provider extra to install), and
-`JudgeProviderLoadError` (loader failed or returned a non-judge). The one
-shipped provider is `ollaya/laya` (`src/parsecraft/providers/ollaya.py`), a
-daemon-backed judge reading `OLLAYA_BASE_URL` at call time (default
-`http://localhost:11435`).
+`JudgeProviderLoadError` (loader failed or returned a non-judge). The
+shipped judge providers are `ollaya/laya` (`src/parsecraft/providers/ollaya.py`),
+a daemon-backed judge reading `OLLAYA_BASE_URL` at call time (default
+`http://localhost:11435`), and `systemone/jev`
+(`src/parsecraft/providers/systemone.py`), TypeSafe's System One API behind the
+`systemone` extra and `TYPESAFE_API_KEY`.
 
 CLI surface: `convert --backend NAME` leads every eligible page with `NAME`
 through a CLI-owned `PreferredBackendJudge` (`--no-auto` requires `--backend`),
@@ -255,16 +257,28 @@ IR-1-based facts, with `pdf_type`, `confidence`, and table pages feeding the
 
 ### System One / Jev provider
 
-**Status:** planned — no such adapter exists in the package today.
+**Status:** current for the judge seam (`systemone/jev`); a Jev-backed
+classifier is not shipped.
 
 ADR-0004 decision 7 and A7 make the judge seam the integration point for a
-System One / Jev-backed judge **or** classifier. It would ship as its own
-optional extra implementing the existing `RoutingJudge` Protocol (or the
-`PageOcrClassifier` Protocol once gh-3 lands), remain subject to the
-code-owned funnel, and
-stay out of the core import path. No `systemone`/`jev` extra exists in
-`pyproject.toml`; until one lands, "no heuristic" means the deterministic rule
-table plus, where configured, a judge spec.
+System One / Jev-backed judge. `src/parsecraft/providers/systemone.py`
+implements it behind the optional `systemone` extra (`typesafe-sdk`, MIT, pure
+Python): `load_judge` imports the SDK through `importlib` at resolve time only,
+and requires `TYPESAFE_API_KEY` — an unset key or a missing extra raises
+`JudgeProviderUnavailableError`, so the CLI exits `1` with `judge unavailable: …`
+before any backend runs.
+
+Each call asks ONE Choice question per page intent over the eligible candidates
+(state: the intent plus the candidate names; criteria: each candidate's declared
+capabilities), and the answer's probability distribution is the ranking — a
+candidate the answer omits scores `0.0`, and ties keep the planner's name order,
+so identical inputs give identical orders. The judge stays inside the code-owned
+funnel: it only re-ranks what `plan_route` already found eligible (decisions
+3-5). The model id is the spec's model token (`systemone/jev-latest`); a
+`:variant` is rejected rather than ignored.
+
+Without a configured spec the heuristic path is still the default: the
+deterministic rule table plus, where configured, a judge spec.
 
 ## Tuning reference
 

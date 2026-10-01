@@ -18,6 +18,11 @@ by `routing/judge_providers.py` (each turns a `JudgeSpec` into a
   (`load_classifier`, `PdfInspectorClassifier`, the pinned detection call and
   its 1-based field semantics). Needs the `pdf-inspector` extra (shared with
   the backend family of the same name).
+- `systemone.py` — the TypeSafe System One / Jev judge provider (`load_judge`,
+  `JevJudge`, `JevJudgeError`): one Choice question per page intent over the
+  eligible candidates, ranked by the choice distribution. Needs the `systemone`
+  extra (`typesafe-sdk`, surface verified against 0.7.2) and
+  `TYPESAFE_API_KEY`.
 
 ## Local Contracts
 
@@ -43,6 +48,10 @@ by `routing/judge_providers.py` (each turns a `JudgeSpec` into a
   missing optional extra surfaces as `ClassifierProviderUnavailableError` /
   `JudgeProviderUnavailableError` naming the extra to install, never as a
   silent `None`.
+- A judge credential is resolved once at `load_judge`, never mid-conversion:
+  an unset `TYPESAFE_API_KEY` (or a missing `systemone` extra) raises
+  `JudgeProviderUnavailableError`, so the CLI reports `judge unavailable: …`
+  before any backend runs.
 - Daemon/config reading happens at call time (`OLLAYA_BASE_URL`), never at
   import; failures raise instead of silently picking a different ordering.
 
