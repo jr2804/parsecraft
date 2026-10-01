@@ -1,6 +1,6 @@
 # ADR-0004: Routing and auto mode — deterministic analysis first, optional judge second
 
-- **Status:** Accepted
+- **Status:** Accepted · Amended 2026-10-01 (classifier seam, below)
 - **Date:** 2026-09-27
 - **Deciders:** pc-1, pc-2, pc-3
 - **Related:** ADR-0001 §6 (acceptance targets), §7 (pass budget), ADR-0003
@@ -99,3 +99,98 @@ extra and remain subject to decisions 3–5.
   rules would spread across call sites, with no single table to test or extend.
 - **A third-party routing library.** Rejected: no provenance-carrying typed
   output, and it would add a dependency the core does not need.
+
+## Amendment 2026-10-01: optional OCR-need classifier seam
+
+- **Status:** Accepted
+- **Date:** 2026-10-01
+- **Deciders:** pc-1
+- **Related:** gh-3, beads `pc-rzm`/`pc-1ow`, plan doc
+  `.agents/plans/pdf-pre-router/00-recon.md` (gitignored), backend ADR-0004
+  decisions 1–7 (all unchanged)
+
+Motivation: `pdf-inspector` (MIT, Rust/PyO3, prebuilt abi3 wheels, zero Python
+dependencies) detects per-page OCR need from the PDF text layer in tens of
+milliseconds — strictly better evidence than the text-length proxy of decision
+2, at negligible cost, running in `analyze()` before any conversion is chosen.
+Decisions 1–7 are untouched; this adds a second optional seam beside the judge.
+
+### A1. The classifier is a signal source, not a decision authority
+
+`PageOcrClassifier` (Protocol, `routing/classifier.py`) produces `OcrFacts` —
+per-page OCR-need and table pages, plus document `pdf_type`/`confidence`. A
+pure fold (`apply_classifier` in `pipeline/analysis.py`) merges facts into the
+`AnalysisResult` at the analysis boundary; `plan_route` keeps its signature and
+stays pure (decision 1). The classifier cannot widen eligibility, override
+`allow_ocr`/VRAM/offline/licence constraints, or route a native-intent page
+away from native fallbacks — the code-owned funnel of decision 3 remains the
+only authority.
+
+### A2. Augment-only: the classifier may add OCR-need, never remove it
+
+OCR-need = `page_needs_ocr(signal) OR (signal.classifier_needs_ocr is True)`.
+The field is `True`-only semantics: `False` is never a verdict. Text-statistics
+OCR-need (blank/thin/garbled) means native extraction genuinely fails, so a
+`text_based` verdict must never force NATIVE on such a page. Over-routing to
+OCR costs money; under-routing loses content — correctness outranks cost.
+Document-level `pdf_type` never overrides a per-page verdict; it only refines
+OCR flavor.
+
+### A3. Fallback is the rule table, never the judge
+
+With no classifier (or on classifier error), pages are classified exactly as
+today by the decision-2 rule table; absence of a classifier IS the current
+behavior — there is no new fallback path. The judge keeps its decision 4–5
+role (re-rank only) and is never a classifier fallback.
+
+### A4. Implementation contract: local-only, model-free, deterministic
+
+Implementations MUST be a structural text-layer scan (tens of milliseconds):
+no network, no model downloads, and no model loads at all — an ML-model
+classifier deciding whether to run an ML backend is oversized and out of
+contract. Facts page numbers are IR 1-based by contract (upstream indexing is
+inconsistent: `classify_pdf`/`PageMarkdown.page` 0-indexed, `detect_pdf`
+1-indexed); the provider normalizes once, nothing downstream converts.
+`detect_pdf` is the chosen upstream call (1-indexed like the IR; carries
+OCR reasons and table pages). `resolve_classifier(spec | instance | None)`
+resolves `None → None` — there is NO default implementation, unlike the
+judge's `DeterministicJudge`.
+
+### A5. Provenance via diagnostic, not schema change
+
+The fold emits one document-level diagnostic carrying classifier name, upstream
+version, `pdf_type`, and confidence — enough to reconstruct why plans differ
+across environments. No `DocumentResult`/trace schema change. Determinism
+statement: identical inputs plus identical installed classifier version yield
+identical plans. The only contract change is one generic nullable field,
+`PageSignal.classifier_needs_ocr: bool | None = None` (default `None` —
+existing constructors unaffected).
+
+### A6. Table hints flow through the existing channel
+
+The fold emits `feature:tables` when the classifier reports table pages,
+filling the decision-2 hint channel with real evidence; `feature:figures` is
+never synthesized (no honest upstream signal). Hints only select OCR flavor
+for pages already needing OCR, so A2's asymmetry holds.
+
+### A7. System One / Jev: same pattern, own extra, no heuristic by default
+
+Decision 7 stands: the judge seam is the LLM integration point for
+re-ranking. The classifier seam extends the same pattern to OCR-need facts;
+a Jev-backed judge OR classifier would ship as its own optional extra,
+subject to A1–A4. The requirement "a no-heuristic LLM path must be
+configurable" is met by spec-string resolution (`provider/model[:variant]`)
+on both seams; the heuristic path remains the default when no spec is given.
+
+### Alternatives considered (classifier attachment)
+
+- **Enrich `native-pdf.analyze()` with the classifier.** Rejected: the same
+  bytes would produce different canonical signals depending on the installed
+  environment, and it couples the light pypdf path to a second PDF library.
+- **A classifier-only `DocumentBackend`.** Rejected: `choose_analyzer` ranks
+  native backends first, so it could never win PDF analysis; a converter it
+  does not need would be mandatory protocol surface.
+- **Full contract change (`pdf_type`/confidence on `PageSignal`,
+  `AnalysisResult.classification`).** Deferred: widens the frozen public
+  contract and every consumer for data only diagnostics need; revisit only if
+  provenance must be machine-read.
