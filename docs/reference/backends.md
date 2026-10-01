@@ -38,6 +38,7 @@ The native backends are registered through
 | `pandoc` | `parsecraft[pandoc]` (`pypandoc` 1.17, MIT) | docx, pptx, xlsx (read-only), odt, rtf, epub — the verified MIME set | [pandoc.org](https://pandoc.org/) — **GPL-2.0-or-later** binary, MIT wrapper | Broad office and e-book coverage through one wrapper | Needs the external **Pandoc binary**; `.ods`/`.odp` are unsupported by pandoc 3.11; copyleft gate | Available |
 | `liteparse` | `parsecraft[liteparse]` (`liteparse` 2.14.7, Apache-2.0) | `application/pdf`, `image/jpeg`, `image/png`, `image/tiff` | [`run-llama/liteparse`](https://github.com/run-llama/liteparse) — Apache-2.0 | Broad and permissive; no copyleft gate | Office/ODF formats require a system LibreOffice; `.html` is not supported; larger extra dependency surface | Available |
 | `docling` | `parsecraft[docling]` (`docling` 2.130.0, MIT) | `application/pdf`, `text/html`, `text/markdown`, `text/plain` | [`docling`](https://pypi.org/project/docling/) — MIT | Layout, tables, and reading order | Heavy dependency graph; office/image formats are registered upstream but undeclared pending conversion verification; the motivating incident ran >1 h on a 113-page PDF | Available |
+| `pdf-inspector` | `parsecraft[pdf-inspector]` (`pdf-inspector` 1.25.2, MIT) | `application/pdf` | [`firecrawl/pdf-inspector`](https://github.com/firecrawl/pdf-inspector) — MIT | Fastest verified text-PDF path: Rust/PyO3 extraction straight to Markdown, no ML models and no OCR runtime loaded; classifies text-based vs scanned PDFs before extraction | PDF only (no docx/pptx/xlsx path exists upstream); no OCR, so scanned pages need an OCR backend; ships as a prebuilt Rust extension wheel only for `cp38-abi3` — Linux x86_64/aarch64, macOS Intel/ARM, Windows x64 (other platforms build from source and need a Rust toolchain); not yet benchmarked in this repo | Available |
 
 ## OCR / document-VLM (GPU)
 
@@ -99,13 +100,14 @@ it never excludes a language-agnostic backend (see
 | `liteparse` | agnostic (no claim) |
 | `ocr-tele` | `zh`, `en` |
 | `ocr-ovis`, `ocr-unlimited`, `ocr-qianfan` | agnostic (multilingual) |
-| `pandoc`, `docling` | agnostic (no claim) |
+| `pandoc`, `docling`, `pdf-inspector` | agnostic (no claim) |
 
 ## Choosing a backend
 
 | Document trait | Route | Why |
 | -------------- | ----- | --- |
 | Digital text PDF | `native-pdf` | Fast native text extraction, no GPU |
+| Digital text PDF, throughput first | `pdf-inspector` | Rust extraction with no OCR runtime; falls back to `native-pdf` when the extra is absent |
 | Scanned pages or camera photos | `ocr-tele`, `ocr-ovis` | No native text; geometry-aware, formula-capable |
 | Multi-page dense tables | `ocr-unlimited` | Long-horizon multi-page handling |
 | Formulas and equations | `ocr-ovis` | Formula-aware extraction |
