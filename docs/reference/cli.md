@@ -135,7 +135,9 @@ shipped judge providers are `ollaya/laya` (a local daemon reading
 `systemone` extra and `TYPESAFE_API_KEY`), and `zen/<model>` (the same System One
 wire on OpenCode Zen, needs the same extra and `OPENCODE_API_KEY`) — all three
 exit `1` at resolution without their key. `ollama/<model>` is the same wire on a
-**local** Ollama daemon: no key, and no network beyond localhost.
+**local** Ollama daemon: no key, and no network beyond localhost. Model tokens
+are upstream ids, so a `:variant` is rejected — for Ollama that means the bare
+name (`ollama/nimble`), which the daemon resolves to its `:latest` tag.
 `--judge` is an explicit opt-in to whatever that provider does — the cloud
 providers reach the network — and is **not** gated by `PARSECRAFT_OFFLINE`,
 which excludes model-asset *backends* from candidacy rather than the judge seam.

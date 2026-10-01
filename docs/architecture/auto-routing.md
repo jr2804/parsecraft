@@ -294,7 +294,9 @@ inside the code-owned funnel: it only re-ranks what `plan_route` already found
 eligible (decisions 3-5), and the host budget is a ranking signal, never a
 filter. The model id is the spec's model token (`systemone/jev-latest`,
 `zen/jev-1.13-free`, `ollama/nimble`); a `:variant` is rejected rather than
-ignored.
+ignored — note that this makes Ollama's tag form unusable
+(`ollama/nimble:latest` parses as a variant), which is harmless because the
+daemon resolves a bare `nimble` to its `:latest` tag.
 
 Bounding defaults come from the SDK unless an endpoint overrides them: 10 s per
 HTTP operation, 3 attempts, a 30 s retry budget. The local endpoint alone raises
