@@ -27,7 +27,10 @@ import hashlib
 from pathlib import Path
 from time import monotonic
 
-import pdf_inspector  # ty: ignore[unresolved-import] — extra not installed in dev/CI; heavy by contract
+# Heavy library, imported at module level: this module is the sanctioned
+# import boundary and loads only at backend instantiation (factory catches
+# ImportError -> DependencyUnavailableError when the extra is absent).
+import pdf_inspector
 
 from parsecraft.backends.errors import BackendError
 from parsecraft.backends.pdf_inspector.pdf_inspector import DESCRIPTOR, PDF_INSPECTOR_BACKEND_VERSION
