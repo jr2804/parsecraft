@@ -10,7 +10,7 @@ import pytest
 
 from parsecraft.backends.protocol import BackendCapabilities, BackendDescriptor
 from parsecraft.routing import DeterministicJudge, Intent, RoutingJudge
-from parsecraft.routing.judge import JudgeSpec
+from parsecraft.routing.judge import JudgeSpec, MachineProfile
 from parsecraft.routing.judge_providers import (
     DEFAULT_PROVIDER_MODULE,
     JudgeError,
@@ -98,48 +98,61 @@ def test_default_provider_module_path_convention() -> None:
 # ── registry ───────────────────────────────────────────────────────────────
 
 
-def test_registered_loader_receives_typed_spec() -> None:
-    captured: list[JudgeSpec] = []
+def test_registered_loader_receives_typed_spec_and_host_facts() -> None:
+    captured: list[tuple[JudgeSpec, MachineProfile | None]] = []
 
-    def loader(spec: JudgeSpec) -> RoutingJudge:
-        captured.append(spec)
+    def loader(spec: JudgeSpec, machine: MachineProfile | None = None) -> RoutingJudge:
+        captured.append((spec, machine))
         return DeterministicJudge()
 
     register_judge_provider("fake", loader)
-    judge = resolve_judge("fake/model:v1")
+    judge = resolve_judge("fake/model:v1", machine=MachineProfile(vram_budget_gb=12.5))
     assert isinstance(judge, DeterministicJudge)
-    assert captured == [JudgeSpec(provider="fake", model="model", variant="v1")]
+    assert captured == [(JudgeSpec(provider="fake", model="model", variant="v1"), MachineProfile(vram_budget_gb=12.5))]
+
+
+def test_resolve_judge_without_host_facts_passes_none() -> None:
+    """An unprobed caller offers no machine facts — not a zero-budget host."""
+    captured: list[MachineProfile | None] = []
+
+    def loader(spec: JudgeSpec, machine: MachineProfile | None = None) -> RoutingJudge:
+        captured.append(machine)
+        return DeterministicJudge()
+
+    register_judge_provider("unprobed", loader)
+    resolve_judge("unprobed/m")
+    assert captured == [None]
 
 
 def test_last_registration_wins() -> None:
-    register_judge_provider("dup", lambda spec: DeterministicJudge())
+    register_judge_provider("dup", lambda spec, machine=None: DeterministicJudge())
 
     class Marker:
         @staticmethod
         def rank(intent: Intent, candidates: Any) -> list[str]:
             return ["native-a"]
 
-    register_judge_provider("dup", lambda spec: cast(RoutingJudge, Marker()))
+    register_judge_provider("dup", lambda spec, machine=None: cast(RoutingJudge, Marker()))
     assert isinstance(resolve_judge("dup/m"), Marker)
 
 
 def test_explicit_registration_beats_lazy_module_path(monkeypatch: pytest.MonkeyPatch) -> None:
     module = ModuleType("parsecraft.providers.preferred")
 
-    def module_loader(spec: JudgeSpec) -> RoutingJudge:
+    def module_loader(spec: JudgeSpec, machine: MachineProfile | None = None) -> RoutingJudge:
         raise AssertionError("lazy module must not load when a loader is registered")
 
     module.load_judge = module_loader  # ty: ignore[unresolved-attribute] — ModuleType is dynamically extended
     monkeypatch.setitem(sys.modules, "parsecraft.providers.preferred", module)
-    register_judge_provider("preferred", lambda spec: DeterministicJudge())
+    register_judge_provider("preferred", lambda spec, machine=None: DeterministicJudge())
     assert isinstance(resolve_judge("preferred/m"), DeterministicJudge)
 
 
 def test_register_rejects_bad_name_and_loader() -> None:
     with pytest.raises(JudgeSpecError, match="slash-free"):
-        register_judge_provider("bad/name", lambda spec: DeterministicJudge())
+        register_judge_provider("bad/name", lambda spec, machine=None: DeterministicJudge())
     with pytest.raises(JudgeSpecError, match="slash-free"):
-        register_judge_provider("", lambda spec: DeterministicJudge())
+        register_judge_provider("", lambda spec, machine=None: DeterministicJudge())
     with pytest.raises(JudgeError, match="must be callable"):
         register_judge_provider("noload", cast(Any, "not-callable"))
 
@@ -150,8 +163,9 @@ def test_register_rejects_bad_name_and_loader() -> None:
 def test_lazy_module_loads_on_first_resolve(monkeypatch: pytest.MonkeyPatch) -> None:
     module = ModuleType("parsecraft.providers.lazyp")
 
-    def load_judge(spec: JudgeSpec) -> RoutingJudge:
+    def load_judge(spec: JudgeSpec, machine: MachineProfile | None = None) -> RoutingJudge:
         assert spec.model == "m"
+        assert machine is None
         return DeterministicJudge()
 
     module.load_judge = load_judge  # ty: ignore[unresolved-attribute] — ModuleType is dynamically extended
@@ -183,7 +197,7 @@ def test_lazy_module_without_loader_export(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_loader_exception_is_wrapped() -> None:
-    def broken(spec: JudgeSpec) -> RoutingJudge:
+    def broken(spec: JudgeSpec, machine: MachineProfile | None = None) -> RoutingJudge:
         raise ValueError("upstream exploded")
 
     register_judge_provider("broken", broken)
@@ -193,7 +207,7 @@ def test_loader_exception_is_wrapped() -> None:
 
 
 def test_loader_judge_error_passes_through() -> None:
-    def raising(spec: JudgeSpec) -> RoutingJudge:
+    def raising(spec: JudgeSpec, machine: MachineProfile | None = None) -> RoutingJudge:
         raise JudgeSpecError("provider-side spec problem")
 
     register_judge_provider("raiser", raising)
@@ -202,6 +216,6 @@ def test_loader_judge_error_passes_through() -> None:
 
 
 def test_loader_returning_non_judge_is_rejected() -> None:
-    register_judge_provider("junk", lambda spec: "not a judge")  # ty: ignore[invalid-argument-type]
+    register_judge_provider("junk", lambda spec, machine=None: "not a judge")  # ty: ignore[invalid-argument-type]
     with pytest.raises(JudgeProviderLoadError, match="not a RoutingJudge"):
         resolve_judge("junk/m")

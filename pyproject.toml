@@ -65,9 +65,11 @@ ocr-unlimited = [
     "matplotlib",
     "requests",
 ]
-# TypeSafe System One / Jev judge provider: pure-Python MIT SDK behind the
-# optional `systemone` routing extra; `load_judge` imports it via importlib, so
-# it stays out of the core import path and out of the dev/CI venv.
+# TypeSafe System One judge providers (typesafe cloud, OpenCode Zen, local
+# Ollama): one pure-Python MIT SDK (typesafe-sdk) behind the optional
+# `systemone` routing extra, injected per endpoint via base_url/api_key.
+# `load_judge` imports it via importlib, so it stays out of the core import path
+# and out of the dev/CI venv.
 systemone = ["typesafe-sdk>=0.7.2"]
 
 [project.entry-points."parsecraft.backends"]

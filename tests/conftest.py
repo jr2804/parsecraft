@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from tests.fixtures.documents import DocumentFactory
+from tests.fixtures.jev_sdk import StubSdk
 
 _NETWORK_MARKER = "network"
 _CORPUS_MARKER = "corpus"
@@ -18,6 +19,17 @@ _RUN_GPU = "--run-gpu"
 _RUN_JUDGE = "--run-judge"
 
 _test_dir = Path(__file__).parent
+
+
+@pytest.fixture
+def jev_sdk(monkeypatch: pytest.MonkeyPatch) -> StubSdk:
+    """A fake ``typesafe_sdk`` module installed in ``sys.modules``.
+
+    The System One providers import their SDK through ``importlib`` at
+    ``load_judge`` time, so installing this stub exercises the real provider
+    code offline (see ``tests/fixtures/jev_sdk.py``).
+    """
+    return StubSdk().install(monkeypatch)
 
 
 @pytest.fixture(scope="session")
@@ -85,7 +97,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         _RUN_JUDGE,
         action="store_true",
         default=False,
-        help=f"run the '{_JUDGE_MARKER}' tier (a live judge provider: ollaya at OLLAYA_BASE_URL, or systemone/jev with TYPESAFE_API_KEY)",
+        help=f"run the '{_JUDGE_MARKER}' tier (live providers: ollaya daemon, systemone/jev, zen/<model>, or the semi-live local ollama/<model>)",
     )
 
 
@@ -105,7 +117,7 @@ def pytest_configure(config: pytest.Config) -> None:
     )
     config.addinivalue_line(
         "markers",
-        f"{_JUDGE_MARKER}: needs a live judge provider (ollaya daemon or TYPESAFE_API_KEY); skipped unless {_RUN_JUDGE} is passed",
+        f"{_JUDGE_MARKER}: needs a live judge provider (ollaya daemon, TYPESAFE/OPENCODE keys, or a local Ollama model); skipped unless {_RUN_JUDGE} is passed",
     )
 
 

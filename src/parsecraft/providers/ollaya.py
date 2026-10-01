@@ -27,7 +27,7 @@ import urllib.request
 from collections.abc import Sequence
 
 from parsecraft.backends.protocol import BackendDescriptor
-from parsecraft.routing.judge import JudgeSpec, RoutingJudge
+from parsecraft.routing.judge import JudgeSpec, MachineProfile, RoutingJudge
 from parsecraft.routing.models import Intent, RoutingError
 from parsecraft.routing.rules import is_ocr
 
@@ -159,8 +159,12 @@ class OllayaLanguageDetector:
         return None  # calibrated uncertainty means 'not identified' — never a guess
 
 
-def load_judge(spec: JudgeSpec) -> RoutingJudge:
-    """Provider entry point required by ``routing.judge_providers`` (pc-2's contract)."""
+def load_judge(spec: JudgeSpec, machine: MachineProfile | None = None) -> RoutingJudge:
+    """Provider entry point required by ``routing.judge_providers`` (pc-2's contract).
+
+    ``machine`` belongs to the shared loader contract; this daemon-backed judge
+    reads calibrated probabilities from the model itself and needs no host facts.
+    """
     model = spec.model if spec.variant is None else f"{spec.model}:{spec.variant}"
     return OllayaJudge(model=model, base_url=_configured_base_url())
 

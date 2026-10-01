@@ -4,14 +4,15 @@ A judge only RE-RANKS candidates the planner already deemed eligible; it
 cannot add candidates or override hard constraints. ``DeterministicJudge``
 is the default. Provider-prefixed model strings (``ollaya/laya:typed-decisions``)
 resolve to judges via :mod:`parsecraft.routing.judge_providers` — provider
-modules import only at resolve time; this package never imports Jev/
-System-One (a Jev adapter is a future optional extra implementing
-:class:`RoutingJudge`).
+modules import only at resolve time; this package never imports a provider
+implementation. Shipped providers: ``ollaya/laya`` (local daemon),
+``systemone/<model>`` (TypeSafe cloud), ``zen/<model>`` (OpenCode Zen) and
+``ollama/<model>`` (local Ollama), the last three System One endpoints.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, Field
@@ -55,8 +56,28 @@ class JudgeSpec(BaseModel):
     variant: str | None = Field(default=None, min_length=1)
 
 
-#: What a registered judge provider receives and must return.
-JudgeProviderLoader = Callable[[JudgeSpec], RoutingJudge]
+class MachineProfile(BaseModel):
+    """Host facts a judge may use when ranking already-eligible candidates.
+
+    Deliberately narrow: the judge sees the VRAM budget the planner itself
+    enforces, so it can prefer a candidate that fits this machine. It is a
+    ranking input only — a judge never widens, adds, or drops candidates
+    (``plan_route``'s ``_validate_order`` keeps that authority), and ``None``
+    in its place means the host is unknown, not that it has no GPU.
+    """
+
+    vram_budget_gb: float = Field(default=0.0, ge=0)
+
+
+class JudgeProviderLoader(Protocol):
+    """What a registered judge provider exports: spec plus host facts → judge.
+
+    ``machine`` is optional so a loader stays callable with the spec alone:
+    ``None`` means the caller had no host facts to offer (a library embedding),
+    which is not the same as a host with no GPU.
+    """
+
+    def __call__(self, spec: JudgeSpec, machine: MachineProfile | None = None) -> RoutingJudge: ...
 
 
 def _sort_key(descriptor: BackendDescriptor, intent: Intent) -> tuple[int, float, str]:

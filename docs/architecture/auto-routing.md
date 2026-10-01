@@ -224,12 +224,13 @@ with no `--judge`/`--classifier` never leaves the process.
 
 Failures are typed: `JudgeSpecError` (malformed spec),
 `JudgeProviderUnavailableError` (names the provider extra to install), and
-`JudgeProviderLoadError` (loader failed or returned a non-judge). The
-shipped judge providers are `ollaya/laya` (`src/parsecraft/providers/ollaya.py`),
-a daemon-backed judge reading `OLLAYA_BASE_URL` at call time (default
-`http://localhost:11435`), and `systemone/jev`
-(`src/parsecraft/providers/systemone.py`), TypeSafe's System One API behind the
-`systemone` extra and `TYPESAFE_API_KEY`.
+`JudgeProviderLoadError` (loader failed or returned a non-judge). Four judge
+providers ship: `ollaya/laya` (`src/parsecraft/providers/ollaya.py`), a
+daemon-backed judge reading `OLLAYA_BASE_URL` at call time (default
+`http://localhost:11435`), and three System One endpoints that share one
+implementation (`src/parsecraft/providers/_jev.py`) — `systemone/jev` (TypeSafe
+cloud, `TYPESAFE_API_KEY`), `zen/<model>` (OpenCode Zen, `OPENCODE_API_KEY`),
+and `ollama/<model>` (a local daemon, no key).
 
 CLI surface: `convert --backend NAME` leads every eligible page with `NAME`
 through a CLI-owned `PreferredBackendJudge` (`--no-auto` requires `--backend`),
@@ -262,27 +263,52 @@ of tens of milliseconds — taken 1-indexed and passed through verbatim into
 IR-1-based facts, with `pdf_type`, `confidence`, and table pages feeding the
 `feature:tables` hint.
 
-### System One / Jev provider
+### System One / Jev providers
 
-**Status:** current for the judge seam (`systemone/jev`); a Jev-backed
-classifier is not shipped.
+**Status:** current, three endpoints (`systemone/jev`, `zen/<model>`,
+`ollama/<model>`); a Jev-backed classifier is not shipped.
 
 ADR-0004 decision 7 and A7 make the judge seam the integration point for a
-System One / Jev-backed judge. `src/parsecraft/providers/systemone.py`
-implements it behind the optional `systemone` extra (`typesafe-sdk`, MIT, pure
-Python): `load_judge` imports the SDK through `importlib` at resolve time only,
-and requires `TYPESAFE_API_KEY` — an unset key or a missing extra raises
-`JudgeProviderUnavailableError`, so the CLI exits `1` with `judge unavailable: …`
-before any backend runs.
+System One / Jev-backed judge. One implementation (`src/parsecraft/providers/_jev.py`)
+serves three endpoints behind the optional `systemone` extra (`typesafe-sdk`,
+MIT, pure Python) — the SDK is injected per endpoint rather than hand-rolled:
+`systemone/<model>` is the TypeSafe cloud (SDK default base URL,
+`TYPESAFE_API_KEY`), `zen/<model>` is OpenCode Zen (`base_url`
+`https://opencode.ai/zen`, `OPENCODE_API_KEY`; the SDK appends its
+`/v1/systemone` path and sends `Authorization: Bearer …`, exactly what Zen
+documents), and `ollama/<model>` is a **local** Ollama daemon
+(`http://localhost:11434`, no key, nothing beyond localhost). `load_judge`
+imports the SDK through `importlib` at resolve time only, and a missing extra or
+unset key raises `JudgeProviderUnavailableError`, so the CLI exits `1` with
+`judge unavailable: …` before any backend runs.
 
 Each call asks ONE Choice question per page intent over the eligible candidates
-(state: the intent plus the candidate names; criteria: each candidate's declared
-capabilities), and the answer's probability distribution is the ranking — a
-candidate the answer omits scores `0.0`, and ties keep the planner's name order,
-so identical inputs give identical orders. The judge stays inside the code-owned
-funnel: it only re-ranks what `plan_route` already found eligible (decisions
-3-5). The model id is the spec's model token (`systemone/jev-latest`); a
-`:variant` is rejected rather than ignored.
+(state: the intent, each candidate's declared capabilities, and — when the
+caller probed one — the host's `vram_budget_gb`; criteria: each candidate's
+capabilities in prose), and the answer's probability distribution is the
+ranking — a candidate the answer omits scores `0.0`, and ties keep the planner's
+name order, so identical inputs give identical orders. Verdicts are memoized per
+`(intent, candidate names)` for the life of one judge (one `convert`
+invocation), so a repeated page shape costs nothing extra. The judge stays
+inside the code-owned funnel: it only re-ranks what `plan_route` already found
+eligible (decisions 3-5), and the host budget is a ranking signal, never a
+filter. The model id is the spec's model token (`systemone/jev-latest`,
+`zen/jev-1.13-free`, `ollama/nimble`); a `:variant` is rejected rather than
+ignored.
+
+Bounding defaults come from the SDK unless an endpoint overrides them: 10 s per
+HTTP operation, 3 attempts, a 30 s retry budget. The local endpoint alone raises
+the per-operation bound (120 s), because a cold model load is slower than any
+cloud round trip — measured at 12.4 s for `nimble` on a CPU host.
+
+Testing is tiered: offline provider tests stub the SDK in `sys.modules`, and a
+semi-live tier drives a **real local daemon** under three machine profiles
+(this host, a 32 GB GPU host, a CPU-only host), asserting contract-valid
+orderings plus one behavioral anchor — a CPU-only host must not rank a GPU-only
+candidate first. Both live and semi-live tests are opt-in (`mise run
+test-judge`); the semi-live one additionally needs the `systemone` extra, so it
+runs in a throwaway environment:
+`uv run --isolated --extra systemone pytest -m judge --run-judge`.
 
 Without a configured spec the heuristic path is still the default: the
 deterministic rule table plus, where configured, a judge spec.

@@ -33,6 +33,7 @@ from parsecraft.pipeline.analysis import (
 from parsecraft.routing import (
     Intent,
     JudgeViolationError,
+    MachineProfile,
     NoEligibleBackendError,
     RoutingConstraints,
     RoutingError,
@@ -79,21 +80,23 @@ def convert_source(
 ) -> DocumentResult:
     """Analyze, plan, and execute a source, returning the aggregated IR.
 
-    ``judge``/``classifier`` are seam spec strings (``provider/model[:variant]``)
-    resolved here, before any I/O: a malformed spec is a usage error (exit 2), an
-    unavailable provider is a runtime failure (exit 1). ``backend`` and ``judge``
-    are mutually exclusive — both choose the lead candidate. Both flags default to
-    ``None``, which is exactly the historical behaviour.
+    The suffix check runs first, then ONE host probe feeds the analyzer choice,
+    the routing constraints, and the seams. ``judge``/``classifier`` are seam
+    spec strings (``provider/model[:variant]``) resolved from that probe before
+    the source is read: a malformed spec is a usage error (exit 2), an
+    unavailable provider is a runtime failure (exit 1). ``backend`` and
+    ``judge`` are mutually exclusive — both choose the lead candidate. Both
+    flags default to ``None``, which is exactly the historical behaviour.
     """
-    resolved_classifier = _resolve_classifier(classifier)
-    resolved_judge = _resolve_judge(backend, judge)
     try:
         media_type = media_type_for(path)
     except UnsupportedSourceError as exc:
         raise ConvertError(str(exc), exit_code=_USAGE_EXIT_CODE) from exc
+    environment = probe_environment()  # a single probe per invocation, shared by analysis and the seams
+    resolved_classifier = _resolve_classifier(classifier)
+    resolved_judge = _resolve_judge(backend, judge, environment)
     source = read_source(path, media_type)
     registry = default_registry
-    environment = probe_environment()  # a single probe per invocation
     try:
         analyzer = choose_analyzer(registry.list_backends(), media_type, installed_extras=environment.installed_extras)
     except NoAnalyzerError as exc:
@@ -132,19 +135,22 @@ def _resolve_classifier(spec: str | None) -> PageOcrClassifier | None:
         raise ConvertError(f"classifier unavailable: {exc}") from exc  # exit 1
 
 
-def _resolve_judge(backend: str | None, spec: str | None) -> RoutingJudge | None:
+def _resolve_judge(backend: str | None, spec: str | None, environment: EnvironmentInfo) -> RoutingJudge | None:
     """Resolve the judge seam: ``--backend`` builds the CLI's own lead-candidate judge.
 
     ``None`` (neither flag) stays ``None`` so ``execute`` keeps its default
-    deterministic judge — byte-identical to the pre-flag behaviour.
+    deterministic judge — byte-identical to the pre-flag behaviour. The host
+    facts from ``environment`` reach a machine-aware judge, so it can weigh
+    hardware fit among the eligible candidates without probing the host again.
     """
     if backend is not None and spec is not None:
         msg = "--backend and --judge are mutually exclusive: both choose the lead candidate"
         raise ConvertError(msg, exit_code=_USAGE_EXIT_CODE)
     if spec is None:
         return PreferredBackendJudge(backend) if backend is not None else None
+    machine = MachineProfile(vram_budget_gb=environment.vram_budget_gb)
     try:
-        return resolve_judge(spec)
+        return resolve_judge(spec, machine=machine)
     except JudgeSpecError as exc:
         raise ConvertError(str(exc), exit_code=_USAGE_EXIT_CODE) from exc
     except JudgeError as exc:

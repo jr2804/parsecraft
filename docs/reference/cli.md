@@ -90,7 +90,7 @@ parsecraft convert SOURCE [OPTIONS]
 | Option | Default | Behaviour |
 | ------ | ------- | --------- |
 | `--backend`, `-b NAME` | unset | Non-auto: lead with this backend (it must be eligible) |
-| `--judge SPEC` | unset | Route with a judge provider (`provider/model[:variant]`); mutually exclusive with `--backend`; may use the network |
+| `--judge SPEC` | unset | Route with a judge provider (`provider/model[:variant]`); mutually exclusive with `--backend`; may use the network (except `ollama/<model>`, which is local) |
 | `--classifier SPEC` | unset | Fold OCR-need facts from a classifier provider (`provider/model[:variant]`) into the analysis |
 | `--auto` / `--no-auto` | `--auto` | Route automatically; `--no-auto` requires `--backend` |
 | `--max-passes N` | `1` | Fallback passes per page group (`N >= 1`) |
@@ -131,10 +131,13 @@ lead candidate. The one shipped classifier provider is
 `pdfinspector/detect_pdf` (needs the `pdf-inspector` extra): a local, model-free
 text-layer scan whose verdicts can only add OCR-need, never remove it. The
 shipped judge providers are `ollaya/laya` (a local daemon reading
-`OLLAYA_BASE_URL`) and `systemone/jev` (TypeSafe's System One API, needs the
-`systemone` extra and `TYPESAFE_API_KEY` — resolution exits `1` without it).
-`--judge` is an explicit opt-in to whatever that provider does — the System One
-provider reaches the network — and is **not** gated by `PARSECRAFT_OFFLINE`,
+`OLLAYA_BASE_URL`), `systemone/jev` (TypeSafe's System One API, needs the
+`systemone` extra and `TYPESAFE_API_KEY`), and `zen/<model>` (the same System One
+wire on OpenCode Zen, needs the same extra and `OPENCODE_API_KEY`) — all three
+exit `1` at resolution without their key. `ollama/<model>` is the same wire on a
+**local** Ollama daemon: no key, and no network beyond localhost.
+`--judge` is an explicit opt-in to whatever that provider does — the cloud
+providers reach the network — and is **not** gated by `PARSECRAFT_OFFLINE`,
 which excludes model-asset *backends* from candidacy rather than the judge seam.
 With no `--judge`/`--classifier` spec, no provider is resolved at all.
 

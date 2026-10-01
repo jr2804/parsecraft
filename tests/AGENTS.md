@@ -8,7 +8,11 @@ tests, and keep the 100% coverage gate green.
 ## Ownership
 
 - `conftest.py` — shared fixtures (`doc_factory`, `cache_subdir`,
-  `downloads_dir`) plus the opt-in gates for network and corpus tests.
+  `downloads_dir`, `jev_sdk`) plus the opt-in gates for network and corpus
+  tests.
+- `fixtures/jev_sdk.py` — the fake `typesafe_sdk` the System One provider
+  tests install in `sys.modules`; it records constructor kwargs, so endpoint
+  injection (`base_url`, `api_key`, `timeout`) is asserted, not assumed.
 - `fixtures/documents.py` — deterministic synthetic document generators
   (.txt/.md/.csv/.json/.html + a minimal PDF built from stdlib bytes, plus an
   image-only-first-page scan PDF for mixed-OCR fixtures).
@@ -25,9 +29,17 @@ tests, and keep the 100% coverage gate green.
   classifier seam and its pdf-inspector provider (`pdf_inspector` stubbed
   through `sys.modules`; the live 1-based indexing test skips without the
   extra).
-- `test_providers_systemone.py` — the System One / Jev judge provider
-  (`typesafe_sdk` stubbed through `sys.modules`; the live Jev tier needs the
-  `systemone` extra plus `TYPESAFE_API_KEY` and skips without them).
+- `test_providers_systemone.py` — the System One judge family against the
+  offline SDK stub: spec/credential/extra failures, endpoint injection, the
+  distribution-as-ranking contract, the `(intent, candidates)` memo, machine
+  state, and a live tier gated on the `systemone` extra plus
+  `TYPESAFE_API_KEY`.
+- `test_providers_jev_endpoints.py` — the Zen and Ollama endpoints (key
+  requirement vs none, base URLs, the raised local timeout) plus the
+  semi-live tier: a real local Ollama daemon under three machine profiles,
+  with one behavioral anchor (a CPU-only host must not rank a GPU-only
+  candidate first). Semi-live tests skip unless the `systemone` extra and the
+  daemon are both present.
 - `test_smoke.py` — CLI surface (`backends --json`, `--version`, bare
   invocation shows help).
 - `test_document_fixtures.py`, `test_sources_manifest.py` — fixture

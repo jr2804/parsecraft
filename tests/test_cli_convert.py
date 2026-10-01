@@ -29,7 +29,7 @@ from parsecraft.cli.app import app
 from parsecraft.environment import EnvironmentInfo
 from parsecraft.ir import ChunkKind, PageResult, PageSignal, StructuredChunk
 from parsecraft.pipeline.analysis import NoAnalyzerError, UnsupportedSourceError, choose_analyzer, media_type_for
-from parsecraft.routing import Intent, RoutingJudge
+from parsecraft.routing import Intent, MachineProfile, RoutingJudge
 from parsecraft.routing.classifier import (
     ClassifierSpec,
     OcrFacts,
@@ -367,7 +367,7 @@ def test_convert_judge_flag_reorders_candidates(pdf_registry: Path) -> None:
     assert "ocr content" in result.output
 
 
-def _load_reversing_judge(spec: JudgeSpec) -> RoutingJudge:
+def _load_reversing_judge(spec: JudgeSpec, machine: MachineProfile | None = None) -> RoutingJudge:
     return _ReversingJudge()
 
 
@@ -395,7 +395,7 @@ def test_judge_seam_is_not_gated_by_the_offline_constraint(registry: BackendRegi
     """
     resolved: list[str] = []
 
-    def loader(spec: JudgeSpec) -> RoutingJudge:
+    def loader(spec: JudgeSpec, machine: MachineProfile | None = None) -> RoutingJudge:
         resolved.append(spec.model)
         return DeterministicJudge()
 
@@ -411,7 +411,7 @@ def test_no_judge_spec_resolves_no_provider(registry: BackendRegistry, tmp_path:
     """No spec: the deterministic default plans, so nothing reaches a provider."""
     resolved: list[str] = []
 
-    def loader(spec: JudgeSpec) -> RoutingJudge:
+    def loader(spec: JudgeSpec, machine: MachineProfile | None = None) -> RoutingJudge:
         resolved.append(spec.provider)
         return _ExplodingJudge()  # any use of it fails the test loudly
 

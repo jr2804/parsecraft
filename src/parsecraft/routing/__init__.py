@@ -8,7 +8,7 @@ candidates. See ``AGENTS.md`` in this directory for the full contract.
 from __future__ import annotations
 
 from parsecraft.routing.classifier import OcrFacts, PageOcrClassifier
-from parsecraft.routing.judge import DeterministicJudge, RoutingJudge
+from parsecraft.routing.judge import DeterministicJudge, MachineProfile, RoutingJudge
 from parsecraft.routing.language import LanguageDetector
 from parsecraft.routing.models import (
     Intent,
@@ -26,6 +26,7 @@ __all__ = [
     "Intent",
     "JudgeViolationError",
     "LanguageDetector",
+    "MachineProfile",
     "NoEligibleBackendError",
     "OcrFacts",
     "PageOcrClassifier",
