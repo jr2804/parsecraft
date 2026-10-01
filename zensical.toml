@@ -21,6 +21,7 @@ nav = [
     { "Intermediate representation" = "architecture/ir.md" },
     { "Backends" = "architecture/backends.md" },
     { "Routing and auto mode" = "architecture/routing.md" },
+    { "Auto routing" = "architecture/auto-routing.md" },
   ] },
   { "Guides" = [
     { "Write a backend" = "guides/backend-authoring.md" },
