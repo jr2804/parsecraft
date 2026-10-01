@@ -68,13 +68,33 @@ def test_endpoint_binding_uses_the_sdk_default_base_url(jev_sdk: StubSdk, ts_key
     assert jev_sdk.client_kwargs == [{"api_key": _API_KEY, "model": _MODEL, "base_url": None}]
 
 
-def test_variant_is_rejected_not_silently_ignored(jev_sdk: StubSdk, ts_key: str) -> None:
+def test_variant_is_rejected_not_silently_ignored(jev_sdk: StubSdk) -> None:
     with pytest.raises(JudgeSpecError, match="does not accept a variant"):
         provider.load_judge(JudgeSpec(provider="systemone", model=_MODEL, variant="fast"))
     assert jev_sdk.client_kwargs == []
 
 
-def test_missing_extra_names_the_extra(monkeypatch: pytest.MonkeyPatch, ts_key: str) -> None:
+def test_spec_error_outranks_a_missing_credential(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A caller bug must not hide behind environment state (CLI exit 2 before exit 1).
+
+    No key is planted and no SDK stub is installed: the spec check runs first, so
+    the unsupported variant is what the caller hears about.
+    """
+    monkeypatch.delenv(provider._API_KEY_ENV, raising=False)
+    with pytest.raises(JudgeSpecError, match="does not accept a variant"):
+        provider.load_judge(JudgeSpec(provider="systemone", model=_MODEL, variant="fast"))
+
+
+def test_good_spec_without_a_credential_is_unavailable(monkeypatch: pytest.MonkeyPatch, jev_sdk: StubSdk) -> None:
+    """The mirror case: a valid spec plus no key is environment state (exit 1)."""
+    monkeypatch.delenv(provider._API_KEY_ENV, raising=False)
+    with pytest.raises(JudgeProviderUnavailableError, match="TYPESAFE_API_KEY") as excinfo:
+        provider.load_judge(JudgeSpec(provider="systemone", model=_MODEL))
+    assert excinfo.value.provider == "systemone"
+    assert jev_sdk.client_kwargs == []  # never reached the SDK
+
+
+def test_missing_extra_names_the_extra(monkeypatch: pytest.MonkeyPatch) -> None:
     def _raise(_name: str) -> object:
         raise ImportError("typesafe_sdk")
 
@@ -84,7 +104,7 @@ def test_missing_extra_names_the_extra(monkeypatch: pytest.MonkeyPatch, ts_key: 
     assert (excinfo.value.provider, excinfo.value.module_name) == ("systemone", "typesafe_sdk")
 
 
-def test_module_without_the_sdk_surface_is_unavailable(monkeypatch: pytest.MonkeyPatch, ts_key: str) -> None:
+def test_module_without_the_sdk_surface_is_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(sys.modules, "typesafe_sdk", object())
     with pytest.raises(JudgeProviderUnavailableError, match="does not export TypeSafeClient/Choice"):
         provider.load_judge(JudgeSpec(provider="systemone", model=_MODEL))

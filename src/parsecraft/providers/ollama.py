@@ -23,8 +23,6 @@ from parsecraft.routing.judge import JudgeSpec, MachineProfile, RoutingJudge
 PROVIDER_NAME = "ollama"
 #: The daemon's documented root; the SDK appends its ``/v1/systemone`` path.
 BASE_URL = "http://localhost:11434"
-#: Sentinel for a local endpoint: the SDK requires a non-empty key, Ollama ignores the header.
-_LOCAL_API_KEY = "local"
 #: Per-operation bound: a cold local model load is slower than the SDK's 10 s
 #: cloud default (measured: 12.4 s for ``nimble`` on this host, and a larger
 #: model on CPU takes longer). Only this endpoint overrides it.
@@ -32,12 +30,15 @@ _TIMEOUT_S = 120.0
 
 
 def load_judge(spec: JudgeSpec, machine: MachineProfile | None = None) -> RoutingJudge:
-    """Provider entry point required by ``routing.judge_providers`` (pc-2's contract)."""
+    """Provider entry point required by ``routing.judge_providers`` (pc-2's contract).
+
+    No ``api_key_env``: this endpoint needs no credential, and the shared loader
+    sends the SDK's local sentinel (the daemon ignores the header).
+    """
     return load_endpoint_judge(
         provider=PROVIDER_NAME,
         spec=spec,
         machine=machine,
-        api_key=_LOCAL_API_KEY,
         base_url=BASE_URL,
         timeout_s=_TIMEOUT_S,
     )

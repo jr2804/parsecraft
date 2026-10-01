@@ -86,10 +86,25 @@ def test_resolve_judge_reaches_both_providers_lazily(jev_sdk: StubSdk, monkeypat
 
 
 @pytest.mark.parametrize("module", [zen, ollama])
-def test_variants_are_rejected_for_every_endpoint(jev_sdk: StubSdk, monkeypatch: pytest.MonkeyPatch, module: Any) -> None:
-    monkeypatch.setenv(zen._API_KEY_ENV, _ZEN_KEY)
+def test_variants_are_rejected_for_every_endpoint(jev_sdk: StubSdk, module: Any) -> None:
+    """No credential is planted: the spec check precedes credential resolution."""
     with pytest.raises(JudgeSpecError, match="does not accept a variant"):
         module.load_judge(JudgeSpec(provider=module.PROVIDER_NAME, model="m", variant="latest"))
+    assert jev_sdk.client_kwargs == []
+
+
+def test_zen_spec_error_outranks_a_missing_credential(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A caller bug is reported even when the host has no credential (exit 2 first)."""
+    monkeypatch.delenv(zen._API_KEY_ENV, raising=False)
+    with pytest.raises(JudgeSpecError, match="does not accept a variant"):
+        zen.load_judge(JudgeSpec(provider="zen", model="jev-1.13-free", variant="free"))
+
+
+def test_zen_good_spec_without_a_credential_is_unavailable(monkeypatch: pytest.MonkeyPatch, jev_sdk: StubSdk) -> None:
+    """The mirror case: a valid spec plus no key is environment state (exit 1)."""
+    monkeypatch.delenv(zen._API_KEY_ENV, raising=False)
+    with pytest.raises(JudgeProviderUnavailableError, match="OPENCODE_API_KEY"):
+        zen.load_judge(JudgeSpec(provider="zen", model="jev-1.13-free"))
     assert jev_sdk.client_kwargs == []
 
 

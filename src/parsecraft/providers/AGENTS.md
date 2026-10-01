@@ -30,7 +30,7 @@ by `routing/judge_providers.py` (each turns a `JudgeSpec` into a
   header Zen documents).
 - `ollama.py` — the local Ollama endpoint (`ollama/<model>`):
   `http://localhost:11434`, **no credential**, nothing beyond localhost, and
-the one endpoint that raises the per-operation timeout (a cold model load
+  the one endpoint that raises the per-operation timeout (a cold model load
   measured 12.4 s for 9B `nimble:latest`, past the SDK's 10 s cloud default).
   Any local Nimble/Tev GGUF works — verified: `tev` (4B Q4_K_M ≈ 2.5 GB,
   warm rank 0.4 s) after `ollama cp hf.co/bartowski/togethercomputer_Tev1-4B-experimental-GGUF:Q4_K_M tev`;
@@ -72,8 +72,13 @@ the one endpoint that raises the per-operation timeout (a cold model load
   an unset `TYPESAFE_API_KEY`/`OPENCODE_API_KEY` (or a missing `systemone`
   extra) raises `JudgeProviderUnavailableError`, so the CLI reports
   `judge unavailable: …` before any backend runs. A local endpoint reads no
-  credential at all, and one endpoint's `load_judge` must never probe the host,
-  the network, or the daemon at resolution.
+  credential at all (the shared loader sends the SDK's local sentinel), and one
+  endpoint's `load_judge` must never probe the host, the network, or the daemon
+  at resolution.
+- Order inside `load_endpoint_judge`: **spec, then environment**. An invalid
+  spec (unsupported `:variant`) is a caller bug and raises `JudgeSpecError`
+  (CLI exit 2) before the extra and the credential are consulted (exit 1), so a
+  malformed request never hides behind an unconfigured host.
 - Daemon/config reading happens at call time (`OLLAYA_BASE_URL`), never at
   import; failures raise instead of silently picking a different ordering.
 

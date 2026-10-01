@@ -51,6 +51,9 @@ INSTRUCTIONS = (
 _MODULE_NAME = "typesafe_sdk"
 #: Extra that declares the SDK; all three endpoints share it (root AGENTS.md rule 10).
 _EXTRA = "[project.optional-dependencies].systemone"
+#: Credential sent when an endpoint needs none: the SDK rejects an empty key, and
+#: a local daemon ignores the header entirely.
+LOCAL_API_KEY = "local"
 
 
 class JevJudgeError(RoutingError):
@@ -194,22 +197,32 @@ def load_endpoint_judge(
     *,
     provider: str,
     spec: JudgeSpec,
-    api_key: str,
+    api_key_env: str | None = None,
     machine: MachineProfile | None = None,
     base_url: str | None = None,
     timeout_s: float | None = None,
 ) -> JevJudge:
-    """Shared provider body: reject variants, bind the endpoint, build the judge.
+    """Shared provider body: validate the spec, resolve state, bind, build.
 
-    The spec's model token IS the upstream model id (``jev``, ``jev-1.13-free``,
-    ``nimble``), so a ``:variant`` is rejected rather than silently appended.
+    The spec's model token IS the upstream model id (``jev-latest``,
+    ``jev-1.13-free``, ``nimble``), so a ``:variant`` is rejected rather than
+    silently appended. ``api_key_env`` names the required credential, or is
+    ``None`` for a local endpoint that needs none (the SDK still rejects an empty
+    key, so :data:`LOCAL_API_KEY` is sent and the daemon ignores it).
     ``timeout_s`` overrides the SDK's per-operation bound — only the local
     endpoint needs it (a cold model load is slower than any cloud round trip).
+
+    Order is deliberate: **spec before environment**. A malformed spec is a
+    caller bug (CLI exit 2) and must outrank environment state (a missing extra or
+    credential, exit 1), so a bad request never hides behind an unconfigured
+    host — the same reasoning that checks the source suffix before probing.
     """
     if spec.variant is not None:
         msg = f"{provider} takes the upstream model id as its model token — {spec.provider}/{spec.model} does not accept a variant"
         raise JudgeSpecError(msg)
-    endpoint = SdkEndpoint(module=sdk_module(provider), api_key=api_key, model=spec.model, base_url=base_url, timeout_s=timeout_s)
+    module = sdk_module(provider)
+    api_key = LOCAL_API_KEY if api_key_env is None else _required_api_key(provider, api_key_env)
+    endpoint = SdkEndpoint(module=module, api_key=api_key, model=spec.model, base_url=base_url, timeout_s=timeout_s)
     return JevJudge(endpoint=endpoint, machine=machine)
 
 
@@ -225,7 +238,7 @@ def sdk_module(provider: str) -> _SdkModule:
     return module
 
 
-def required_api_key(provider: str, env_var: str) -> str:
+def _required_api_key(provider: str, env_var: str) -> str:
     """Required credential from the environment; resolution fails rather than deferring."""
     key = os.environ.get(env_var, "").strip()
     if not key:

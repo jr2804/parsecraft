@@ -15,7 +15,7 @@ for tests and demos — no billing side effect). Needs the ``systemone`` extra a
 
 from __future__ import annotations
 
-from parsecraft.providers._jev import load_endpoint_judge, required_api_key
+from parsecraft.providers._jev import load_endpoint_judge
 from parsecraft.routing.judge import JudgeSpec, MachineProfile, RoutingJudge
 
 #: Spec provider token (also the module name under ``parsecraft.providers``).
@@ -32,6 +32,6 @@ def load_judge(spec: JudgeSpec, machine: MachineProfile | None = None) -> Routin
         provider=PROVIDER_NAME,
         spec=spec,
         machine=machine,
-        api_key=required_api_key(PROVIDER_NAME, _API_KEY_ENV),
+        api_key_env=_API_KEY_ENV,
         base_url=BASE_URL,
     )
