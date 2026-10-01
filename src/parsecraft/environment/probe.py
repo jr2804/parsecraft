@@ -25,6 +25,7 @@ EXTRA_IMPORTS: dict[str, tuple[str, ...]] = {
     "ocr-tele": ("transformers",),
     "ocr-unlimited": ("transformers",),
     "pdf": ("pymupdf",),
+    "pdf-inspector": ("pdf_inspector",),
     "pdf-lite": ("pypdf",),
     "vllm": ("vllm",),
     "web": ("httpx",),

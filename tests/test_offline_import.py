@@ -34,6 +34,8 @@ _SCRIPT = textwrap.dedent(
     import parsecraft.backends.ocr.unlimited
     import parsecraft.backends.liteparse
     import parsecraft.backends.liteparse.liteparse
+    import parsecraft.backends.pdf_inspector
+    import parsecraft.backends.pdf_inspector.pdf_inspector
     import parsecraft.backends.registry
     import parsecraft.config
     import parsecraft.ir
@@ -52,6 +54,7 @@ _SCRIPT = textwrap.dedent(
             "transformers",
             "vllm",
             "docling",
+            "pdf_inspector",
             "huggingface_hub",
         )
         if m in sys.modules
@@ -60,6 +63,7 @@ _SCRIPT = textwrap.dedent(
     heavy_impls = [m for m in sys.modules if m.startswith("parsecraft.backends") and m.endswith("_impl")]
     assert not heavy_impls, f"heavy impl modules imported at package import: {heavy_impls}"
     assert "parsecraft.backends.liteparse._impl" not in sys.modules
+    assert "parsecraft.backends.pdf_inspector._impl" not in sys.modules
     print("IMPORTS_OK")
     """,
 )

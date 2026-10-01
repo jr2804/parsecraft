@@ -62,3 +62,12 @@ distribution, entry point declared in its own `pyproject.toml`).
 
 `mise test` — `tests/test_backends_registry.py`,
 `tests/test_example_backend.py`, `tests/test_offline_import.py`.
+
+## Child DOX Index
+
+- `native/AGENTS.md` — in-package native family (no optional extra)
+- `docling/AGENTS.md` — `docling` extra: light/heavy split, structured table rows
+- `pandoc/AGENTS.md` — `pandoc` extra: system binary, single logical page
+- `pdf_inspector/AGENTS.md` — `pdf-inspector` extra: PDF-only, page-index mapping
+
+The `liteparse` and `ocr` families stay under this parent's contract.

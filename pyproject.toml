@@ -35,6 +35,8 @@ liteparse = ["liteparse>=2.14"]
 # user's licence decision (ADR-0005); never installed by `mise dev`/CI.
 pandoc = ["pypandoc>=1.15"]
 docling = ["docling>=2.130"]
+# PDF-only Rust/PyO3 extractor: prebuilt abi3 wheels, no Python deps, no OCR runtime.
+pdf-inspector = ["pdf-inspector>=1.25.2"]
 # The vLLM path is Linux/WSL2-only (runtime AND install): the marker keeps
 # Windows resolvable with every extra enabled at once.
 vllm = ["vllm>=0.11 ; sys_platform != 'win32'"]
@@ -72,6 +74,7 @@ native-pdf = "parsecraft.backends.native.pdf:factory"
 liteparse = "parsecraft.backends.liteparse.liteparse:factory"
 pandoc = "parsecraft.backends.pandoc.pandoc:factory"
 docling = "parsecraft.backends.docling.docling:factory"
+pdf-inspector = "parsecraft.backends.pdf_inspector.pdf_inspector:factory"
 ocr-ovis = "parsecraft.backends.ocr.ovis:factory"
 ocr-tele = "parsecraft.backends.ocr.tele:factory"
 ocr-unlimited = "parsecraft.backends.ocr.unlimited:factory"
