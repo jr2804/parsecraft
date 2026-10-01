@@ -50,7 +50,11 @@ _OCR_CPU = BackendDescriptor(
 
 # ── semi-live tier: a real local Ollama daemon, three machine profiles ───────
 
-_OLLAMA_MODEL = "nimble"
+#: Local scoring model for this tier. Override for a lighter Nimble/Tev GGUF,
+#: e.g. PARSECRAFT_TEST_OLLAMA_MODEL=tev after
+#: `ollama cp hf.co/bartowski/togethercomputer_Tev1-4B-experimental-GGUF:Q4_K_M tev`
+#: (4B Q4_K_M ≈ 2.5 GB, fits an 8 GB GPU; nimble:latest is 9B Q8_0, 9.5 GB).
+_OLLAMA_MODEL = os.environ.get("PARSECRAFT_TEST_OLLAMA_MODEL", "nimble")
 
 
 # ── endpoint injection: one SDK, three endpoint bindings ─────────────────────

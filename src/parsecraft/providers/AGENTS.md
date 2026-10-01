@@ -31,8 +31,12 @@ by `routing/judge_providers.py` (each turns a `JudgeSpec` into a
 - `ollama.py` — the local Ollama endpoint (`ollama/<model>`):
   `http://localhost:11434`, **no credential**, nothing beyond localhost, and
 the one endpoint that raises the per-operation timeout (a cold model load
-  measured 12.4 s, past the SDK's 10 s cloud default). Distinct from
-  `ollaya.py`: that is the ollama *chat* daemon's other seam and wire.
+  measured 12.4 s for 9B `nimble:latest`, past the SDK's 10 s cloud default).
+  Any local Nimble/Tev GGUF works — verified: `tev` (4B Q4_K_M ≈ 2.5 GB,
+  warm rank 0.4 s) after `ollama cp hf.co/bartowski/togethercomputer_Tev1-4B-experimental-GGUF:Q4_K_M tev`;
+  the semi-live tier selects it via `PARSECRAFT_TEST_OLLAMA_MODEL`. Plain
+  GGUFs without System One scoring (e.g. kev-4b, laya) answer 400. Distinct
+  from `ollaya.py`: that is the ollama *chat* daemon's other seam and wire.
 
 ## Local Contracts
 
