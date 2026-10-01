@@ -13,7 +13,7 @@ title: Development setup
 ```bash
 git clone https://github.com/jr2804/parsecraft.git
 cd parsecraft
-mise dev        # uv sync -U --dev --all-extras --all-groups
+mise dev        # uv sync -U --dev --all-groups --extra download --extra web --extra pdf-lite
 mise test       # pytest with the 100% coverage gate
 ```
 
@@ -25,7 +25,7 @@ optional AI tooling). See [Tech stack](tech-stack.md).
 
 | Task | Runs | Purpose |
 | ---- | ---- | ------- |
-| `mise dev` | `uv sync -U --dev --all-extras --all-groups` | Install dependencies |
+| `mise dev` | `uv sync -U --dev --all-groups --extra download --extra web --extra pdf-lite` | Install dependencies (light extras only — heavy extras never enter the dev/CI venv) |
 | `mise test` | `uv run pytest --cov=parsecraft` | Tests with the 100% coverage gate |
 | `mise lint` | `ruff check src/ tests/ --fix` | Lint and autofix |
 | `mise typecheck` | `ty check src/ tests/` | Static type checking |

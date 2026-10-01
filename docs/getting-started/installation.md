@@ -52,7 +52,7 @@ Or use mise, which also installs the pinned tool versions:
 ```bash
 git clone https://github.com/jr2804/parsecraft.git
 cd parsecraft
-mise dev      # uv sync -U --dev --all-extras --all-groups
+mise dev      # uv sync -U --dev --all-groups --extra download --extra web --extra pdf-lite
 uv run parsecraft backends
 ```
 
