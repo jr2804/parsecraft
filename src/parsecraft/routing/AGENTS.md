@@ -46,8 +46,8 @@ identical plan.
   `image_count` mass ≥ `HEAVY_IMAGE_COUNT`); backends/tests emit them.
 - The judge is an injectable seam: `DeterministicJudge` is the default
   (preferred model → native before OCR → VRAM direction → name). Shipped judge
-  providers live in `parsecraft.providers` (`ollaya`, plus the three System One
-  endpoints `systemone`/`zen`/`ollama` sharing `providers/_jev.py`); this
+  providers live in `parsecraft.providers` (the three System One endpoints
+  `systemone`/`zen`/`ollama` sharing `providers/_jev.py`); this
   package must never import one.
 - `RoutingConstraints.preference` (`RoutingPreference`, default `BALANCED`) is a
   ranking axis, never a permission: it reorders candidates inside the family the
@@ -67,8 +67,8 @@ identical plan.
 - Language detection is an injectable seam the same way:
   `language.LanguageDetector` (`detect_language(text) -> str | None`). The
   requested language arrives as plain data on `RoutingConstraints.language`
-  and the core never imports a detector implementation — the ollaya/`laya`
-  backed one lives in `parsecraft.providers.ollaya`, opt-in like a judge.
+  and the core never imports a detector implementation — none ships; callers
+  implement the protocol or set the constraint directly.
 - The OCR-need classifier is a second injectable seam
   (`classifier.PageOcrClassifier` → `OcrFacts`; `resolve_classifier(None)` is
   `None` — there is NO default impl, unlike the judge). Facts are augment-only:

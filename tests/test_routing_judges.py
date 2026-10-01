@@ -65,8 +65,8 @@ def test_resolve_judge_rejects_unsupported_type() -> None:
 
 
 def test_parse_full_spec_with_variant() -> None:
-    spec = parse_judge_spec("ollaya/laya:typed-decisions")
-    assert spec == JudgeSpec(provider="ollaya", model="laya", variant="typed-decisions")
+    spec = parse_judge_spec("cli-fake/laya:typed-decisions")
+    assert spec == JudgeSpec(provider="cli-fake", model="laya", variant="typed-decisions")
 
 
 def test_parse_spec_without_variant_and_with_whitespace() -> None:
@@ -92,7 +92,7 @@ def test_parse_rejects_malformed_specs(bad_spec: str) -> None:
 
 
 def test_default_provider_module_path_convention() -> None:
-    assert DEFAULT_PROVIDER_MODULE.format(provider="ollaya") == "parsecraft.providers.ollaya"
+    assert DEFAULT_PROVIDER_MODULE.format(provider="zen") == "parsecraft.providers.zen"
 
 
 # ── registry ───────────────────────────────────────────────────────────────

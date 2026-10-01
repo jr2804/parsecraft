@@ -47,7 +47,6 @@ _SCRIPT = textwrap.dedent(
     import parsecraft.providers
     import parsecraft.providers._jev
     import parsecraft.providers.ollama
-    import parsecraft.providers.ollaya
     import parsecraft.providers.pdfinspector
     import parsecraft.providers.systemone
     import parsecraft.providers.zen

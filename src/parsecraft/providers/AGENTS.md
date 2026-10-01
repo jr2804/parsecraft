@@ -10,13 +10,6 @@ by `routing/judge_providers.py` (each turns a `JudgeSpec` into a
 
 ## Ownership
 
-- `ollaya.py` — the ollaya daemon provider (`load_judge`, the verified wire
-  format, `OllayaJudge`, `OllayaJudgeError`, plus the opt-in
-  `OllayaLanguageDetector` / `load_language_detector` implementing
-  `routing.language.LanguageDetector`). Accepts the shared `machine` and
-  `preference` parameters and **ignores** both, deliberately: its pinned wire
-  (`state: {intent, candidates}`) has no field for either, and inventing one
-  here would change a shape its own tests verify.
 - `pdfinspector.py` — the pdf-inspector classifier provider
   (`load_classifier`, `PdfInspectorClassifier`, the pinned detection call and
   its 1-based field semantics). Needs the `pdf-inspector` extra (shared with
@@ -42,8 +35,7 @@ by `routing/judge_providers.py` (each turns a `JudgeSpec` into a
   Any local Nimble/Tev GGUF works — verified: `tev` (4B Q4_K_M ≈ 2.5 GB,
   warm rank 0.4 s) after `ollama cp hf.co/bartowski/togethercomputer_Tev1-4B-experimental-GGUF:Q4_K_M tev`;
   the semi-live tier selects it via `PARSECRAFT_TEST_OLLAMA_MODEL`. Plain
-  GGUFs without System One scoring (e.g. kev-4b, laya) answer 400. Distinct
-  from `ollaya.py`: that is the ollama *chat* daemon's other seam and wire.
+  GGUFs without System One scoring (e.g. kev-4b, laya) answer 400.
 
 ## Local Contracts
 
@@ -86,14 +78,10 @@ by `routing/judge_providers.py` (each turns a `JudgeSpec` into a
   spec (unsupported `:variant`) is a caller bug and raises `JudgeSpecError`
   (CLI exit 2) before the extra and the credential are consulted (exit 1), so a
   malformed request never hides behind an unconfigured host.
-- Daemon/config reading happens at call time (`OLLAYA_BASE_URL`), never at
-  import; failures raise instead of silently picking a different ordering.
 
 ## Verification
 
-`mise test` — `tests/test_routing_ollaya.py` (wire tests run offline; the
-`judge` tier needs `pytest --run-judge` plus a live daemon),
-`tests/test_providers_pdfinspector.py` (offline `sys.modules` stub; one live
+`mise test` — `tests/test_providers_pdfinspector.py` (offline `sys.modules` stub; one live
 indexing test skips without the extra), and the System One family:
 `tests/test_providers_systemone.py` + `tests/test_providers_jev_endpoints.py`
 (offline SDK stub from `tests/fixtures/jev_sdk.py`; the semi-live Ollama tier

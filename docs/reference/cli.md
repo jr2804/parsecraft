@@ -122,28 +122,48 @@ reuses that probe for the routing constraints built by
 measured VRAM, `PARSECRAFT_OFFLINE`). `--max-passes` and `--no-ocr` map to
 `RoutingConstraints.max_passes` and `allow_ocr`.
 
-Both optional routing seams accept a spec string, resolved before any I/O:
-`--judge` re-ranks each page's eligible candidates (lazy-loaded from
-`parsecraft.providers.<provider>.load_judge`), and `--classifier` folds per-page
-OCR-need facts into the analysis ahead of routing (lazy-loaded from
-`…load_classifier`). Both default to off, which is exactly the rule-table
-behaviour, and `--backend` cannot be combined with `--judge` — both choose the
-lead candidate. The one shipped classifier provider is
-`pdfinspector/detect_pdf` (needs the `pdf-inspector` extra): a local, model-free
-text-layer scan whose verdicts can only add OCR-need, never remove it. The
-shipped judge providers are `ollaya/laya` (a local daemon reading
-`OLLAYA_BASE_URL`), `systemone/jev-latest` (TypeSafe's System One API, needs the
-`systemone` extra and `TYPESAFE_API_KEY`), and `zen/<model>` (the same System One
-wire on OpenCode Zen, needs the same extra and `OPENCODE_API_KEY`). The two
-cloud endpoints exit `1` at resolution without their key; `ollaya/laya` and
-`ollama/<model>` are local and need none. `ollama/<model>` is the same wire on a
-**local** Ollama daemon: no key, and no network beyond localhost. Model tokens
-are upstream ids, so a `:variant` is rejected — for Ollama that means the bare
-name (`ollama/nimble`), which the daemon resolves to its `:latest` tag.
+Both optional routing seams accept a `provider/model` spec string, resolved
+before any I/O. Both default to off, which is exactly the rule-table
+behaviour, and `--backend` cannot be combined with `--judge` — both choose
+the lead candidate. The shipped values:
+
+#### Judge providers (`--judge`)
+
+| Spec | Endpoint | Credential | Extra | Notes |
+| --- | --- | --- | --- | --- |
+| `systemone/jev-latest`, `systemone/jev-preview` | TypeSafe cloud System One API | `TYPESAFE_API_KEY` | `systemone` | typed Choice ranking; exit `1` without the key |
+| `zen/jev-1.13`, `zen/jev-1.13-free` | OpenCode Zen, same System One wire | `OPENCODE_API_KEY` | `systemone` | the `-free` model is quota-free |
+| `ollama/<model>` | local Ollama daemon (`:11434`), same System One wire | none | — | any local Nimble/Tev scoring model (`nimble`, `tev`); other GGUFs answer `400`; bare name resolves to the daemon's `:latest` tag |
+
+#### Classifier providers (`--classifier`)
+
+| Spec | Endpoint | Credential | Extra | Notes |
+| --- | --- | --- | --- | --- |
+| `pdfinspector/detect_pdf` | in-process, local (pdf-inspector library) | none | `pdf-inspector` | the only shipped provider; model-free text-layer scan |
+
+What `--classifier` does, concretely: it runs during **analysis**, before any
+routing decision, and folds per-page facts into the signals — an OCR-need
+verdict per page, table pages, and a document `pdf_type` with confidence.
+Two rules govern the fold:
+
+- **Augment-only.** A page the classifier calls OCR-needy is routed to OCR
+  even when its text statistics look fine; a page the text statistics already
+  flag stays flagged regardless of the classifier's verdict. The classifier
+  can add OCR-need, never remove it.
+- **Observable effects.** Page routes may change, a `feature:tables` hint is
+  emitted when table pages are reported, and a `classifier-provenance`
+  document diagnostic records provider, `pdf_type`, and confidence. Nothing
+  else in the output changes.
+
+It works in auto mode and under `--no-auto` (the fold is analysis-level),
+needs no credential and no network, and — like the judge — a `:variant` is
+rejected (the mode token names the upstream call, `detect_pdf`, which is
+already 1-indexed like the IR).
+
 `--judge` is an explicit opt-in to whatever that provider does — the cloud
 providers reach the network — and is **not** gated by `PARSECRAFT_OFFLINE`,
-which excludes model-asset *backends* from candidacy rather than the judge seam.
-With no `--judge`/`--classifier` spec, no provider is resolved at all.
+which excludes model-asset *backends* from candidacy rather than the judge
+seam. With no `--judge`/`--classifier` spec, no provider is resolved at all.
 
 `--preference` is a ranking axis, never a permission: it reorders the
 candidates the hard constraints already admitted (smallest declared VRAM first

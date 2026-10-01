@@ -97,7 +97,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         _RUN_JUDGE,
         action="store_true",
         default=False,
-        help=f"run the '{_JUDGE_MARKER}' tier (live providers: ollaya daemon, systemone/jev-latest, zen/<model>, or the semi-live local ollama/<model>)",
+        help=f"run the '{_JUDGE_MARKER}' tier (live providers: systemone/jev-latest, zen/<model>, or the semi-live local ollama/<model>)",
     )
 
 
@@ -117,7 +117,7 @@ def pytest_configure(config: pytest.Config) -> None:
     )
     config.addinivalue_line(
         "markers",
-        f"{_JUDGE_MARKER}: needs a live judge provider (ollaya daemon, TYPESAFE/OPENCODE keys, or a local Ollama model); skipped unless {_RUN_JUDGE} is passed",
+        f"{_JUDGE_MARKER}: needs a live judge provider (TYPESAFE/OPENCODE keys, or a local Ollama model); skipped unless {_RUN_JUDGE} is passed",
     )
 
 

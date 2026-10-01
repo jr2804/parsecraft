@@ -150,17 +150,17 @@ is no — the decision is a scan, not a model.
 
 ### Language and domain slang
 
-**Status:** current seam, planned extension.
+**Status:** seam without a shipped provider; planned extension.
 
-`LanguageDetector` (`src/parsecraft/routing/language.py`) is built and opt-in:
-the core only reads `RoutingConstraints.language` as plain data and never
-imports a detector; the shipped ollaya-backed implementation lives in
-`src/parsecraft/providers/ollaya.py` (`load_language_detector`), loaded only
-when a caller asks for it. The request narrows only backends that declare
-`capabilities.languages`; language-agnostic candidates are never excluded.
+`LanguageDetector` (`src/parsecraft/routing/language.py`) is an injectable
+protocol: the core only reads `RoutingConstraints.language` as plain data and
+never imports a detector — callers implement the protocol or set the
+constraint directly from configuration. The request narrows only backends that
+declare `capabilities.languages`; language-agnostic candidates are never
+excluded.
 
-**Planned:** domain or slang analysis beyond this language detector — no
-design or code exists for it.
+**Planned:** a shipped detector implementation, and domain or slang analysis
+beyond it — no design or code exists for either.
 
 ## Hybrid per-page routing
 
@@ -235,14 +235,12 @@ with no `--judge`/`--classifier` never leaves the process.
 
 Failures are typed: `JudgeSpecError` (malformed spec),
 `JudgeProviderUnavailableError` (names the provider extra to install), and
-`JudgeProviderLoadError` (loader failed or returned a non-judge). Four judge
-providers ship: `ollaya/laya` (`src/parsecraft/providers/ollaya.py`), a
-daemon-backed judge reading `OLLAYA_BASE_URL` at call time (default
-`http://localhost:11435`), and three System One endpoints that share one
-implementation (`src/parsecraft/providers/_jev.py`) — `systemone/jev-latest`
-(the TypeSafe cloud serves `jev-latest`/`jev-preview`; a bare `jev` is unknown)
-cloud, `TYPESAFE_API_KEY`), `zen/<model>` (OpenCode Zen, `OPENCODE_API_KEY`),
-and `ollama/<model>` (a local daemon, no key).
+`JudgeProviderLoadError` (loader failed or returned a non-judge). Three judge
+providers ship, all System One endpoints sharing one implementation
+(`src/parsecraft/providers/_jev.py`) — `systemone/jev-latest` (the TypeSafe
+cloud serves `jev-latest`/`jev-preview`; a bare `jev` is unknown;
+`TYPESAFE_API_KEY`), `zen/<model>` (OpenCode Zen, `OPENCODE_API_KEY`), and
+`ollama/<model>` (a local daemon, no key).
 
 CLI surface: `convert --backend NAME` leads every eligible page with `NAME`
 through a CLI-owned `PreferredBackendJudge` (`--no-auto` requires `--backend`),

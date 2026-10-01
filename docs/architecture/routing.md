@@ -224,14 +224,11 @@ coverage).
 
 Detection is an optional seam, like the judge. `parsecraft.routing.language`
 defines `LanguageDetector` (`detect_language(text) -> str | None`); the core
-never imports an implementation. The ollama/`laya`-backed detector is
-`parsecraft.providers.ollaya.OllayaLanguageDetector`, loaded with
-`load_language_detector(...)`: it asks a typed choice question over BCP-47
-candidates, returns `None` below a confidence floor (calibrated doubt means "not
-identified"), raises `OllayaJudgeError` when the daemon is unreachable or answers
-off-schema, and reads `OLLAYA_BASE_URL` (default `http://localhost:11435`).
-Importing `parsecraft.routing` never pulls `providers.ollaya` — pinned by
-`tests/test_routing_language.py`.
+never imports an implementation, and none ships — a caller implements the
+protocol (or sets `RoutingConstraints.language` directly from configuration)
+and hands the detector to the analysis. Pinned by
+`tests/test_routing_language.py`: importing `parsecraft.routing` pulls no
+provider module.
 
 ## Plan
 

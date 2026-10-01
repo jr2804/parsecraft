@@ -8,9 +8,8 @@ connection (the SDK only validates its config and builds an HTTP client); the
 daemon is contacted on the first ``rank``.
 
 The System One model is ``nimble`` (``laya-gguf`` is not scoring-capable: it
-answers ``400: use a local Nimble or Tev GGUF model``). This is not the ollama
-*chat* daemon the ``ollaya`` provider talks to — that is a different seam with a
-different wire. Needs the ``systemone`` extra. Shared mechanics:
+answers ``400: use a local Nimble or Tev GGUF model``). Any local Nimble/Tev
+GGUF works. Needs the ``systemone`` extra. Shared mechanics:
 :mod:`parsecraft.providers._jev`.
 """
 

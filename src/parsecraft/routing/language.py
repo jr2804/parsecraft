@@ -4,8 +4,8 @@ The deterministic core carries the *requested* language as plain data
 (``RoutingConstraints.language``) and eligibility as a pure function. Filling
 that field is the caller's job: pass a detector here (protocol below) or set
 the constraint directly from configuration. ``parsecraft`` never imports a
-detector implementation — the ollaya-backed one lives in
-``parsecraft.providers.ollaya`` and is opt-in like the judge.
+detector implementation and ships none — implement the protocol and inject
+it, or configure ``RoutingConstraints.language`` directly.
 """
 
 from __future__ import annotations

@@ -2,12 +2,12 @@
 
 A judge only RE-RANKS candidates the planner already deemed eligible; it
 cannot add candidates or override hard constraints. ``DeterministicJudge``
-is the default. Provider-prefixed model strings (``ollaya/laya:typed-decisions``)
+is the default. Provider-prefixed model strings (``systemone/jev-latest``)
 resolve to judges via :mod:`parsecraft.routing.judge_providers` — provider
 modules import only at resolve time; this package never imports a provider
-implementation. Shipped providers: ``ollaya/laya`` (local daemon),
-``systemone/<model>`` (TypeSafe cloud), ``zen/<model>`` (OpenCode Zen) and
-``ollama/<model>`` (local Ollama), the last three System One endpoints.
+implementation. Shipped providers: ``systemone/<model>`` (TypeSafe cloud),
+``zen/<model>`` (OpenCode Zen) and ``ollama/<model>`` (local Ollama) — three
+System One endpoints sharing one implementation.
 """
 
 from __future__ import annotations
