@@ -240,6 +240,30 @@ neither flag uses `DeterministicJudge`. `--backend` and `--judge` are mutually
 exclusive — both choose the lead candidate — a malformed spec exits `2`, and a
 provider that cannot be loaded exits `1`.
 
+### Enabling an LLM-assisted decision
+
+**Status:** current.
+
+1. Install parsecraft with the provider extra — `systemone` (TypeSafe cloud,
+   `typesafe-sdk`); `zen` and `ollama` need **no extra** (zen rides
+   `systemone`, ollama talks to a local daemon).
+2. Export the credential of the endpoint you named: `TYPESAFE_API_KEY`
+   (cloud) or `OPENCODE_API_KEY` (zen; `jev-1.13-free` is quota-free). The
+   local `ollama/<model>` needs no credential — pull a scoring-capable model
+   (`nimble`, or the 4B `tev`) with ollama ≥ 0.35.
+3. Run with a spec: `parsecraft convert doc.pdf --judge systemone/jev-latest`
+   (or `zen/jev-1.13-free`, `ollama/nimble`). Without `--judge`, the
+   deterministic judge stays in charge.
+
+Any server speaking the System One request/response contract on the standard
+path works without code: set `TYPESAFE_BASE_URL` (and `TYPESAFE_API_KEY`) to
+the gateway's values — the cloud provider resolves its base URL from the
+environment. OpenRouter serves the same contract at `POST /api/alpha/decisions`
+(model `~typesafe/jev-latest`) but on a nonstandard path; the SDK keeps
+`/v1/systemone` hardcoded pending OpenRouter's announced conformance
+(typesafe-sdk issue #7, closed on that expectation), so OpenRouter is
+unwired until then.
+
 ### Classifier spec — OCR-need facts
 
 **Status:** current, at library and CLI level.
