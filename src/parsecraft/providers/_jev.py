@@ -45,7 +45,9 @@ QUESTION_ID = "lead"
 
 _MODULE_NAME = "typesafe_sdk"
 #: Extra that declares the SDK; all three endpoints share it (root AGENTS.md rule 10).
-_EXTRA = "[project.optional-dependencies].systemone"
+#: The extra is named for the System One scoring stack, NOT for a provider token
+#: (`typesafe-ai`/`zen`/`ollama` are the providers), so the hint must use it.
+_EXTRA = "systemone"
 #: Credential sent when an endpoint needs none: the SDK rejects an empty key, and
 #: a local daemon ignores the header entirely.
 LOCAL_API_KEY = "local"
@@ -251,7 +253,7 @@ def sdk_module(provider: str) -> _SdkModule:
     try:
         module = import_module(_MODULE_NAME)
     except ImportError as exc:
-        hint = f"{_MODULE_NAME!r} is not installed — install the {provider!r} extra ({_EXTRA})"
+        hint = f"{_MODULE_NAME!r} is not installed — install the {_EXTRA!r} extra ([project.optional-dependencies].{_EXTRA})"
         raise JudgeProviderUnavailableError(provider, _MODULE_NAME, hint) from exc
     if not isinstance(module, _SdkModule):
         raise JudgeProviderUnavailableError(provider, _MODULE_NAME, f"{_MODULE_NAME} does not export TypeSafeClient/Choice")

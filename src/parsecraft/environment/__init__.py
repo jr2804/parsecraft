@@ -11,11 +11,12 @@ from __future__ import annotations
 
 from parsecraft.environment.constraints import constraints_from_environment
 from parsecraft.environment.models import EnvironmentInfo
-from parsecraft.environment.probe import EXTRA_IMPORTS, probe_environment
+from parsecraft.environment.probe import EXTRA_IMPORTS, extra_present, probe_environment
 
 __all__ = [
     "EXTRA_IMPORTS",
     "EnvironmentInfo",
     "constraints_from_environment",
+    "extra_present",
     "probe_environment",
 ]

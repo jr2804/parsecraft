@@ -216,7 +216,7 @@ def test_lazy_module_missing_names_extra(monkeypatch: pytest.MonkeyPatch) -> Non
         resolve_judge("ghost/m")
     assert exc_info.value.provider == "ghost"
     assert "parsecraft.providers.ghost" in exc_info.value.module_name
-    assert "install the 'ghost' extra" in exc_info.value.hint
+    assert "install the extra that ships it (see: parsecraft judges)" in exc_info.value.hint
     assert "register_judge_provider('ghost', loader)" in exc_info.value.hint
 
 

@@ -15,14 +15,21 @@ GGUF works. Needs the ``systemone`` extra. Shared mechanics:
 
 from __future__ import annotations
 
+from parsecraft.providers import JudgeProviderProfile
 from parsecraft.providers._jev import load_endpoint_judge
 from parsecraft.routing.judge import JudgeSpec, MachineProfile, RoutingJudge
 from parsecraft.routing.models import RoutingPreference
 
-#: Spec provider token (also the module name under ``parsecraft.providers``).
-PROVIDER_NAME = "ollama"
-#: The daemon's documented root; the SDK appends its ``/v1/systemone`` path.
-BASE_URL = "http://localhost:11434"
+#: Declared provider facts — spec spelling, the open-ended model list, endpoint.
+PROFILE = JudgeProviderProfile(
+    name="ollama",
+    extra="systemone",
+    model_placeholder="<model>",
+    example_models=("nimble", "tev"),
+    base_url="http://localhost:11434",
+)
+#: Spec provider token (module name is the token with hyphens as underscores).
+PROVIDER_NAME = PROFILE.name
 #: Per-operation bound: a cold local model load is slower than the SDK's 10 s
 #: cloud default (measured: 12.4 s for ``nimble`` on this host, and a larger
 #: model on CPU takes longer). Only this endpoint overrides it.
@@ -34,16 +41,16 @@ def load_judge(
     machine: MachineProfile | None = None,
     preference: RoutingPreference = RoutingPreference.BALANCED,
 ) -> RoutingJudge:
-    """Provider entry point required by ``routing.judge_providers`` (pc-2's contract).
+    """Provider entry point required by ``routing.judge_providers``.
 
     No ``api_key_env``: this endpoint needs no credential, and the shared loader
     sends the SDK's local sentinel (the daemon ignores the header).
     """
     return load_endpoint_judge(
-        provider=PROVIDER_NAME,
+        provider=PROFILE.name,
         spec=spec,
         machine=machine,
         preference=preference,
-        base_url=BASE_URL,
+        base_url=PROFILE.base_url,
         timeout_s=_TIMEOUT_S,
     )

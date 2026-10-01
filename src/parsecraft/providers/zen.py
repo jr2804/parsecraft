@@ -15,16 +15,21 @@ for tests and demos — no billing side effect). Needs the ``systemone`` extra a
 
 from __future__ import annotations
 
+from parsecraft.providers import JudgeProviderProfile
 from parsecraft.providers._jev import load_endpoint_judge
 from parsecraft.routing.judge import JudgeSpec, MachineProfile, RoutingJudge
 from parsecraft.routing.models import RoutingPreference
 
-#: Spec provider token (also the module name under ``parsecraft.providers``).
-PROVIDER_NAME = "zen"
-#: Zen's API root; the SDK appends its ``/v1/systemone`` path.
-BASE_URL = "https://opencode.ai/zen"
-#: Required credential; resolution fails without it (call-time env is not read).
-_API_KEY_ENV = "OPENCODE_API_KEY"
+#: Declared provider facts — spec spelling, model tokens, credential, endpoint.
+PROFILE = JudgeProviderProfile(
+    name="zen",
+    extra="systemone",
+    models=("jev-1.13", "jev-1.13-free"),
+    api_key_env="OPENCODE_API_KEY",
+    base_url="https://opencode.ai/zen",
+)
+#: Spec provider token (module name is the token with hyphens as underscores).
+PROVIDER_NAME = PROFILE.name
 
 
 def load_judge(
@@ -32,12 +37,12 @@ def load_judge(
     machine: MachineProfile | None = None,
     preference: RoutingPreference = RoutingPreference.BALANCED,
 ) -> RoutingJudge:
-    """Provider entry point required by ``routing.judge_providers`` (pc-2's contract)."""
+    """Provider entry point required by ``routing.judge_providers``."""
     return load_endpoint_judge(
-        provider=PROVIDER_NAME,
+        provider=PROFILE.name,
         spec=spec,
         machine=machine,
         preference=preference,
-        api_key_env=_API_KEY_ENV,
-        base_url=BASE_URL,
+        api_key_env=PROFILE.api_key_env,
+        base_url=PROFILE.base_url,
     )

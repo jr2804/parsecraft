@@ -13,6 +13,7 @@ from parsecraft.cache import ConversionCache
 from parsecraft.cli import args, config
 from parsecraft.cli import benchmark as benchmark_module
 from parsecraft.cli import inspect as inspect_module
+from parsecraft.cli import judges as judges_module
 from parsecraft.cli import models as models_module
 from parsecraft.cli.convert import ConvertError, convert_source, render
 from parsecraft.cli.errors import CliError
@@ -95,7 +96,9 @@ def convert(
         typer.Option(
             "--judge",
             help=(
-                "Route with a judge provider (`provider/model[:variant]`); mutually exclusive with --backend; combinable with --classifier; may use the network"
+                "Route with a judge provider (`provider/model[:variant]`); mutually exclusive with --backend; "
+                "combinable with --classifier; may use the network. Run `parsecraft judges` for the built-in "
+                "providers and their model tokens"
             ),
         ),
     ] = None,
@@ -151,6 +154,16 @@ def inspect(
         typer.echo(json.dumps(inspect_module.preview_payload(preview), indent=2, sort_keys=True))
         return
     for line in inspect_module.render_preview(preview):
+        typer.echo(line)
+
+
+def judges(as_json: args.JsonFlag = False) -> None:
+    """List the built-in judge providers and the model tokens they accept."""
+    items = judges_module.entries()
+    if as_json:
+        typer.echo(json.dumps(judges_module.entries_payload(items), indent=2, sort_keys=True))
+        return
+    for line in judges_module.render_entries(items):
         typer.echo(line)
 
 

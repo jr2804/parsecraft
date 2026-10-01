@@ -29,7 +29,7 @@ tests, and keep the 100% coverage gate green.
   classifier seam and its pdf-inspector provider (`pdf_inspector` stubbed
   through `sys.modules`; the live 1-based indexing test skips without the
   extra).
-- `test_providers_systemone.py` — the System One judge family against the
+- `test_providers_typesafe_ai.py` — the System One judge family against the
   offline SDK stub: spec/credential/extra failures, endpoint injection, the
   distribution-as-ranking contract, the `(intent, candidates)` memo, machine
   state, and a live tier gated on the `systemone` extra plus
@@ -40,6 +40,8 @@ tests, and keep the 100% coverage gate green.
   with one behavioral anchor (a CPU-only host must not rank a GPU-only
   candidate first). Semi-live tests skip unless the `systemone` extra and the
   daemon are both present.
+- `test_cli_judges.py` — the `judges` catalog command (human + JSON output,
+  extra/credential availability, and the docs-table check).
 - `test_smoke.py` — CLI surface (`backends --json`, `--version`, bare
   invocation shows help).
 - `test_document_fixtures.py`, `test_sources_manifest.py` — fixture

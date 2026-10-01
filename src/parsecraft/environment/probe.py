@@ -50,7 +50,7 @@ def probe_environment() -> EnvironmentInfo:
     descriptors = registry.list_backends()
     backends = tuple(sorted(descriptor.name for descriptor in descriptors))
     groups = (descriptor.capabilities.optional_dependency_group for descriptor in descriptors)
-    installed = frozenset(group for group in groups if group is not None and _extra_present(group))
+    installed = frozenset(group for group in groups if group is not None and extra_present(group))
     return EnvironmentInfo(
         backends=backends,
         installed_extras=installed,
@@ -59,7 +59,7 @@ def probe_environment() -> EnvironmentInfo:
     )
 
 
-def _extra_present(group: str) -> bool:
+def extra_present(group: str) -> bool:
     """Detected, not declared: every import package of the extra resolves."""
     modules = EXTRA_IMPORTS.get(group)
     if modules is None:  # unknown group is not detectable — extend EXTRA_IMPORTS

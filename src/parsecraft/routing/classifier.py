@@ -184,13 +184,14 @@ def parse_classifier_spec(spec: str) -> ClassifierSpec:
 
 
 def _lazy_loader(provider: str) -> ClassifierProviderLoader:
-    module_name = DEFAULT_PROVIDER_MODULE.format(provider=provider)
+    # Provider tokens may be hyphenated; module names may not.
+    module_name = DEFAULT_PROVIDER_MODULE.format(provider=provider.replace("-", "_"))
     try:
         module = import_module(module_name)
     except ImportError as exc:
         hint = (
             f"no loader registered and {module_name!r} could not be imported — "
-            f"install the {provider!r} extra or call register_classifier_provider({provider!r}, loader)"
+            f"install the extra that ships it or call register_classifier_provider({provider!r}, loader)"
         )
         raise ClassifierProviderUnavailableError(provider, module_name, hint) from exc
     loader = getattr(module, _LOADER_EXPORT, None)

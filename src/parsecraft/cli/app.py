@@ -21,6 +21,7 @@ app = typer.Typer(
 # re-sorting this file into a broken state. Register with:
 # `app.command()(commands.your_command)`.
 app.command()(commands.backends)
+app.command()(commands.judges)
 app.command()(commands.convert)
 app.command()(commands.inspect)
 app.command()(commands.benchmark)

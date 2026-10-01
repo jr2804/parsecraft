@@ -24,6 +24,9 @@ from parsecraft.routing.judge_providers import JudgeProviderUnavailableError, Ju
 from tests.fixtures.jev_sdk import StubSdk
 
 _ZEN_KEY = "zen-test-key"
+#: The credential env var the endpoint declares — the tests never hardcode it twice.
+assert zen.PROFILE.api_key_env is not None  # a None here means the declared contract changed
+_ZEN_KEY_ENV: str = zen.PROFILE.api_key_env
 _QUESTION_ID = "lead"
 #: The CPU-only profile: the behavioral anchor's premise (pc-1's smoke host).
 _CPU_ONLY = MachineProfile(vram_budget_gb=0.0)
@@ -62,7 +65,7 @@ _OLLAMA_MODEL = os.environ.get("PARSECRAFT_TEST_OLLAMA_MODEL", "nimble")
 
 def test_zen_binds_base_url_key_and_model(jev_sdk: StubSdk, monkeypatch: pytest.MonkeyPatch) -> None:
     """Zen is the cloud wire with its own host and key — no custom transport."""
-    monkeypatch.setenv(zen._API_KEY_ENV, _ZEN_KEY)
+    monkeypatch.setenv(_ZEN_KEY_ENV, _ZEN_KEY)
     judge = cast(_jev.JevJudge, zen.load_judge(JudgeSpec(provider="zen", model="jev-1.13-free")))
     judge.rank(Intent.NATIVE, [_OCR_GPU, _NATIVE])
     assert jev_sdk.client_kwargs == [{"api_key": _ZEN_KEY, "model": "jev-1.13-free", "base_url": "https://opencode.ai/zen"}]
@@ -81,7 +84,7 @@ def test_ollama_binds_the_local_host_and_no_credential(jev_sdk: StubSdk) -> None
 
 @pytest.mark.parametrize("provider_name", ["zen", "ollama"])
 def test_resolve_judge_reaches_both_providers_lazily(jev_sdk: StubSdk, monkeypatch: pytest.MonkeyPatch, provider_name: str) -> None:
-    monkeypatch.setenv(zen._API_KEY_ENV, _ZEN_KEY)
+    monkeypatch.setenv(_ZEN_KEY_ENV, _ZEN_KEY)
     assert isinstance(resolve_judge(f"{provider_name}/m"), _jev.JevJudge)
 
 
@@ -95,14 +98,14 @@ def test_variants_are_rejected_for_every_endpoint(jev_sdk: StubSdk, module: Any)
 
 def test_zen_spec_error_outranks_a_missing_credential(monkeypatch: pytest.MonkeyPatch) -> None:
     """A caller bug is reported even when the host has no credential (exit 2 first)."""
-    monkeypatch.delenv(zen._API_KEY_ENV, raising=False)
+    monkeypatch.delenv(_ZEN_KEY_ENV, raising=False)
     with pytest.raises(JudgeSpecError, match="does not accept a variant"):
         zen.load_judge(JudgeSpec(provider="zen", model="jev-1.13-free", variant="free"))
 
 
 def test_zen_good_spec_without_a_credential_is_unavailable(monkeypatch: pytest.MonkeyPatch, jev_sdk: StubSdk) -> None:
     """The mirror case: a valid spec plus no key is environment state (exit 1)."""
-    monkeypatch.delenv(zen._API_KEY_ENV, raising=False)
+    monkeypatch.delenv(_ZEN_KEY_ENV, raising=False)
     with pytest.raises(JudgeProviderUnavailableError, match="OPENCODE_API_KEY"):
         zen.load_judge(JudgeSpec(provider="zen", model="jev-1.13-free"))
     assert jev_sdk.client_kwargs == []
@@ -112,7 +115,7 @@ def test_zen_good_spec_without_a_credential_is_unavailable(monkeypatch: pytest.M
 
 
 def test_zen_requires_its_key_at_resolution(jev_sdk: StubSdk, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv(zen._API_KEY_ENV, raising=False)
+    monkeypatch.delenv(_ZEN_KEY_ENV, raising=False)
     with pytest.raises(JudgeProviderUnavailableError, match="OPENCODE_API_KEY") as excinfo:
         resolve_judge("zen/jev-1.13-free")
     assert excinfo.value.provider == "zen"
@@ -130,7 +133,7 @@ def test_ollama_never_reads_a_credential(jev_sdk: StubSdk, monkeypatch: pytest.M
 
 
 def test_machine_profile_is_sent_to_the_endpoint(jev_sdk: StubSdk, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(zen._API_KEY_ENV, _ZEN_KEY)
+    monkeypatch.setenv(_ZEN_KEY_ENV, _ZEN_KEY)
     judge = zen.load_judge(JudgeSpec(provider="zen", model="jev-1.13-free"), _GPU_HOST)
     judge.rank(Intent.OCR_GENERAL, [_OCR_GPU, _NATIVE])
     state, _ = jev_sdk.calls[0]
@@ -140,7 +143,7 @@ def test_machine_profile_is_sent_to_the_endpoint(jev_sdk: StubSdk, monkeypatch: 
 @pytest.mark.parametrize("module", [zen, ollama])
 def test_preference_reaches_every_system_one_endpoint(jev_sdk: StubSdk, monkeypatch: pytest.MonkeyPatch, module: Any) -> None:
     """One shared payload builder: every System One endpoint carries the axis verbatim."""
-    monkeypatch.setenv(zen._API_KEY_ENV, _ZEN_KEY)
+    monkeypatch.setenv(_ZEN_KEY_ENV, _ZEN_KEY)
     judge = module.load_judge(JudgeSpec(provider=module.PROVIDER_NAME, model="m"), None, RoutingPreference.SPEED)
     judge.rank(Intent.OCR_GENERAL, [_OCR_GPU, _NATIVE])
     state, _ = jev_sdk.calls[0]
@@ -215,8 +218,8 @@ def test_semilive_ollama_never_ranks_outside_the_eligible_set() -> None:
 def test_live_zen_ranks_real_candidates() -> None:
     """Ground truth for the Zen endpoint, against the live API (free model)."""
     pytest.importorskip("typesafe_sdk")
-    if not os.environ.get(zen._API_KEY_ENV):
-        pytest.skip(f"{zen._API_KEY_ENV} is not set")
+    if not os.environ.get(_ZEN_KEY_ENV):
+        pytest.skip(f"{_ZEN_KEY_ENV} is not set")
     judge = resolve_judge("zen/jev-1.13-free", machine=_CPU_ONLY)
     candidates = [_OCR_GPU, _OCR_CPU, _NATIVE]
     order = list(judge.rank(Intent.OCR_GENERAL, candidates))

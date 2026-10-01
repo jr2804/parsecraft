@@ -47,7 +47,7 @@ identical plan.
 - The judge is an injectable seam: `DeterministicJudge` is the default
   (preferred model → native before OCR → VRAM direction → name). Shipped judge
   providers live in `parsecraft.providers` (the three System One endpoints
-  `systemone`/`zen`/`ollama` sharing `providers/_jev.py`); this
+  `typesafe-ai`/`zen`/`ollama` sharing `providers/_jev.py`); this
   package must never import one.
 - `RoutingConstraints.preference` (`RoutingPreference`, default `BALANCED`) is a
   ranking axis, never a permission: it reorders candidates inside the family the

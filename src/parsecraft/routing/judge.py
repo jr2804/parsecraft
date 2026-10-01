@@ -2,12 +2,13 @@
 
 A judge only RE-RANKS candidates the planner already deemed eligible; it
 cannot add candidates or override hard constraints. ``DeterministicJudge``
-is the default. Provider-prefixed model strings (``systemone/jev-latest``)
+is the default. Provider-prefixed model strings (``typesafe-ai/jev-latest``)
 resolve to judges via :mod:`parsecraft.routing.judge_providers` — provider
 modules import only at resolve time; this package never imports a provider
-implementation. Shipped providers: ``systemone/<model>`` (TypeSafe cloud),
-``zen/<model>`` (OpenCode Zen) and ``ollama/<model>`` (local Ollama) — three
-System One endpoints sharing one implementation.
+implementation. Shipped providers: ``typesafe-ai/<model>`` (the TypeSafe cloud
+serving System One models), ``zen/<model>`` (OpenCode Zen) and
+``ollama/<model>`` (local Ollama) — three System One endpoints sharing one
+implementation. A token names the provider, never the model type.
 """
 
 from __future__ import annotations

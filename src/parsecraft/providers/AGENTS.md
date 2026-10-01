@@ -23,8 +23,9 @@ by `routing/judge_providers.py` (each turns a `JudgeSpec` into a
   and the question text names the preference too. Document content is never
   sent. Not a provider module: nothing resolves it by name, so the `_` prefix is
   deliberate.
-- `systemone.py` — the TypeSafe cloud endpoint (`systemone/<model>`): SDK
-  default base URL, `TYPESAFE_API_KEY`.
+- `typesafe_ai.py` — the TypeSafe cloud endpoint, spec `typesafe-ai/<model>`:
+  SDK default base URL, `TYPESAFE_API_KEY`. `typesafe-ai` names the provider;
+  System One names the model type it serves.
 - `zen.py` — the OpenCode Zen endpoint (`zen/<model>`): `base_url`
   `https://opencode.ai/zen`, `OPENCODE_API_KEY` (the SDK sends the Bearer
   header Zen documents).
@@ -39,6 +40,14 @@ by `routing/judge_providers.py` (each turns a `JudgeSpec` into a
 
 ## Local Contracts
 
+- A provider token names the **provider**, never the model type it serves
+  (`typesafe-ai` serves System One models). The token is the module name with
+  hyphens as underscores — `typesafe-ai` → `providers/typesafe_ai.py` — which
+  both resolvers apply when building the lazy module path.
+- Each judge provider declares its facts once in a `PROFILE`
+  (`JudgeProviderProfile`: name, models or `model_placeholder`, credential env,
+  extra, base URL). The loader resolves from it, `parsecraft judges` prints it,
+  and the docs table is checked against it — no fact is restated elsewhere.
 - Every provider module exports its seam loader — `load_judge(spec:
   JudgeSpec, machine: MachineProfile | None = None, preference:
   RoutingPreference = RoutingPreference.BALANCED) -> RoutingJudge` or
@@ -81,9 +90,9 @@ by `routing/judge_providers.py` (each turns a `JudgeSpec` into a
 
 ## Verification
 
-`mise test` — `tests/test_providers_pdfinspector.py` (offline `sys.modules` stub; one live
+`mise test` — `tests/test_cli_judges.py` (the catalog command), `tests/test_providers_pdfinspector.py` (offline `sys.modules` stub; one live
 indexing test skips without the extra), and the System One family:
-`tests/test_providers_systemone.py` + `tests/test_providers_jev_endpoints.py`
+`tests/test_providers_typesafe_ai.py` + `tests/test_providers_jev_endpoints.py`
 (offline SDK stub from `tests/fixtures/jev_sdk.py`; the semi-live Ollama tier
 needs the extra, so it skips in the canonical venv and runs with
 `uv run --isolated --extra systemone pytest -m judge --run-judge`).
