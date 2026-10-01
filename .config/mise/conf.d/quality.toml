@@ -1,6 +1,6 @@
 [tasks.test]
-description = "Run tests with coverage (per-run data file; concurrent runs cannot clash)"
-run = '''uv run python -c "import os,subprocess,sys;pid=os.getpid();os.environ['COVERAGE_FILE']=f'.coverage.{pid}';raise SystemExit(subprocess.call([sys.executable,'-m','pytest','--cov=parsecraft','--cov-report=term-missing',f'--cov-report=html:.htmlcov_{pid}']))"'''
+description = "Run tests with coverage (per-run data file, self-cleaned; concurrent runs cannot clash)"
+run = '''uv run python -c "import glob,os,shutil,subprocess,sys;pid=os.getpid();os.environ['COVERAGE_FILE']=f'.coverage.{pid}';rc=subprocess.call([sys.executable,'-m','pytest','--cov=parsecraft','--cov-report=term-missing',f'--cov-report=html:.htmlcov_{pid}']);shutil.rmtree(f'.htmlcov_{pid}',ignore_errors=True);[os.remove(p) for p in glob.glob(f'.coverage.{pid}')+glob.glob(f'.coverage.{pid}.*')];raise SystemExit(rc)"'''
 
 [tasks.test-corpus]
 description = "Corpus tier: opt-in network + cached public documents (15 min cold-cache budget)"
@@ -33,4 +33,4 @@ depends = [
 
 [tasks.clean]
 description = "Clean build artifacts"
-run = ["rm -rf build dist *.egg-info .pytest_cache .coverage .coverage.* coverage.xml htmlcov .htmlcov.* docs/_build"]
+run = ["rm -rf build dist *.egg-info .pytest_cache .coverage .coverage.* coverage.xml htmlcov .htmlcov.* .htmlcov_* docs/_build"]
