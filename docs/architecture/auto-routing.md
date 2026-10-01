@@ -196,7 +196,7 @@ spec is given.
 
 ### Judge spec — ordering
 
-**Status:** current, at library level.
+**Status:** current, at library and CLI level.
 
 `resolve_judge(spec)` (`src/parsecraft/routing/judge_providers.py`) accepts:
 
@@ -215,23 +215,36 @@ shipped provider is `ollaya/laya` (`src/parsecraft/providers/ollaya.py`), a
 daemon-backed judge reading `OLLAYA_BASE_URL` at call time (default
 `http://localhost:11435`).
 
-CLI surface today: `convert --backend NAME` leads every eligible page with
-`NAME` through a CLI-owned `PreferredBackendJudge` (`--no-auto` requires
-`--backend`); auto mode without `--backend` uses `DeterministicJudge`. There is
-no CLI flag for a judge spec yet — library callers pass the spec string to
-`resolve_judge` themselves.
+CLI surface: `convert --backend NAME` leads every eligible page with `NAME`
+through a CLI-owned `PreferredBackendJudge` (`--no-auto` requires `--backend`),
+and `convert --judge SPEC` resolves the same spec strings here; auto mode with
+neither flag uses `DeterministicJudge`. `--backend` and `--judge` are mutually
+exclusive — both choose the lead candidate — a malformed spec exits `2`, and a
+provider that cannot be loaded exits `1`.
 
 ### Classifier spec — OCR-need facts
 
-**Status:** in flight (gh-3).
+**Status:** current, at library and CLI level.
 
-The same spec-string pattern extends to the classifier seam:
-`resolve_classifier(spec | instance | None)` resolves `None → None` — unlike
-the judge, there is **no** default implementation (A4) — and
-`parsecraft convert --classifier <spec>` will accept the spec with judge-style
-resolution, lazy-loaded from the provider module `load_classifier` in
-`src/parsecraft/providers/pdfinspector.py`. See beads `pc-rzm` (seam) and
-`pc-1ow` (provider, CLI flag, docs).
+`resolve_classifier(spec | instance | None)` (`src/parsecraft/routing/classifier.py`)
+resolves `None → None` — unlike the judge, there is **no** default
+implementation (A4), so absence is exactly the rule-table behaviour. A string is
+parsed as `provider/model[:variant]` and dispatched to a runtime-registered
+loader (`register_classifier_provider`, last registration wins) or lazily
+imported from `parsecraft.providers.<provider>.load_classifier(spec)` at resolve
+time only — never at module import, never inline. Failures are typed:
+`ClassifierSpecError` (malformed spec), `ClassifierProviderUnavailableError`
+(names the provider extra to install), and `ClassifierProviderLoadError` (loader
+failed or returned a non-classifier); `analyze_source` falls back to the rule
+table for `ClassifierError` only, and anything else propagates.
+
+`parsecraft convert --classifier SPEC` folds the facts into the analysis before
+routing. The one shipped provider is `pdfinspector/detect_pdf`
+(`src/parsecraft/providers/pdfinspector.py`, needs the `pdf-inspector` extra):
+pdf-inspector's detection scan — a local, model-free structural text-layer scan
+of tens of milliseconds — taken 1-indexed and passed through verbatim into
+IR-1-based facts, with `pdf_type`, `confidence`, and table pages feeding the
+`feature:tables` hint.
 
 ### System One / Jev provider
 

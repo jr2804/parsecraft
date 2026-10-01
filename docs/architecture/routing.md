@@ -12,18 +12,24 @@ rules. The decision is recorded in [ADR-0004](../adr/0004-routing-and-auto-mode.
 ```mermaid
 flowchart LR
     A[Source document] --> B["analyze() → AnalysisResult"]
-    B --> C["Intent per page<br/>(routing/rules.py)"]
+    B --> Q{"classifier spec?"}
+    Q -- no --> C["Intent per page<br/>(routing/rules.py)"]
+    Q -- yes --> F["apply_classifier<br/>(OcrFacts → PageSignal)"]
+    F --> C
     C --> D["Eligible candidates<br/>(RoutingConstraints)"]
     D --> E{judge provided?}
-    E -- no --> F[DeterministicJudge]
-    E -- yes --> G[RoutingJudge.rank]
-    F --> H[RoutingPlan]
-    G --> H
+    E -- no --> G[DeterministicJudge]
+    E -- yes --> H[RoutingJudge.rank]
+    G --> I[RoutingPlan]
+    H --> I
 ```
 
-Analysis runs first and produces per-page signals. Those signals classify each
-page into an intent, constraints filter the backend catalog to eligible
-candidates, and the judge orders them. The result is a `RoutingPlan`.
+Analysis runs first and produces per-page signals. An optional classifier may
+fold per-page OCR-need facts into those signals before classification
+(`apply_classifier`; augment-only, so it can add OCR-need but never remove it).
+Those signals then classify each page into an intent, constraints filter the
+backend catalog to eligible candidates, and the judge orders them. The result is
+a `RoutingPlan`.
 
 ## Execution flow
 
@@ -121,7 +127,11 @@ Per page, in order (constants live in `routing/rules.py`):
 
 A page needs OCR when it is blank, has no native text, has fewer than
 `NATIVE_MIN_TEXT_CHARS` characters, or has a replacement-character ratio above
-`MAX_REPLACEMENT_RATIO`. The OCR flavor comes from document-level diagnostics
+`MAX_REPLACEMENT_RATIO`. An optional classifier can add OCR-need for a page
+(`PageSignal.classifier_needs_ocr is True`) but never remove it: a `text_based`
+verdict cannot force a page that fails the tests above onto `NATIVE` (see
+[auto routing](auto-routing.md#classifier-spec--ocr-need-facts)). The OCR
+flavor comes from document-level diagnostics
 (`feature:tables`, `feature:equations`, `feature:figures`) or from
 `sum(image_count) >= HEAVY_IMAGE_COUNT`:
 

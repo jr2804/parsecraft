@@ -90,6 +90,8 @@ parsecraft convert SOURCE [OPTIONS]
 | Option | Default | Behaviour |
 | ------ | ------- | --------- |
 | `--backend`, `-b NAME` | unset | Non-auto: lead with this backend (it must be eligible) |
+| `--judge SPEC` | unset | Route with a judge provider (`provider/model[:variant]`); mutually exclusive with `--backend` |
+| `--classifier SPEC` | unset | Fold OCR-need facts from a classifier provider (`provider/model[:variant]`) into the analysis |
 | `--auto` / `--no-auto` | `--auto` | Route automatically; `--no-auto` requires `--backend` |
 | `--max-passes N` | `1` | Fallback passes per page group (`N >= 1`) |
 | `--no-ocr` | off | Forbid OCR backends |
@@ -119,11 +121,23 @@ reuses that probe for the routing constraints built by
 measured VRAM, `PARSECRAFT_OFFLINE`). `--max-passes` and `--no-ocr` map to
 `RoutingConstraints.max_passes` and `allow_ocr`.
 
+Both optional routing seams accept a spec string, resolved before any I/O:
+`--judge` re-ranks each page's eligible candidates (lazy-loaded from
+`parsecraft.providers.<provider>.load_judge`), and `--classifier` folds per-page
+OCR-need facts into the analysis ahead of routing (lazy-loaded from
+`…load_classifier`). Both default to off, which is exactly the rule-table
+behaviour, and `--backend` cannot be combined with `--judge` — both choose the
+lead candidate. The one shipped classifier provider is
+`pdfinspector/detect_pdf` (needs the `pdf-inspector` extra): a local, model-free
+text-layer scan whose verdicts can only add OCR-need, never remove it.
+
 Exit codes: `0` success, `1` analysis or routing failure, `2` usage error
-(unsupported suffix, missing file, `--no-auto` without `--backend`, or a
-`--backend` that is not eligible for the source). A missing optional backend
-dependency also exits `1` with an actionable `optional dependency missing: …`
-message naming the extra to install.
+(unsupported suffix, missing file, `--no-auto` without `--backend`, a `--backend`
+that is not eligible for the source, a malformed `--judge`/`--classifier` spec,
+or `--backend` combined with `--judge`). A missing optional backend dependency
+also exits `1` with an actionable `optional dependency missing: …` message
+naming the extra to install; a spec whose provider cannot be loaded exits `1`
+with `judge unavailable: …` or `classifier unavailable: …`.
 
 Eligibility matches `RoutingConstraints.formats` against each backend's
 `supported_formats`; both declare MIME media types (`text/plain`,
@@ -327,7 +341,7 @@ key.
 
 - `src/parsecraft/cli/app.py` — app, callback, command and group registration
 - `src/parsecraft/cli/commands.py` — `backends`, `convert`, `inspect`, `benchmark`, `cache`, `models_*`, `config_*`
-- `src/parsecraft/cli/convert.py` — `convert_source`, `PreferredBackendJudge`, rendering
+- `src/parsecraft/cli/convert.py` — `convert_source`, `PreferredBackendJudge`, seam-spec resolution, rendering
 - `src/parsecraft/cli/inspect.py` — `inspect_source`, preview rendering
 - `src/parsecraft/cli/benchmark.py` — harness wrapper + report writers
 - `src/parsecraft/cli/models.py` — asset catalogue, `PinProvider`, cache management
