@@ -18,6 +18,14 @@ from parsecraft.backends.protocol import (
     SourceDocument,
 )
 from parsecraft.backends.registry import BackendRegistry
+from parsecraft.ir.models import Diagnostic, DiagnosticLevel
+from parsecraft.routing.classifier import (
+    CLASSIFIER_PROVENANCE_CODE,
+    ClassifierError,
+    OcrFacts,
+    PageOcrClassifier,
+)
+from parsecraft.routing.rules import FEATURE_TABLE_CODE
 
 #: Suffix → MIME for every source class this package can consume. Values
 #: must be claimed by at least one registered backend (invariant-tested);
@@ -93,19 +101,65 @@ def analyze_source(
     *,
     media_type: str,
     installed_extras: Collection[str] | None = None,
+    classifier: PageOcrClassifier | None = None,
 ) -> AnalysisResult:
     """Analyze ``source`` with the canonical analyzer for ``media_type``.
 
     Selection and backend failures surface as :class:`NoAnalyzerError` or
     :class:`BackendError` — the CLI maps them onto its exit codes.
     ``installed_extras`` threads through to :func:`choose_analyzer`.
+
+    ``classifier`` (default ``None`` = exactly today's behaviour) folds
+    per-page OCR-need facts into the analysis; a seam :class:`ClassifierError`
+    falls back to the unmodified analysis (ADR-0004 A3).
     """
     descriptor = choose_analyzer(registry.list_backends(), media_type, installed_extras=installed_extras)
     backend = registry.create(descriptor.name, BackendConfig(name=descriptor.name))
     try:
-        return backend.analyze(source)
+        analysis = backend.analyze(source)
     finally:
         del backend  # one instance at a time — 8 GB VRAM ceiling
+    if classifier is None:
+        return analysis
+    try:
+        facts = classifier.classify(source)
+    except ClassifierError:
+        return analysis  # rule-table fallback, never the judge (ADR-0004 A3)
+    return apply_classifier(analysis, facts)
+
+
+def apply_classifier(analysis: AnalysisResult, facts: OcrFacts) -> AnalysisResult:
+    """Merge classifier OCR-need facts into an analysis (augment-only, pure).
+
+    ``classifier_needs_ocr`` is set to ``True`` only for pages the classifier
+    flagged; every other page keeps its value. The provenance diagnostic is
+    always appended, and ``feature:tables`` is emitted when the classifier
+    reported table pages. ``feature:figures`` is never synthesized (ADR-0004
+    A5/A6). The input analysis is not mutated.
+    """
+    signals = [
+        signal.model_copy(update={"classifier_needs_ocr": True}) if signal.page_number in facts.pages_needing_ocr else signal for signal in analysis.signals
+    ]
+    diagnostics = [*analysis.diagnostics, _provenance_diagnostic(facts)]
+    if facts.pages_with_tables:
+        diagnostics.append(_tables_diagnostic(facts.pages_with_tables))
+    return analysis.model_copy(update={"signals": signals, "diagnostics": diagnostics})
+
+
+def _provenance_diagnostic(facts: OcrFacts) -> Diagnostic:
+    """Document-level provenance: classifier source, pdf_type, confidence (A5)."""
+    message = f"classifier {facts.source}"
+    if facts.pdf_type is not None:
+        message = f"{message}; pdf_type={facts.pdf_type}"
+    if facts.confidence is not None:
+        message = f"{message}; confidence={facts.confidence:.3f}"
+    return Diagnostic(level=DiagnosticLevel.INFO, code=CLASSIFIER_PROVENANCE_CODE, message=message)
+
+
+def _tables_diagnostic(pages: frozenset[int]) -> Diagnostic:
+    """``feature:tables`` hint from the classifier's table pages (A6)."""
+    ordered = ", ".join(str(page) for page in sorted(pages))
+    return Diagnostic(level=DiagnosticLevel.INFO, code=FEATURE_TABLE_CODE, message=f"classifier reports tables on pages {ordered}")
 
 
 def choose_analyzer(

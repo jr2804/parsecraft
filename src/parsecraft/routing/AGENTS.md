@@ -19,6 +19,9 @@ identical plan.
   thresholds `NATIVE_MIN_TEXT_CHARS` / `MAX_REPLACEMENT_RATIO` /
   `HEAVY_IMAGE_COUNT`), feature-hint extraction, hard eligibility.
 - `judge.py` — `RoutingJudge` Protocol + `DeterministicJudge`.
+- `classifier.py` — the optional OCR-need classifier seam (`PageOcrClassifier`
+  Protocol, `OcrFacts`, `parse`/`register`/`resolve_classifier`); see
+  ADR-0004 A1-A7.
 - `planner.py` — `plan_route` and its validation helpers.
 
 ## Local Contracts
@@ -56,6 +59,14 @@ identical plan.
   requested language arrives as plain data on `RoutingConstraints.language`
   and the core never imports a detector implementation — the ollaya/`laya`
   backed one lives in `parsecraft.providers.ollaya`, opt-in like a judge.
+- The OCR-need classifier is a second injectable seam
+  (`classifier.PageOcrClassifier` → `OcrFacts`; `resolve_classifier(None)` is
+  `None` — there is NO default impl, unlike the judge). Facts are augment-only:
+  `page_needs_ocr` ORs `signal.classifier_needs_ocr is True`, so a verdict can
+  add OCR-need, never remove it. Implementations must be local-only,
+  model-free structural scans; the core never imports one. The fold lives in
+  `pipeline.analysis.apply_classifier`; `plan_route` is untouched. See
+  ADR-0004 A1-A7.
 - Judge resolution lives in `judge_providers.py`:
   `resolve_judge(spec: str | RoutingJudge | None) -> RoutingJudge` —
   `None` → `DeterministicJudge`, instance → passthrough, else parse

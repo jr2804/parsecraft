@@ -19,7 +19,8 @@ Markdown as a deterministic projection.
 - `adapters/` — input adapters that converge sources into the IR (see
   `adapters/AGENTS.md`).
 - `routing/` — deterministic auto-mode planner: analysis signals → intent →
-  eligible backend candidates, with an injectable judge (see `routing/AGENTS.md`).
+  eligible backend candidates, with injectable judge and OCR-need classifier
+  seams (see `routing/AGENTS.md`).
 - `pipeline/` — routing executor: plan → per-range dispatch → fallback passes →
   aggregate (see `pipeline/AGENTS.md`).
 - `environment/` — host probe (installed extras, GPU/VRAM) → `RoutingConstraints`

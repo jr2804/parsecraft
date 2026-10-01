@@ -152,7 +152,13 @@ def classify_page(signal: PageSignal, page_count: int, hints: FeatureHints) -> I
 
 
 def page_needs_ocr(signal: PageSignal) -> bool:
-    """Whether a page's own signals rule out native extraction."""
+    """Whether a page's own signals rule out native extraction.
+
+    A classifier verdict is augment-only: it can add OCR-need, never remove
+    text-statistics OCR-need (ADR-0004 A2).
+    """
+    if signal.classifier_needs_ocr is True:
+        return True
     if signal.blank or not signal.has_native_text:
         return True
     if signal.text_chars < NATIVE_MIN_TEXT_CHARS:

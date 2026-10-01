@@ -159,7 +159,10 @@ def test_cli_inspect_json(tmp_path: Path, offline_probe: None, monkeypatch: pyte
     result = runner.invoke(app, ["inspect", str(_source_file(tmp_path)), "--json"])
     assert result.exit_code == 0
     payload = cast("dict[str, object]", json.loads(result.output))
-    assert cast("dict[str, object]", payload["analysis"])["page_count"] == 1
+    analysis_payload = cast("dict[str, object]", payload["analysis"])
+    assert analysis_payload["page_count"] == 1
+    signals_payload = cast("list[dict[str, object]]", analysis_payload["signals"])
+    assert signals_payload[0]["classifier_needs_ocr"] is None  # new nullable key
     assert cast("dict[str, object]", payload["plan"])["primary"] == "native-text"
 
 

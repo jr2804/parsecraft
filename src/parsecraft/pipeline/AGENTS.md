@@ -11,6 +11,9 @@ a `DocumentResult` with `TraceEntry` records — no silent drops.
 
 ## Ownership
 
+- `analysis.py` — public analysis entry points (`MEDIA_TYPES`,
+  `media_type_for`, `choose_analyzer`, `analyze_source`) plus the pure
+  `apply_classifier` fold.
 - `executor.py` — `execute` and helpers `_group_pages`, `_mergeable`,
   `_execute_group`, `_exception_failure`, `_result_failure`, `_trace`.
 - `models.py` — `PassAttempt`, `PageGroup`, `PipelineResult`.
@@ -21,6 +24,13 @@ a `DocumentResult` with `TraceEntry` records — no silent drops.
 
 - Dependency direction: `pipeline` imports `routing`; `routing` stays pure
   (planning only) and never imports `pipeline`.
+- `apply_classifier(analysis, facts)` is a pure fold at the analysis boundary:
+  it sets `PageSignal.classifier_needs_ocr` (`True` only, never `False`),
+  appends the classifier provenance diagnostic, and emits `feature:tables`
+  when the classifier reports table pages (`feature:figures` never).
+  `analyze_source` takes an optional keyword-only `classifier`; a seam
+  `ClassifierError` falls back to the unmodified analysis (ADR-0004 A3).
+  `plan_route` is unchanged.
 - Grouping: contiguous pages merge into one range iff they share
   `(intent, chosen, candidates)` AND the chosen descriptor has
   `supports_page_ranges` AND `supports_multi_page`; otherwise one page per

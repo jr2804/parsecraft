@@ -235,6 +235,10 @@ class PageSignal(BaseModel):
     image_count: int = Field(ge=0)
     blank: bool
     replacement_char_ratio: float | None = Field(default=None, ge=0, le=1)
+    #: Optional classifier verdict: ``True`` = OCR needed. Augment-only — the
+    #: classifier may add OCR-need, never remove it, so ``False`` is never set
+    #: (ADR-0004 A2); ``None`` means no classifier opinion.
+    classifier_needs_ocr: bool | None = None
 
 
 class PageResult(BaseModel):
