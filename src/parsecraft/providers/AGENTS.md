@@ -17,12 +17,16 @@ by `routing/judge_providers.py` (each turns a `JudgeSpec` into a
 - `_jev.py` — the shared System One judge (`JevJudge`, `JevJudgeError`,
   `SdkEndpoint`, `load_endpoint_judge`, `request_state`, `instructions`): one
   Choice question per page intent, distribution ranks, per-
-  `(intent, candidates)` memo, and the SDK surface all three endpoints inject
-  into. The request carries bounded state — `intent`, `preference`, each
-  candidate's declared capabilities, and the host `machine` budget when known —
-  and the question text names the preference too. Document content is never
-  sent. Not a provider module: nothing resolves it by name, so the `_` prefix is
-  deliberate.
+  `(intent, candidates, page class)` memo, and the SDK surface all three
+  endpoints inject into. The request carries bounded state — `intent`,
+  `preference`, each candidate's declared capabilities, the host `machine`
+  budget when known, and for an OCR page the bounded page context
+  (`state.page`: `needs_ocr`/`blank`; `state.hints`: the document's structural
+  features) — and the question text names the preference and the page class too.
+  Document content is never sent. The memo key holds only the per-page-variable
+  slice of that state: `hints`/`machine`/`preference` are constant per plan and
+  must not fragment it (ADR-0004 A8). Not a provider module: nothing resolves it
+  by name, so the `_` prefix is deliberate.
 - `typesafe_ai.py` — the TypeSafe cloud endpoint, spec `typesafe-ai/<model>`:
   SDK default base URL, `TYPESAFE_API_KEY`. `typesafe-ai` names the provider;
   System One names the model type it serves.

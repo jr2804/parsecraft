@@ -328,17 +328,23 @@ unset key raises `JudgeProviderUnavailableError`, so the CLI exits `1` with
 `judge unavailable: …` before any backend runs.
 
 Each call asks ONE Choice question per page intent over the eligible candidates
-(state: the intent, each candidate's declared capabilities, and — when the
-caller probed one — the host's `vram_budget_gb`; criteria: each candidate's
-capabilities in prose), and the answer's probability distribution is the
-ranking — a candidate the answer omits scores `0.0`, and ties keep the planner's
-name order, so identical inputs give identical orders. Verdicts are memoized per
-`(intent, candidate names)` for the life of one judge (one `convert`
-invocation), so a repeated page shape costs nothing extra. The judge stays
-inside the code-owned funnel: it only re-ranks what `plan_route` already found
-eligible (decisions 3-5), and the host budget is a ranking signal, never a
-filter. The model id is the spec's model token (`typesafe-ai/jev-latest`,
-`zen/jev-1.13-free`, `ollama/nimble`); a `:variant` is rejected rather than
+(state: the intent, each candidate's declared capabilities, the caller's
+`preference`, and — when the caller probed one — the host's `vram_budget_gb`;
+criteria: each candidate's capabilities in prose). For a page the rules called
+OCR-needy it also carries bounded **page context** (A8): `state.page`
+(`needs_ocr`, `blank` — class-level facts only, never page text) and
+`state.hints` (the document's structural `FeatureHints`, plan-constant). The
+answer's probability distribution IS the ranking — a candidate the answer omits
+scores `0.0`, and ties keep the planner's name order, so identical inputs give
+identical orders. Verdicts are memoized per `(intent, candidate names, page
+class)` for the life of one judge (one `convert` invocation): what reaches the
+state as a per-page fact also reaches the memo key, while plan-constant facts
+(`hints`, `machine`, `preference`) stay out of it so they cannot fragment the
+memo. The judge stays inside the code-owned funnel: it only re-ranks what
+`plan_route` already found eligible (decisions 3-5), and neither the host budget
+nor the page class is a filter. The model id is the spec's model token
+(`typesafe-ai/jev-latest`, `zen/jev-1.13-free`, `ollama/nimble`); a `:variant` is
+rejected rather than
 ignored — note that this makes Ollama's tag form unusable
 (`ollama/nimble:latest` parses as a variant), which is harmless because the
 daemon resolves a bare `nimble` to its `:latest` tag.

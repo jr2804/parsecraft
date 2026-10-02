@@ -23,6 +23,7 @@ from parsecraft.routing import (
     Intent,
     JudgeViolationError,
     NoEligibleBackendError,
+    PageContext,
     PageRoute,
     RoutingConstraints,
     RoutingError,
@@ -35,6 +36,7 @@ from parsecraft.routing.rules import (
     FEATURE_FIGURES_CODE,
     FEATURE_TABLE_CODE,
     INTENT_RULES,
+    FeatureHints,
     can_degrade_to_native,
     classify_page,
     extract_hints,
@@ -392,10 +394,66 @@ def test_plan_primary_tiebreak_by_name() -> None:
     assert plan.primary == "native-html"  # lexicographic tiebreak
 
 
+def test_deterministic_judge_ignores_the_page_context() -> None:
+    """The fallback judge stays a pure function of family + preference (A8)."""
+    context = PageContext(needs_ocr=True, blank=True, hints=FeatureHints(tables=True, figures=True))
+    plain = list(DeterministicJudge().rank(Intent.OCR_GENERAL, ocr_backends()))
+    with_context = list(DeterministicJudge().rank(Intent.OCR_GENERAL, ocr_backends(), context))
+    assert plain == with_context
+    assert list(DeterministicJudge(RoutingPreference.QUALITY).rank(Intent.OCR_TABLES, ocr_backends(), context)) == list(
+        DeterministicJudge(RoutingPreference.QUALITY).rank(Intent.OCR_TABLES, ocr_backends())
+    )
+
+
+def test_plan_hands_a_context_to_ocr_pages_only() -> None:
+    """A judge sees bounded page facts for an OCR page and nothing extra for a native one (A8)."""
+    seen: list[tuple[str, PageContext | None]] = []
+
+    class RecordingJudge:
+        @staticmethod
+        def rank(intent: Intent, candidates: Any, context: Any = None) -> list[str]:
+            seen.append((intent.value, context))
+            return [descriptor.name for descriptor in candidates]
+
+    analysis = make_analysis([*good_native(), *garbled(1)], 2)
+    plan_route(analysis, all_backends(), full_constraints(formats=set(), max_passes=9), RecordingJudge())
+
+    assert [intent for intent, _ in seen] == ["native", "ocr"]
+    native_context = seen[0][1]
+    ocr_context = seen[1][1]
+    assert native_context is None  # a native ordering question carries no page facts
+    assert ocr_context is not None
+    assert ocr_context.needs_ocr is True
+    assert ocr_context.blank is False
+    assert ocr_context.hints == extract_hints(analysis)
+    # hints are document-level hence plan-constant, so they stay out of the memo key
+    assert ocr_context.memo_key() == (True, False)
+
+
+def test_page_context_is_none_for_pages_degraded_to_native() -> None:
+    """A page degraded to native is ranked as a native page — no context, no memo churn."""
+    seen: list[Any] = []
+
+    class RecordingJudge:
+        @staticmethod
+        def rank(intent: Intent, candidates: Any, context: Any = None) -> list[str]:
+            seen.append(context)
+            return [descriptor.name for descriptor in candidates]
+
+    native_only = [make_desc("native-text", ("text/plain",)), make_desc("native-markdown", ("text/markdown",))]
+    plan_route(
+        make_analysis(garbled(1), 1),
+        native_only,
+        full_constraints(formats=set(), allow_ocr=False, max_passes=1),
+        RecordingJudge(),
+    )
+    assert seen == [None]  # degraded: ranked as native, so the judge sees what it always saw
+
+
 def test_plan_respects_injected_judge() -> None:
     class ReverseJudge:
         @staticmethod
-        def rank(intent: Intent, candidates: Any) -> list[str]:
+        def rank(intent: Intent, candidates: Any, context: Any = None) -> list[str]:
             return [descriptor.name for descriptor in sorted(candidates, key=lambda d: d.name, reverse=True)]
 
     plan = plan_route(
@@ -418,7 +476,7 @@ def test_plan_rejects_a_judge_that_leads_a_native_page_with_ocr() -> None:
 
     class OcrFirstJudge:
         @staticmethod
-        def rank(intent: Intent, candidates: Any) -> list[str]:
+        def rank(intent: Intent, candidates: Any, context: Any = None) -> list[str]:
             others = [descriptor.name for descriptor in candidates if descriptor.name != "ocr-unlimited"]
             return ["ocr-unlimited", *others]
 
@@ -436,7 +494,7 @@ def test_plan_accepts_a_judge_that_keeps_native_candidates_first() -> None:
 
     class NativeFirstJudge:
         @staticmethod
-        def rank(intent: Intent, candidates: Any) -> list[str]:
+        def rank(intent: Intent, candidates: Any, context: Any = None) -> list[str]:
             native = [descriptor.name for descriptor in candidates if not descriptor.name.startswith("ocr-")]
             ocr = [descriptor.name for descriptor in candidates if descriptor.name.startswith("ocr-")]
             return [*reversed(native), *reversed(ocr)]
@@ -459,7 +517,7 @@ def test_plan_max_passes_truncates_candidates() -> None:
 def test_plan_judge_may_return_subset() -> None:
     class OneShotJudge:
         @staticmethod
-        def rank(intent: Intent, candidates: Any) -> list[str]:
+        def rank(intent: Intent, candidates: Any, context: Any = None) -> list[str]:
             return [candidates[0].name]
 
     plan = plan_route(make_analysis(good_native(), 1), all_backends(), full_constraints(), OneShotJudge())
@@ -492,7 +550,7 @@ def test_plan_intent_family_empty_raises_with_intent() -> None:
 def test_plan_judge_returning_ineligible_raises() -> None:
     class BadJudge:
         @staticmethod
-        def rank(intent: Intent, candidates: Any) -> list[str]:
+        def rank(intent: Intent, candidates: Any, context: Any = None) -> list[str]:
             return ["not-a-real-backend"]
 
     with pytest.raises(JudgeViolationError, match="not an eligible candidate"):
@@ -502,7 +560,7 @@ def test_plan_judge_returning_ineligible_raises() -> None:
 def test_plan_judge_returning_duplicate_raises() -> None:
     class DupJudge:
         @staticmethod
-        def rank(intent: Intent, candidates: Any) -> list[str]:
+        def rank(intent: Intent, candidates: Any, context: Any = None) -> list[str]:
             return [candidates[0].name, candidates[0].name]
 
     with pytest.raises(JudgeViolationError, match="duplicate"):
@@ -512,7 +570,7 @@ def test_plan_judge_returning_duplicate_raises() -> None:
 def test_plan_judge_returning_empty_raises() -> None:
     class EmptyJudge:
         @staticmethod
-        def rank(intent: Intent, candidates: Any) -> list[str]:
+        def rank(intent: Intent, candidates: Any, context: Any = None) -> list[str]:
             return []
 
     with pytest.raises(JudgeViolationError, match="empty order"):

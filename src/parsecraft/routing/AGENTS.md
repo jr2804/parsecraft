@@ -55,6 +55,16 @@ identical plan.
   providers live in `parsecraft.providers` (the three System One endpoints
   `typesafe-ai`/`zen`/`ollama` sharing `providers/_jev.py`); this
   package must never import one.
+- `rank(intent, candidates, context=None)` is the seam's call shape (A8).
+  `context` is a `PageContext` — bounded, class-level page facts (`needs_ocr`,
+  `blank`) plus the document-level `FeatureHints` — and it is built by
+  `page_context(...)` for an OCR intent only; a native page (including one
+  degraded to native) passes `None`, so native ranking sees exactly what it saw
+  before. `PageContext.memo_key()` is the contract that keeps a judge's memo
+  sound: whatever enters the state as a per-page fact enters the key, while
+  plan-constant facts (`hints`, `machine`, `preference`) stay out of it.
+  `DeterministicJudge` ignores the context on purpose — the fallback must stay a
+  pure function of family and preference.
 - `RoutingConstraints.preference` (`RoutingPreference`, default `BALANCED`) is a
   ranking axis, never a permission: it reorders candidates inside the family the
   rules already picked and never moves one across a family boundary. The judge

@@ -401,7 +401,7 @@ def test_injected_judge_controls_dispatch_order(monkeypatch: pytest.MonkeyPatch)
 
     class PreferB:
         @staticmethod
-        def rank(intent: Intent, candidates: Any) -> list[str]:
+        def rank(intent: Intent, candidates: Any, context: Any = None) -> list[str]:
             names = sorted(descriptor.name for descriptor in candidates)
             return sorted(names, key=lambda name: (name != "native-b", name))
 
@@ -773,7 +773,7 @@ def test_cache_miss_on_changed_judge(monkeypatch: pytest.MonkeyPatch, tmp_path: 
 
     class ReverseJudge:
         @staticmethod
-        def rank(intent: Intent, candidates: Any) -> list[str]:
+        def rank(intent: Intent, candidates: Any, context: Any = None) -> list[str]:
             return [descriptor.name for descriptor in sorted(candidates, key=lambda d: d.name, reverse=True)]
 
     execute(

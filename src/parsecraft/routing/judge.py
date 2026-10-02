@@ -19,8 +19,9 @@ from typing import Protocol, override, runtime_checkable
 from pydantic import BaseModel, Field
 
 from parsecraft.backends.protocol import BackendDescriptor
+from parsecraft.ir.models import PageSignal
 from parsecraft.routing.models import Intent, RoutingPreference
-from parsecraft.routing.rules import is_ocr
+from parsecraft.routing.rules import FeatureHints, is_ocr
 
 #: Preferred backend per OCR flavor (code-owned naming contract).
 PREFERRED_BACKENDS: dict[Intent, str | None] = {
@@ -33,9 +34,19 @@ PREFERRED_BACKENDS: dict[Intent, str | None] = {
 
 @runtime_checkable
 class RoutingJudge(Protocol):
-    """Orders eligible candidates best-first; returns backend names."""
+    """Orders eligible candidates best-first; returns backend names.
 
-    def rank(self, intent: Intent, candidates: Sequence[BackendDescriptor]) -> Sequence[str]:
+    ``context`` (A8) is the bounded page context for a page the rules called
+    OCR-needy, and ``None`` for a native one — where ranking is a native-ordering
+    question and the judge sees exactly what it saw before.
+    """
+
+    def rank(
+        self,
+        intent: Intent,
+        candidates: Sequence[BackendDescriptor],
+        context: PageContext | None = None,
+    ) -> Sequence[str]:
         """Return backend names, best pass first, as a subset of ``candidates``."""
         ...
 
@@ -61,9 +72,53 @@ class DeterministicJudge(RoutingJudge):
         self._preference = preference
 
     @override
-    def rank(self, intent: Intent, candidates: Sequence[BackendDescriptor]) -> Sequence[str]:
+    def rank(
+        self,
+        intent: Intent,
+        candidates: Sequence[BackendDescriptor],
+        context: PageContext | None = None,
+    ) -> Sequence[str]:
+        """Order the family deterministically; ``context`` is deliberately unused.
+
+        The fallback judge must stay a pure function of the family and the
+        preference, so the page context a provider judge weighs cannot change
+        what happens when no provider is configured (A8).
+        """
         ordered = sorted(candidates, key=lambda descriptor: _sort_key(descriptor, intent, self._preference))
         return [descriptor.name for descriptor in ordered]
+
+
+class PageContext(BaseModel):
+    """Bounded, class-level page facts a judge may weigh (ADR-0004 A8).
+
+    The rule table's flavor label is the call's ``intent``; what this adds is
+    whether the page needs OCR at all and whether it carried any text. No page
+    text, no document content, nothing unbounded.
+
+    ``hints`` is document-level, hence constant for a whole plan, and for that
+    reason deliberately **absent from** :meth:`memo_key`: a judge keyed by it
+    would still share verdicts across pages that differ only in hints, which is
+    correct, while two pages whose class differs never share one.
+    """
+
+    #: Code/classifier-owned verdict (augment-only, A2) — the judge may weigh it,
+    #: never contradict it.
+    needs_ocr: bool
+    #: The page carried no text at all.
+    blank: bool
+    #: Document-level structural hints (``FeatureHints``).
+    hints: FeatureHints
+
+    model_config = {"frozen": True}
+
+    def memo_key(self) -> tuple[bool, bool]:
+        """The per-page-variable slice of this context, for a judge's memo key.
+
+        Two calls may share a stored verdict only when it matches; plan-constant
+        facts (``hints`` here, ``machine``/``preference`` on the judge) never
+        enter it, so they cannot fragment the memo.
+        """
+        return (self.needs_ocr, self.blank)
 
 
 class JudgeSpec(BaseModel):
@@ -107,6 +162,20 @@ class JudgeProviderLoader(Protocol):
         machine: MachineProfile | None = None,
         preference: RoutingPreference = RoutingPreference.BALANCED,
     ) -> RoutingJudge: ...
+
+
+def page_context(intent: Intent, signal: PageSignal, hints: FeatureHints) -> PageContext | None:
+    """Bounded judge context for a page, or ``None`` when ranking needs none.
+
+    Only an OCR route gets one: for a ``NATIVE`` intent — including a page
+    degraded to native because no OCR family was available — ranking is a
+    native-ordering question, so the judge state and the memo key stay exactly
+    what they were. An OCR intent implies :func:`page_needs_ocr`, so this gate
+    and "the page needs OCR" agree by construction.
+    """
+    if intent is Intent.NATIVE:
+        return None
+    return PageContext(needs_ocr=True, blank=signal.blank, hints=hints)
 
 
 def _sort_key(descriptor: BackendDescriptor, intent: Intent, preference: RoutingPreference) -> tuple[int, float, str]:

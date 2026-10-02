@@ -49,7 +49,7 @@ def test_resolve_none_returns_deterministic_default() -> None:
 def test_resolve_judge_instance_passes_through() -> None:
     class Custom:
         @staticmethod
-        def rank(intent: Intent, candidates: Any) -> list[str]:
+        def rank(intent: Intent, candidates: Any, context: Any = None) -> list[str]:
             return [descriptor.name for descriptor in candidates]
 
     custom = Custom()
@@ -163,7 +163,7 @@ def test_last_registration_wins() -> None:
 
     class Marker:
         @staticmethod
-        def rank(intent: Intent, candidates: Any) -> list[str]:
+        def rank(intent: Intent, candidates: Any, context: Any = None) -> list[str]:
             return ["native-a"]
 
     register_judge_provider("dup", lambda spec, machine=None, preference=None: cast(RoutingJudge, Marker()))

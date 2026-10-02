@@ -20,7 +20,7 @@ import pytest
 from parsecraft.backends.protocol import BackendCapabilities, BackendDescriptor
 from parsecraft.providers import _jev
 from parsecraft.providers import typesafe_ai as provider
-from parsecraft.routing import Intent, RoutingPreference
+from parsecraft.routing import Intent, PageContext, RoutingPreference
 from parsecraft.routing.judge import JudgeSpec, MachineProfile, RoutingJudge
 from parsecraft.routing.judge_providers import (
     JudgeProviderUnavailableError,
@@ -28,6 +28,7 @@ from parsecraft.routing.judge_providers import (
     resolve_judge,
 )
 from parsecraft.routing.models import RoutingError
+from parsecraft.routing.rules import FeatureHints
 from tests.fixtures.jev_sdk import StubAnswer, StubResponse, StubSdk
 
 _API_KEY = "ts-test-key"
@@ -169,6 +170,62 @@ def test_rank_sends_one_bounded_choice_question(jev_sdk: StubSdk, ts_key: str) -
         "ocr-ovis": "OCR backend; requires ~6 GB VRAM; handles application/pdf, image/png",
         "native-pdf": "native backend; runs on CPU; handles application/pdf",
     }
+
+
+def test_state_carries_the_page_class_and_hints_only_for_an_ocr_page(jev_sdk: StubSdk, ts_key: str) -> None:
+    """A8: bounded page context for OCR pages, and a native page's state unchanged."""
+    judge = provider.load_judge(JudgeSpec(provider=provider.PROVIDER_NAME, model=_MODEL))
+    judge.rank(Intent.OCR_TABLES, [_OCR, _NATIVE], _page_context(blank=False, tables=True))
+    state, _questions = jev_sdk.calls[0]
+    assert state["page"] == {"needs_ocr": True, "blank": False}
+    assert state["hints"] == {"tables": True, "equations": False, "figures": False}
+    instructions, _criteria = jev_sdk.choices[0]
+    assert "`state.page`" in instructions  # the model is told to weigh it
+
+    judge.rank(Intent.NATIVE, [_OCR, _NATIVE])
+    native_state, _questions = jev_sdk.calls[1]
+    assert "page" not in native_state
+    assert "hints" not in native_state
+
+
+def test_memo_shares_a_verdict_only_within_one_page_class(jev_sdk: StubSdk, ts_key: str) -> None:
+    """A8's memo trap: what enters the state as a per-page fact must enter the key."""
+    judge = provider.load_judge(JudgeSpec(provider=provider.PROVIDER_NAME, model=_MODEL))
+    judge.rank(Intent.OCR_GENERAL, [_OCR, _NATIVE], _page_context())
+    judge.rank(Intent.OCR_GENERAL, [_OCR, _NATIVE], _page_context())
+    assert len(jev_sdk.calls) == 1  # same page class: the verdict is reused
+
+    judge.rank(Intent.OCR_GENERAL, [_OCR, _NATIVE], _page_context(blank=True))
+    assert len(jev_sdk.calls) == 2  # a blank page is a different question
+
+    judge.rank(Intent.OCR_GENERAL, [_OCR, _NATIVE], _page_context(needs_ocr=False))
+    assert len(jev_sdk.calls) == 3  # ...so is a different OCR verdict
+
+
+def test_memo_ignores_plan_constant_hints(jev_sdk: StubSdk, ts_key: str) -> None:
+    """Hints travel in the state yet are constant per plan: they must not fragment the memo."""
+    judge = provider.load_judge(JudgeSpec(provider=provider.PROVIDER_NAME, model=_MODEL))
+    judge.rank(Intent.OCR_TABLES, [_OCR, _NATIVE], _page_context(tables=True))
+    judge.rank(Intent.OCR_TABLES, [_OCR, _NATIVE], _page_context(tables=True, figures=True))
+    assert len(jev_sdk.calls) == 1  # same class, different hints: still one verdict
+    state, _questions = jev_sdk.calls[0]
+    assert state["hints"] == {"tables": True, "equations": False, "figures": False}
+
+
+def _page_context(
+    *,
+    needs_ocr: bool = True,
+    blank: bool = False,
+    tables: bool = False,
+    equations: bool = False,
+    figures: bool = False,
+) -> PageContext:
+    """A bounded page context as the planner builds it for an OCR page."""
+    return PageContext(
+        needs_ocr=needs_ocr,
+        blank=blank,
+        hints=FeatureHints(tables=tables, equations=equations, figures=figures),
+    )
 
 
 def test_rank_carries_the_preference_verbatim_in_state_and_instructions(jev_sdk: StubSdk, ts_key: str) -> None:

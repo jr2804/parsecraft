@@ -38,6 +38,7 @@ from parsecraft.routing import (
     JudgeViolationError,
     MachineProfile,
     NoEligibleBackendError,
+    PageContext,
     RoutingConstraints,
     RoutingError,
     RoutingJudge,
@@ -64,8 +65,17 @@ class PreferredBackendJudge:
     def __init__(self, name: str) -> None:
         self._name = name
 
-    def rank(self, intent: Intent, candidates: Sequence[BackendDescriptor]) -> Sequence[str]:
-        """Return the preferred backend first, then the remaining eligible names."""
+    def rank(
+        self,
+        intent: Intent,
+        candidates: Sequence[BackendDescriptor],
+        context: PageContext | None = None,
+    ) -> Sequence[str]:
+        """Return the preferred backend first, then the remaining eligible names.
+
+        ``context`` is unused: ``--backend`` already names the lead, so the page
+        class cannot change the order this judge produces.
+        """
         names = [descriptor.name for descriptor in candidates]
         if self._name not in names:
             raise JudgeViolationError(self._name, "not eligible for this page", intent)

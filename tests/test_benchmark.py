@@ -130,7 +130,7 @@ def test_judge_controls_selected_flag(monkeypatch: pytest.MonkeyPatch, tmp_path:
 
     class PreferB:
         @staticmethod
-        def rank(intent: Any, candidates: Any) -> list[str]:
+        def rank(intent: Any, candidates: Any, context: Any = None) -> list[str]:
             return ["native-b", "native-a"]
 
     report = run_benchmark(

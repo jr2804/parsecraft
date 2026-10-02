@@ -35,7 +35,7 @@ from importlib import import_module
 from typing import Protocol, runtime_checkable
 
 from parsecraft.backends.protocol import GPU_NOT_NEEDED, GPU_REQUIRED, BackendDescriptor
-from parsecraft.routing.judge import JudgeSpec, MachineProfile
+from parsecraft.routing.judge import JudgeSpec, MachineProfile, PageContext
 from parsecraft.routing.judge_providers import JudgeProviderUnavailableError, JudgeSpecError
 from parsecraft.routing.models import Intent, RoutingError, RoutingPreference
 from parsecraft.routing.rules import is_ocr
@@ -148,19 +148,22 @@ class JevJudge:
     Shared by every System One endpoint; only the injected :class:`SdkEndpoint`
     differs.
 
-    Memoized per judge instance, keyed ``(intent value, candidate names)``: a
-    page shape that repeats within one plan reuses the verdict already paid
-    for, so a four-shape document costs at most four calls instead of one per
-    page. ``resolve_judge`` builds a fresh judge per ``convert`` invocation, so
-    the memo lives for exactly one plan — never across documents, and never
-    across a changed candidate set because the key carries the names. The
-    trade-off is deliberate: memoized pages share one verdict. The model cannot
+    Memoized per judge instance, keyed
+    ``(intent value, candidate names, page class)``: a page shape that repeats
+    within one plan reuses the verdict already paid for, so a four-shape document
+    costs at most four calls instead of one per page. ``resolve_judge`` builds a
+    fresh judge per ``convert`` invocation, so the memo lives for exactly one
+    plan — never across documents, and never across a changed candidate set
+    because the key carries the names. The trade-off is deliberate: memoized pages
+    share one verdict, and they can only do so when their class agrees (§A8: the
+    per-page facts that reach the request also reach the key). The model cannot
     tell them apart anyway — the request carries the intent, the candidates'
-    declared capabilities, and (when known) the host budget, never page content.
+    declared capabilities, the host budget, and the page class, never page content.
 
-    ``machine`` is the host profile the caller already probed, and
-    ``preference`` the caller's ranking axis; because both are constant for one
-    judge instance, they stay out of the memo key.
+    ``machine`` and ``preference`` are the host profile the caller probed and the
+    caller's ranking axis; because both are constant for one judge instance they
+    stay out of the memo key, and so do the document-level ``hints`` that travel
+    inside the page context.
     """
 
     def __init__(
@@ -173,21 +176,30 @@ class JevJudge:
         self._endpoint = endpoint
         self._machine = machine
         self._preference = preference
-        self._memo: dict[tuple[str, tuple[str, ...]], list[str]] = {}
+        self._memo: dict[tuple[str, tuple[str, ...], tuple[bool, bool] | None], list[str]] = {}
 
-    def rank(self, intent: Intent, candidates: Sequence[BackendDescriptor]) -> Sequence[str]:
+    def rank(
+        self,
+        intent: Intent,
+        candidates: Sequence[BackendDescriptor],
+        context: PageContext | None = None,
+    ) -> Sequence[str]:
         """Candidate names, best first, by the choice distribution (never widened)."""
         names = [descriptor.name for descriptor in candidates]
         if len(names) < 2:
             return names  # nothing to rank — one candidate is already the answer
-        key = (intent.value, tuple(names))
+        # The memo key carries the page-variable slice of the context and nothing
+        # else: two pages of the same class share a verdict, two pages whose class
+        # differs never do, and plan constants (hints, machine, preference) cannot
+        # fragment the memo (A8).
+        key = (intent.value, tuple(names), context.memo_key() if context is not None else None)
         memoized = self._memo.get(key)
         if memoized is not None:
             return list(memoized)  # a copy: a caller must not mutate the memo
         try:
             with self._endpoint.client() as client:
                 response = client.system_one(
-                    request_state(intent, candidates, self._machine, self._preference),
+                    request_state(intent, candidates, self._machine, self._preference, context),
                     {QUESTION_ID: self._endpoint.choice(instructions=instructions(self._preference), criteria=choice_criteria(candidates))},
                 )
         except Exception as exc:  # SDK boundary — typed, never a raw SDK/transport error
@@ -203,10 +215,11 @@ def instructions(preference: RoutingPreference) -> str:
 
     The preference is spelled out here as well as carried in ``state``: the
     instruction is what steers the answer, the state field is what the endpoint
-    (and any log) can verify it was steered by. The two contract sentences
-    (native-before-OCR for a ``native`` intent, and the host facts in
-    ``state.machine``) restate rules ``plan_route`` enforces, so a compliant
-    answer is never rejected as a judge violation.
+    (and any log) can verify it was steered by. The contract sentences
+    (native-before-OCR for a ``native`` intent, the host facts in
+    ``state.machine`` and the page class in ``state.page``/``state.hints``)
+    restate rules ``plan_route`` enforces, so a compliant answer is never
+    rejected as a judge violation.
     """
     return (
         "Which single eligible backend should lead pass 1 for a page whose intent and caller preference "
@@ -216,7 +229,10 @@ def instructions(preference: RoutingPreference) -> str:
         "page correctly under that preference. While `state.intent` is `native`, an `ocr` candidate is "
         "only a fallback: never rank one above a native-capable candidate. Treat `state.machine` as the "
         "truth about this host: a candidate with `gpu_requirement` 1.0 cannot lead where `gpu_usable` is "
-        "false, and one whose `estimated_vram_gb` exceeds `vram_budget_gb` does not fit."
+        "false, and one whose `estimated_vram_gb` exceeds `vram_budget_gb` does not fit. When "
+        "`state.page` is present the page needs OCR: `blank` says it carried no text at all, and "
+        "`state.hints` names the document's structure - prefer a candidate whose flavor covers a hinted "
+        "feature (a table-capable backend for `tables`) when it is otherwise competitive."
     )
 
 
@@ -280,13 +296,16 @@ def request_state(
     candidates: Sequence[BackendDescriptor],
     machine: MachineProfile | None,
     preference: RoutingPreference = RoutingPreference.BALANCED,
+    context: PageContext | None = None,
 ) -> dict[str, object]:
-    """Bounded request state: intent, preference, declared capabilities, host budget.
+    """Bounded request state: intent, preference, capabilities, host budget, page class.
 
     Never document content: the model sees which candidates exist, what they
-    declare, how much VRAM this machine has, and which axis the caller asked to
-    optimise. An unknown host contributes no ``machine`` key at all rather than a
-    misleading zero.
+    declare, how much VRAM this machine has, which axis the caller asked to
+    optimise, and — for a page the rules called OCR-needy — that page's class
+    (``needs_ocr``, ``blank``) plus the document's structural ``hints``. An
+    unknown host contributes no ``machine`` key at all rather than a misleading
+    zero, and a native page contributes no ``page``/``hints`` keys at all.
     """
     state: dict[str, object] = {
         "intent": intent.value,
@@ -295,6 +314,9 @@ def request_state(
     }
     if machine is not None:
         state["machine"] = {"vram_budget_gb": machine.vram_budget_gb, "gpu_usable": machine.gpu_usable}
+    if context is not None:
+        state["page"] = {"needs_ocr": context.needs_ocr, "blank": context.blank}
+        state["hints"] = context.hints.model_dump(mode="json")
     return state
 
 

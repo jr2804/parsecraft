@@ -6,7 +6,7 @@ from collections.abc import Sequence
 
 from parsecraft.backends.protocol import AnalysisResult, BackendDescriptor
 from parsecraft.ir.models import PageSignal
-from parsecraft.routing.judge import DeterministicJudge, RoutingJudge
+from parsecraft.routing.judge import DeterministicJudge, RoutingJudge, page_context
 from parsecraft.routing.models import (
     Intent,
     JudgeViolationError,
@@ -74,7 +74,7 @@ def plan_route(
             # NATIVE-intent pages must never silently route to OCR: the format
             # needs a native-capable lead backend (see routing/AGENTS.md).
             raise NoEligibleBackendError(intent, "no native backend covers the source format")
-        order = list(active_judge.rank(intent, family))
+        order = list(active_judge.rank(intent, family, page_context(intent, signal, hints)))
         _validate_order(order, family, intent)
         candidates = order[: constraints.max_passes]
         pages.append(

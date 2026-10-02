@@ -29,7 +29,7 @@ from parsecraft.cli.app import app
 from parsecraft.environment import EnvironmentInfo
 from parsecraft.ir import ChunkKind, PageResult, PageSignal, StructuredChunk
 from parsecraft.pipeline.analysis import NoAnalyzerError, UnsupportedSourceError, choose_analyzer, media_type_for
-from parsecraft.routing import Intent, MachineProfile, RoutingJudge, RoutingPreference
+from parsecraft.routing import Intent, MachineProfile, PageContext, RoutingJudge, RoutingPreference
 from parsecraft.routing.classifier import (
     ClassifierSpec,
     OcrFacts,
@@ -166,7 +166,7 @@ class _ReversingJudge:
     """
 
     @staticmethod
-    def rank(intent: Intent, candidates: Sequence[BackendDescriptor]) -> Sequence[str]:
+    def rank(intent: Intent, candidates: Sequence[BackendDescriptor], context: PageContext | None = None) -> Sequence[str]:
         native = [descriptor.name for descriptor in candidates if not descriptor.name.startswith("ocr-")]
         ocr = [descriptor.name for descriptor in candidates if descriptor.name.startswith("ocr-")]
         return [*reversed(native), *reversed(ocr)]
@@ -176,7 +176,7 @@ class _OcrLeadingJudge:
     """Judge stub that promotes an OCR fallback over native candidates."""
 
     @staticmethod
-    def rank(intent: Intent, candidates: Sequence[BackendDescriptor]) -> Sequence[str]:
+    def rank(intent: Intent, candidates: Sequence[BackendDescriptor], context: PageContext | None = None) -> Sequence[str]:
         names = [descriptor.name for descriptor in candidates]
         ocr = next(name for name in names if name.startswith("ocr-"))
         return [ocr, *(name for name in names if name != ocr)]
@@ -186,7 +186,7 @@ class _ExplodingJudge:
     """Judge stub that fails the test if the planner ever consumes it."""
 
     @staticmethod
-    def rank(intent: Intent, candidates: Sequence[BackendDescriptor]) -> Sequence[str]:
+    def rank(intent: Intent, candidates: Sequence[BackendDescriptor], context: PageContext | None = None) -> Sequence[str]:
         raise AssertionError("no judge spec was given — the deterministic default must plan")
 
 
