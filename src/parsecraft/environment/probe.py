@@ -63,11 +63,16 @@ def probe_environment() -> EnvironmentInfo:
     groups = (descriptor.capabilities.optional_dependency_group for descriptor in descriptors)
     installed = frozenset(group for group in groups if group is not None and extra_present(group))
     vram_budget_gb = _detect_vram_gb()
+    # The CUDA-runtime question is answered UNCONDITIONALLY - also on hosts
+    # without nvidia-smi (macOS, GPU-less CI): it is part of the environment's
+    # description, and short-circuiting it would make the probe result depend
+    # on the host's GPU presence rather than the installed torch build.
+    cuda_note = cuda_runtime_note()
     return EnvironmentInfo(
         backends=backends,
         installed_extras=installed,
         vram_budget_gb=vram_budget_gb,
-        gpu_usable=vram_budget_gb > 0 and cuda_runtime_note() is None,
+        gpu_usable=vram_budget_gb > 0 and cuda_note is None,
         offline=_declared_offline(),
     )
 
