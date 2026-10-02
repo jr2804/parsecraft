@@ -34,7 +34,7 @@ duplicated; integrity data (per-file SHA-256) lives in `AssetPin`.
   (timestamped, stored in the cache dir as JSON).
 - Offline mode raises `OfflineModeError` for missing files; it never downloads.
 - A first-use fetch announces itself: one `downloading <model> (<size>) into
-  <dir>` INFO record on the `parsecraft.assets` logger, emitted BEFORE the
+  <dir>` INFO record on the `parsecraft.assets.manager` logger (channel installed on the parent `parsecraft.assets`), emitted BEFORE the
   first file request (model + size + destination, no prompt, no flag). The CLI
   routes that channel to stderr (`cli.output.ensure_asset_info_logging`); the
   logger is never in `cli.verbosity.QUIET_LOGGERS` — it is our own message.
