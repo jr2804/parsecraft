@@ -62,7 +62,12 @@ DESCRIPTOR = BackendDescriptor(
         supported_formats=["pdf"],
         supports_page_ranges=True,
         supports_multi_page=True,
-        requires_gpu=False,
+        # gpu_requirement defaults to GPU_NOT_NEEDED (0.0): no GPU path.
+        # Declare the middle of the scale (GPU_OPTIONAL, 0.5) when a GPU is a
+        # speedup rather than a precondition, and GPU_REQUIRED (1.0) when the
+        # backend must not run on CPU — then also pass require_gpu=True where
+        # you build the pipeline, so a silent CPU fallback fails fast.
+        estimated_vram_gb=None,
     ),
 )
 

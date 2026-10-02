@@ -141,14 +141,21 @@ rule-table OCR verdict is never cleared — and it works in auto mode and under
 | `--no-ocr` | forbid OCR backends, wherever a spec or judge would send a page |
 | `--max-passes N` | how many candidates per page are tried before the page fails |
 | `--cache` / `--no-cache` | reuse the content-addressed conversion cache (the key includes the judge identity) |
+| `--verbose` | keep third-party library output (progress bars, tokenizer and generation advisories); by default it is suppressed, never our own messages |
 
 ## When it fails
 
 | Exit | Meaning |
 | ---- | ------- |
 | `0` | success (including `inspect` with no eligible backend) |
-| `1` | analysis or routing failed: a missing extra, an unset credential, an unavailable `--judge`/`--classifier` provider, or no eligible backend |
-| `2` | usage error: malformed spec, `--backend` combined with `--judge`, `--no-auto` without `--backend`, ineligible `--backend`, unsupported suffix |
+| `1` | analysis or routing failed: a missing extra, an unset credential, an unavailable `--judge`/`--classifier` provider, no eligible backend, or a page whose intent has no eligible family (an OCR page with no OCR backend that can run here) |
+| `2` | usage error: malformed spec, `--backend` combined with `--judge`, `--no-auto` without `--backend`, ineligible `--backend`, a judge that crosses the native/OCR boundary, unsupported suffix |
+
+A GPU is only usable when the *runtime* can use it: a card with a CPU-only torch
+build (`torch.cuda.is_available()` is `False`) warns once on stderr
+(`GPU detected but unusable: … — GPU-only backends are excluded`) and every
+GPU-only backend drops out of the plan, which is why an OCR page can fail with
+`no eligible backend for intent 'ocr'` on such a host.
 
 ## What the selector will not do
 
@@ -156,8 +163,10 @@ rule-table OCR verdict is never cleared — and it works in auto mode and under
   constraints already admitted. A name outside that set, a duplicate, or an
   empty order is a violation (exit `2`).
 - Families are never crossed: a page the rules called **native** is never
-  silently handed to an OCR backend. If OCR is required and no native backend
-  covers the format, routing fails instead.
+  silently handed to an OCR backend — not by the planner, and not by a judge
+  either (an order that promotes an OCR fallback above a native candidate is
+  rejected). If OCR is required and no native backend covers the format, routing
+  fails instead.
 - A classifier cannot remove OCR-need, and it cannot see the document as the
   judge does — it reports per-page facts (OCR-need, tables) and a document type.
 

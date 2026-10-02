@@ -48,7 +48,7 @@ Table columns:
 | Column | Source |
 | ------ | ------ |
 | Name (24 columns) | `descriptor.name` |
-| Device | `gpu` when `capabilities.requires_gpu`, otherwise `cpu` |
+| Device | `gpu` when `capabilities.gpu_requirement` is `1.0`, `cpu/gpu` when it is between `0.0` and `1.0`, otherwise `cpu` |
 | VRAM | `vram<=XG` when `capabilities.estimated_vram_gb` is set, otherwise blank |
 | Formats | Comma-joined `capabilities.supported_formats`, or `-` when empty |
 
@@ -68,7 +68,7 @@ is `[]` when none are registered; the schema is `BackendDescriptor`:
     "capabilities": {
       "estimated_vram_gb": null,
       "optional_dependency_group": null,
-      "requires_gpu": false,
+      "gpu_requirement": 0.0,
       "supported_formats": ["text"],
       "supports_multi_page": true,
       "supports_page_ranges": true

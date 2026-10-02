@@ -150,7 +150,7 @@ backend.
 | Rule | Excludes |
 | ---- | -------- |
 | Installed extras | `optional_dependency_group` not in `constraints.installed_extras` |
-| VRAM budget | `requires_gpu` with `estimated_vram_gb` unset or greater than `vram_budget_gb` |
+| VRAM budget | `gpu_requirement == 1.0` with `estimated_vram_gb` unset or greater than `vram_budget_gb`, or with no usable GPU (`gpu_usable=False`) |
 | Format coverage | `constraints.formats` not fully covered by `supported_formats` |
 | OCR switch | `allow_ocr=False` and the backend is an OCR backend |
 | Offline | `offline=True` and the backend carries a `ModelAssetDescriptor` |
@@ -325,15 +325,18 @@ never probes the machine. Host reality is *detected* once, in
 | ---- | ------------------------------------ | ----------------------------------- |
 | Backends present | — | `EnvironmentInfo.backends` |
 | Installed extras | `optional_dependency_group` | `EnvironmentInfo.installed_extras` |
-| GPU need and VRAM | `requires_gpu`, `estimated_vram_gb` | `EnvironmentInfo.vram_budget_gb` — measured |
+| GPU need and VRAM | `gpu_requirement` (0.0–1.0), `estimated_vram_gb` | `EnvironmentInfo.vram_budget_gb` — measured; `EnvironmentInfo.gpu_usable` — runtime can use it |
 | Formats | `supported_formats` | — |
 | Model assets | `model_asset` | — |
 | Offline | — | `EnvironmentInfo.offline` — operator-declared |
 
 `probe_environment() -> EnvironmentInfo` measures installed extras (resolve
 only, never import), total GPU VRAM via `nvidia-smi`, and the operator-declared
-`PARSECRAFT_OFFLINE` flag. `constraints_from_environment(environment, *,
-formats=(), allow_ocr=None, max_passes=1) -> RoutingConstraints` fills all seven
+`PARSECRAFT_OFFLINE` flag. It also reports `gpu_usable`: hardware presence is not
+runtime capability, and a CPU-only torch build (`+cpu`, see
+`cuda_runtime_note()`) means the planner must not send a GPU-required backend to
+the CPU. `constraints_from_environment(environment, *,
+formats=(), allow_ocr=None, max_passes=1) -> RoutingConstraints` fills every
 constraint fields; with `allow_ocr=None` the switch is derived from whether an
 `ocr-` extra is installed. Routing consumes the built constraints plus
 descriptors and never probes hardware; the probe never judges eligibility.

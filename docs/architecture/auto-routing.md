@@ -41,18 +41,29 @@ Each CLI invocation probes the host once (`probe_environment()` in
 | Input | How it is detected | How routing uses it |
 | --- | --- | --- |
 | Installed extras | `EXTRA_IMPORTS` map + `importlib.util.find_spec` — locates, never imports | `installed_extras`; a candidate whose `optional_dependency_group` is not installed is ineligible |
-| GPU / VRAM budget | bounded `nvidia-smi --query-gpu=memory.total` call (10 s timeout, first GPU only; missing, failing, or malformed output → `0.0`) | `vram_budget_gb`; a GPU backend survives only when its declared estimate fits the measured budget |
+| GPU / VRAM budget | bounded `nvidia-smi --query-gpu=memory.total` call (10 s timeout, first GPU only; missing, failing, or malformed output → `0.0`) plus a metadata read of the installed torch build's CUDA support | `vram_budget_gb` and `gpu_usable`; a backend needing a GPU survives only when the runtime can use one and its declared estimate fits the measured budget |
 | Offline state | `PARSECRAFT_OFFLINE`, operator-declared — connectivity is never probed | `offline`; excludes backends carrying a `model_asset` |
 | OCR permission | derived from detected `ocr-*` extras; `--no-ocr` overrides | `allow_ocr`; when off, OCR intents may only degrade to native |
 | Source formats | suffix → MIME via `MEDIA_TYPES` (`src/parsecraft/pipeline/analysis.py`) | `formats`; a candidate must cover every source MIME |
 | Language (BCP-47) | caller-supplied, never derived | `language`; narrows only backends that *declare* `capabilities.languages` |
 
-**CPU/GPU split.** Each descriptor declares `requires_gpu` and
-`estimated_vram_gb` (`src/parsecraft/backends/protocol.py`);
-`is_hard_eligible()` (`src/parsecraft/routing/rules.py`) keeps a GPU backend
-only when `requires_gpu` is false or `estimated_vram_gb` is declared and
-`<= vram_budget_gb`. Without a working `nvidia-smi` the budget is `0.0`, so
-every GPU backend drops out while CPU backends keep routing the document.
+**CPU/GPU split.** Each descriptor declares `gpu_requirement`, a soft score from
+`0.0` to `1.0` (`src/parsecraft/backends/protocol.py`): `GPU_NOT_NEEDED` (0.0) when
+a GPU changes nothing, `GPU_OPTIONAL` (0.5) when it is a speedup rather than a
+precondition, `GPU_REQUIRED` (1.0) when the backend must not run on CPU.
+`is_hard_eligible()` (`src/parsecraft/routing/rules.py`) hard-gates only the last
+one, and only when the host has both a usable runtime (`gpu_usable`) and room
+(`estimated_vram_gb <= vram_budget_gb`). The middle values inform ranking and the
+judge's request state; a CPU-capable backend stays eligible without a GPU,
+because a slow answer beats no answer.
+
+Hardware presence and runtime capability are separate facts. A machine can report
+8 GiB through `nvidia-smi` while its torch is a `+cpu` build (`torch.cuda.is_available()`
+is `False`): without `gpu_usable` the planner would admit a GPU-only backend that
+then generates token-by-token on the CPU. When that happens the CLI says so once
+on stderr (`GPU detected but unusable: … — GPU-only backends are excluded`) and a
+backend that declares `GPU_REQUIRED` also refuses a silent CPU placement at load
+time (a typed failure the plan can fall back from).
 
 Routing itself never probes hardware: descriptors *declare* what a backend can
 do, the probe *detects* what this host has, and the planner reads both as plain
