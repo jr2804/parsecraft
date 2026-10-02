@@ -11,7 +11,7 @@ from collections.abc import Sequence
 
 from pydantic import BaseModel
 
-from parsecraft.backends.protocol import AnalysisResult, BackendDescriptor
+from parsecraft.backends.protocol import GPU_REQUIRED, AnalysisResult, BackendDescriptor
 from parsecraft.ir.models import PageSignal
 from parsecraft.routing.models import Intent, RoutingConstraints
 
@@ -91,8 +91,11 @@ def is_hard_eligible(descriptor: BackendDescriptor, constraints: RoutingConstrai
     ocr_allowed = constraints.allow_ocr or not is_ocr(descriptor)
     group = capabilities.optional_dependency_group
     extra_installed = group is None or group in constraints.installed_extras
-    vram_within_budget = not capabilities.requires_gpu or (
-        capabilities.estimated_vram_gb is not None and capabilities.estimated_vram_gb <= constraints.vram_budget_gb
+    # Only a HARD GPU requirement gates here: a CPU-capable backend stays
+    # eligible without a GPU (a slow answer beats no answer), while a hard one
+    # is dropped unless the runtime can actually use the GPU *and* fits budget.
+    gpu_ok = capabilities.gpu_requirement < GPU_REQUIRED or (
+        constraints.gpu_usable and capabilities.estimated_vram_gb is not None and capabilities.estimated_vram_gb <= constraints.vram_budget_gb
     )
     formats_covered = not constraints.formats or constraints.formats.issubset(set(capabilities.supported_formats))
     offline_ok = not constraints.offline or capabilities.model_asset is None
@@ -100,11 +103,16 @@ def is_hard_eligible(descriptor: BackendDescriptor, constraints: RoutingConstrai
     # A language request only narrows backends that DECLARE languages:
     # language-agnostic candidates (native included) are never excluded.
     language_ok = constraints.language is None or not declared_languages or constraints.language in declared_languages
-    return ocr_allowed and extra_installed and vram_within_budget and formats_covered and offline_ok and language_ok
+    return ocr_allowed and extra_installed and gpu_ok and formats_covered and offline_ok and language_ok
 
 
 def in_intent_family(intent: Intent, descriptor: BackendDescriptor) -> bool:
-    """OCR intents accept only OCR backends; NATIVE admits native + OCR fallbacks."""
+    """OCR intents accept only OCR backends; NATIVE admits native + OCR fallbacks.
+
+    Membership here is necessary, not sufficient: for a NATIVE page an OCR
+    backend is a *fallback*, and ``plan_route`` keeps it behind every
+    native-capable candidate (``_validate_order``).
+    """
     if intent is Intent.NATIVE:
         return True
     return is_ocr(descriptor)

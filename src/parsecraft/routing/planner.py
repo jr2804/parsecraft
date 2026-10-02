@@ -102,6 +102,27 @@ def _validate_order(order: list[str], family: list[BackendDescriptor], intent: I
         if name in seen:
             raise JudgeViolationError(name, "duplicate candidate", intent)
         seen.add(name)
+    _validate_native_fallbacks(order, family, intent)
+
+
+def _validate_native_fallbacks(order: list[str], family: list[BackendDescriptor], intent: Intent) -> None:
+    """A NATIVE page must be led by a native-capable candidate.
+
+    The rules admit OCR backends into a NATIVE page's family as *fallbacks*, and
+    a judge reorders that family — so without this check a provider judge could
+    lead a page the rule table called native with a VLM, spending minutes on
+    text a native backend reads in milliseconds. Contract, not ranking advice:
+    the deterministic judge happens to sort native first, and a provider judge
+    must honour the same rule or its order is rejected.
+    """
+    if intent is not Intent.NATIVE:
+        return
+    by_name = {descriptor.name: descriptor for descriptor in family}
+    ocr_positions = [index for index, name in enumerate(order) if is_ocr(by_name[name])]
+    native_positions = [index for index, name in enumerate(order) if not is_ocr(by_name[name])]
+    if ocr_positions and native_positions and min(ocr_positions) < max(native_positions):
+        offending = order[min(ocr_positions)]
+        raise JudgeViolationError(offending, "an OCR backend may not lead a NATIVE page (native-capable candidates first)", intent)
 
 
 def _primary(pages: list[PageRoute]) -> str:

@@ -29,3 +29,12 @@ ConfigFileOption = Annotated[
         help="Project config file to load instead of ./parsecraft.toml",
     ),
 ]
+
+#: Opt out of the third-party quieting: show library logs and progress bars.
+VerboseFlag = Annotated[
+    bool,
+    typer.Option(
+        "--verbose",
+        help="Do not suppress third-party library output (progress bars, tokenizer and generation advisories)",
+    ),
+]

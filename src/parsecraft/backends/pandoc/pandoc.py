@@ -62,7 +62,6 @@ CAPABILITIES = BackendCapabilities(
     # Pandoc sources are one logical page (no layout/pagination).
     supports_page_ranges=False,
     supports_multi_page=False,
-    requires_gpu=False,
     estimated_vram_gb=None,
     optional_dependency_group=_EXTRA,
     model_asset=None,  # system binary — no model weights to pin

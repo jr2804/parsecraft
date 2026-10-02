@@ -34,6 +34,7 @@ from parsecraft.backends.ocr._common import (
     count_pages,
     model_source_and_revision,
     rasterize_page,
+    require_cuda_device,
     require_transformers,
     runtime_choice,
 )
@@ -209,6 +210,7 @@ def _load(config: BackendConfig) -> tuple[LongHorizonModel, object]:
         model = UnlimitedOCRForCausalLM.from_pretrained(source, config=config, **model_kwargs)
         model.eval()
         tokenizer = AutoTokenizer.from_pretrained(source, **tokenizer_kwargs)
+        require_cuda_device(model, model_source=source)  # GPU_REQUIRED capability
     except Exception as exc:  # model/stack load boundary — typed, never raw
         where = f" at revision {revision[:12]}" if revision is not None else ""
         msg = f"failed to load model {source!r}{where}: {type(exc).__name__}: {exc}"

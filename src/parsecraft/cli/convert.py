@@ -15,12 +15,14 @@ import json
 from collections.abc import Sequence
 from pathlib import Path
 
+import typer
+
 from parsecraft.backends import default_registry
 from parsecraft.backends.errors import BackendError, DependencyUnavailableError, UnsupportedDependencyVersionError
 from parsecraft.backends.protocol import BackendDescriptor, SourceDocument
 from parsecraft.cache import ConversionCache
 from parsecraft.cli.errors import CliError
-from parsecraft.environment import EnvironmentInfo, constraints_from_environment, probe_environment
+from parsecraft.environment import EnvironmentInfo, constraints_from_environment, cuda_runtime_note, probe_environment
 from parsecraft.ir import DocumentResult, to_markdown
 from parsecraft.pipeline import execute
 from parsecraft.pipeline.analysis import (
@@ -98,6 +100,7 @@ def convert_source(
     except UnsupportedSourceError as exc:
         raise ConvertError(str(exc), exit_code=_USAGE_EXIT_CODE) from exc
     environment = probe_environment()  # a single probe per invocation, shared by analysis and the seams
+    warn_unusable_gpu(environment)
     resolved_classifier = _resolve_classifier(classifier)
     resolved_judge = _resolve_judge(backend, judge, environment, preference)
     source = read_source(path, media_type)
@@ -128,6 +131,23 @@ def convert_source(
         raise ConvertError(f"backend {backend!r} is not eligible for this source: {exc}", exit_code=_USAGE_EXIT_CODE) from exc
     except (NoEligibleBackendError, RoutingError) as exc:
         raise ConvertError(f"routing failed: {exc}") from exc
+
+
+def warn_unusable_gpu(environment: EnvironmentInfo) -> None:
+    """Warn once on stderr when a GPU is present but this runtime cannot use it.
+
+    The common shape is a machine with an NVIDIA card and a CPU-only torch
+    wheel: routing then excludes every ``GPU_REQUIRED`` backend, and without
+    this line the user sees a CPU fallback with no explanation. Silent when
+    there is no GPU to use (nothing to recover) and when the GPU works.
+    """
+    if environment.vram_budget_gb <= 0 or environment.gpu_usable:
+        return
+    note = cuda_runtime_note() or "the runtime could not use it"
+    typer.echo(
+        f"warning: {environment.vram_budget_gb:g} GiB GPU detected but unusable: {note} — GPU-only backends are excluded from routing",
+        err=True,
+    )
 
 
 def _resolve_classifier(spec: str | None) -> PageOcrClassifier | None:
@@ -161,7 +181,7 @@ def _resolve_judge(
         raise ConvertError(msg, exit_code=_USAGE_EXIT_CODE)
     if spec is None:
         return PreferredBackendJudge(backend) if backend is not None else None
-    machine = MachineProfile(vram_budget_gb=environment.vram_budget_gb)
+    machine = MachineProfile(vram_budget_gb=environment.vram_budget_gb, gpu_usable=environment.gpu_usable)
     try:
         return resolve_judge(spec, machine=machine, preference=preference)
     except JudgeSpecError as exc:

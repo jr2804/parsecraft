@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from subprocess import TimeoutExpired
 
 import pytest
@@ -19,6 +20,9 @@ from parsecraft.environment.constraints import constraints_from_environment
 from parsecraft.environment.models import EnvironmentInfo
 from parsecraft.environment.probe import EXTRA_IMPORTS, probe_environment
 from parsecraft.routing.models import RoutingConstraints, RoutingPreference
+
+#: The one module the probe looks up outside the extras map (CUDA runtime check).
+_TORCH = "torch"
 
 
 class _Completed:
@@ -46,6 +50,13 @@ class _EntryPoint:
 
     def load(self) -> _FakeFactory:
         return self._factory
+
+
+class _Spec:
+    """Stand-in for ``importlib.machinery.ModuleSpec`` (the probe reads ``origin``)."""
+
+    def __init__(self, origin: str | None) -> None:
+        self.origin = origin
 
 
 # ── GPU detection ───────────────────────────────────────────────────────────────
@@ -104,6 +115,90 @@ def test_probe_tolerates_smi_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     assert probe_environment().vram_budget_gb == 0.0
 
 
+def test_cuda_runtime_note_reports_a_missing_torch(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(probe_module, "find_spec", lambda name: None)
+    note = probe_module.cuda_runtime_note()
+    assert note is not None
+    assert "is not installed" in note
+
+
+def test_cuda_runtime_note_reports_a_spec_without_an_origin(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(probe_module, "find_spec", lambda name: _Spec(None))
+    note = probe_module.cuda_runtime_note()
+    assert note is not None
+    assert "cannot determine the installed torch" in note
+
+
+def test_cuda_runtime_note_is_none_for_a_cuda_build(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _install_fake_torch(monkeypatch, tmp_path, "__version__ = '2.14.0'\ncuda: Optional[str] = '12.6'\n")
+    assert probe_module.cuda_runtime_note() is None
+
+
+@pytest.mark.parametrize("value", ["None", "''", '""'])
+def test_cuda_runtime_note_explains_a_cpu_only_build(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, value: str) -> None:
+    _install_fake_torch(monkeypatch, tmp_path, f"__version__ = '2.13.0+cpu'\ncuda: Optional[str] = {value}\n")
+    note = probe_module.cuda_runtime_note()
+    assert note is not None
+    assert "has no CUDA support" in note
+
+
+def test_cuda_runtime_note_reports_an_unreadable_version_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _install_fake_torch(monkeypatch, tmp_path, version_py=None)
+    note = probe_module.cuda_runtime_note()
+    assert note is not None
+    assert "cannot read" in note
+
+
+def test_cuda_runtime_note_reports_a_build_that_declares_no_cuda_version(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _install_fake_torch(monkeypatch, tmp_path, "__version__ = '2.14.0'\n")
+    note = probe_module.cuda_runtime_note()
+    assert note is not None
+    assert "does not declare a CUDA version" in note
+
+
+def test_probe_marks_the_gpu_unusable_when_torch_is_a_cpu_build(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _patch_smi(monkeypatch, stdout="8192 MiB\n")
+    _patch_entry_points(monkeypatch, [])
+    _install_fake_torch(monkeypatch, tmp_path, "cuda: Optional[str] = None\n")
+    environment = probe_environment()
+    assert environment.vram_budget_gb == 8.0  # hardware fact stays visible
+    assert environment.gpu_usable is False
+
+
+def test_probe_marks_the_gpu_usable_for_a_cuda_build(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _patch_smi(monkeypatch, stdout="8192 MiB\n")
+    _patch_entry_points(monkeypatch, [])
+    _install_fake_torch(monkeypatch, tmp_path, "cuda = '12.6'\n")
+    environment = probe_environment()
+    assert (environment.vram_budget_gb, environment.gpu_usable) == (8.0, True)
+
+
+def test_probe_is_not_usable_without_a_visible_gpu(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _patch_smi(monkeypatch, error=FileNotFoundError("nvidia-smi"))
+    _patch_entry_points(monkeypatch, [])
+    _install_fake_torch(monkeypatch, tmp_path, "cuda = '12.6'\n")
+    environment = probe_environment()
+    assert (environment.vram_budget_gb, environment.gpu_usable) == (0.0, False)
+
+
+# ── CUDA runtime usability (hardware present vs runtime able) ───────────────
+
+
+def _install_fake_torch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, version_py: str | None) -> str:
+    """Put a ``torch`` package with the given ``version.py`` where find_spec looks."""
+    package = tmp_path / _TORCH
+    package.mkdir(exist_ok=True)
+    origin = package / "__init__.py"
+    origin.write_text("", encoding="utf-8")
+    if version_py is not None:
+        (package / "version.py").write_text(version_py, encoding="utf-8")
+    monkeypatch.setattr(probe_module, "find_spec", lambda name: _Spec(str(origin)) if name == _TORCH else None)
+    return str(origin)
+
+
 # ── Backends and extras ─────────────────────────────────────────────────────────
 
 
@@ -147,7 +242,8 @@ def test_probe_never_calls_find_spec_for_unknown_groups(
     looked_up = _patch_find_spec(monkeypatch, {"anything"})
     environment = probe_environment()
     assert environment.installed_extras == frozenset()
-    assert looked_up == []  # unknown groups are skipped before any lookup
+    # The only lookup is the CUDA-runtime probe (torch), never the unknown extra:
+    assert looked_up == [_TORCH]
 
 
 def test_probe_skips_descriptors_without_a_dependency_group(
@@ -158,7 +254,7 @@ def test_probe_skips_descriptors_without_a_dependency_group(
     environment = probe_environment()
     assert environment.backends == ("native-text",)
     assert environment.installed_extras == frozenset()
-    assert looked_up == []
+    assert looked_up == [_TORCH]  # only the CUDA-runtime probe
 
 
 def test_extra_imports_map_covers_the_declared_ocr_and_pdf_groups() -> None:

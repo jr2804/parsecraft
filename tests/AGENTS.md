@@ -42,8 +42,10 @@ tests, and keep the 100% coverage gate green.
   daemon are both present.
 - `test_cli_judges.py` — the `judges` catalog command (human + JSON output,
   extra/credential availability, and the docs-table check).
-- `test_smoke.py` — CLI surface (`backends --json`, `--version`, bare
-  invocation shows help).
+- `test_cli_verbosity.py` — the third-party output policy (quiet by default,
+  untouched with `--verbose`, state restored afterwards).
+- `test_smoke.py` — CLI surface (`backends --json`, the device column, `--version`,
+  bare invocation shows help).
 - `test_document_fixtures.py`, `test_sources_manifest.py` — fixture
   determinism/PDF validity, manifest schema, corpus tier (opt-in).
 - `test_packaging.py`, `test_offline_import.py`, `test_template_validation.py`

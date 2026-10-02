@@ -19,6 +19,7 @@ from parsecraft.backends.ocr._common import (
     load_vllm,
     model_source_and_revision,
     rasterize_page,
+    require_cuda_device,
     require_transformers,
     runtime_choice,
     transformers_transcriber,
@@ -109,6 +110,7 @@ def create(config: BackendConfig) -> DocumentBackend:
             model = Qwen2_5_VLForConditionalGeneration.from_pretrained(source, **model_kwargs)
             processor = AutoProcessor.from_pretrained(source, **processor_kwargs)
             pipe = pipeline(task="image-text-to-text", model=model, processor=processor)
+            require_cuda_device(pipe, model_source=source)  # GPU_REQUIRED capability
         except Exception as exc:  # model/stack load boundary — typed, never raw
             msg = f"failed to load model {source!r}{where}: {type(exc).__name__}: {exc}"
             raise BackendError(msg) from exc

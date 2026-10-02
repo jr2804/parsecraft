@@ -907,7 +907,7 @@ def make_caps(
         supported_formats=list(formats),
         supports_page_ranges=ranges,
         supports_multi_page=multi,
-        requires_gpu=gpu,
+        gpu_requirement=1.0 if gpu else 0.0,
         estimated_vram_gb=vram,
         optional_dependency_group=group,
     )

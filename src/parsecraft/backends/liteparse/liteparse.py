@@ -40,7 +40,6 @@ CAPABILITIES = BackendCapabilities(
     supported_formats=list(LITEPARSE_FORMATS),
     supports_page_ranges=True,
     supports_multi_page=True,
-    requires_gpu=False,
     estimated_vram_gb=None,
     optional_dependency_group=_EXTRA,
     model_asset=None,  # local library — no model weights to pin

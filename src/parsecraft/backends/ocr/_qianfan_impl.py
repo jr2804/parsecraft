@@ -95,6 +95,7 @@ def create(config: BackendConfig) -> DocumentBackend:
             pipeline,
             model_source=source,
             model_revision=revision,
+            require_gpu=True,  # GPU_REQUIRED capability: never a silent CPU fallback
         )
         templated = chat_prompt(pipe.tokenizer, user_text=PROMPT)
         transcriber = transformers_transcriber(pipe, prompt=templated, image_extra=QIANFAN_EXTRA)

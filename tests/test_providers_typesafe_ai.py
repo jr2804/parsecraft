@@ -38,13 +38,13 @@ _MODEL = "jev"
 _QUESTION_ID = "lead"
 _NATIVE = BackendDescriptor(
     name="native-pdf",
-    capabilities=BackendCapabilities(supported_formats=["application/pdf"], requires_gpu=False),
+    capabilities=BackendCapabilities(supported_formats=["application/pdf"], gpu_requirement=0.0),
 )
 _OCR = BackendDescriptor(
     name="ocr-ovis",
     capabilities=BackendCapabilities(
         supported_formats=["application/pdf", "image/png"],
-        requires_gpu=True,
+        gpu_requirement=1.0,
         estimated_vram_gb=6.0,
         optional_dependency_group="ocr-ovis",
     ),
@@ -158,8 +158,8 @@ def test_rank_sends_one_bounded_choice_question(jev_sdk: StubSdk, ts_key: str) -
         "intent": "ocr-vision",
         "preference": "balanced",
         "candidates": {
-            "ocr-ovis": {"family": "ocr", "requires_gpu": True, "estimated_vram_gb": 6.0, "formats": ["application/pdf", "image/png"]},
-            "native-pdf": {"family": "native", "requires_gpu": False, "estimated_vram_gb": None, "formats": ["application/pdf"]},
+            "ocr-ovis": {"family": "ocr", "gpu_requirement": 1.0, "estimated_vram_gb": 6.0, "formats": ["application/pdf", "image/png"]},
+            "native-pdf": {"family": "native", "gpu_requirement": 0.0, "estimated_vram_gb": None, "formats": ["application/pdf"]},
         },
     }
     assert set(questions) == {_QUESTION_ID}
@@ -192,10 +192,40 @@ def test_rank_defaults_the_preference_to_balanced(jev_sdk: StubSdk, ts_key: str)
 
 
 def test_rank_reports_the_host_budget_when_known(jev_sdk: StubSdk, ts_key: str) -> None:
-    judge = provider.load_judge(JudgeSpec(provider="typesafe-ai", model=_MODEL), MachineProfile(vram_budget_gb=32.0))
+    judge = provider.load_judge(JudgeSpec(provider="typesafe-ai", model=_MODEL), MachineProfile(vram_budget_gb=32.0, gpu_usable=True))
     judge.rank(Intent.OCR_GENERAL, [_OCR, _NATIVE])
     state, _ = jev_sdk.calls[0]
-    assert cast("dict[str, object]", state["machine"]) == {"vram_budget_gb": 32.0}
+    # The runtime fact travels with the budget: 32 GB nobody can use is not a host
+    # a GPU-only candidate should lead on.
+    assert cast("dict[str, object]", state["machine"]) == {"vram_budget_gb": 32.0, "gpu_usable": True}
+
+
+def test_rank_reports_an_unusable_gpu_as_such(jev_sdk: StubSdk, ts_key: str) -> None:
+    judge = provider.load_judge(JudgeSpec(provider="typesafe-ai", model=_MODEL), MachineProfile(vram_budget_gb=8.0))
+    judge.rank(Intent.OCR_GENERAL, [_OCR, _NATIVE])
+    state, _ = jev_sdk.calls[0]
+    assert cast("dict[str, object]", state["machine"]) == {"vram_budget_gb": 8.0, "gpu_usable": False}
+
+
+@pytest.mark.parametrize(
+    ("requirement", "vram", "expected"),
+    [
+        (1.0, 4.5, "requires ~4.5 GB VRAM"),
+        (0.5, 2.0, "runs on CPU or GPU"),
+        (0.0, None, "runs on CPU"),
+    ],
+)
+def test_choice_labels_describe_the_gpu_scale(requirement: float, vram: float | None, expected: str) -> None:
+    """The labels the endpoint sees explain the three scale anchors."""
+    descriptor = BackendDescriptor(
+        name="candidate",
+        capabilities=BackendCapabilities(
+            supported_formats=["application/pdf"],
+            gpu_requirement=requirement,
+            estimated_vram_gb=vram,
+        ),
+    )
+    assert expected in _jev._sentence(descriptor)
 
 
 def test_rank_omits_the_machine_key_when_the_host_is_unknown(jev_sdk: StubSdk, ts_key: str) -> None:
@@ -309,7 +339,7 @@ def _descriptor(name: str, *, ocr: bool = True) -> BackendDescriptor:
         name=name,
         capabilities=BackendCapabilities(
             supported_formats=["application/pdf"],
-            requires_gpu=ocr,
+            gpu_requirement=1.0 if ocr else 0.0,
             estimated_vram_gb=6.0 if ocr else None,
             optional_dependency_group="ocr-ovis" if ocr else None,
         ),

@@ -196,11 +196,32 @@ class _VllmStub:
         return self.engine
 
 
+class _CudaDevice:
+    """Stand-in for ``torch.device('cuda')`` — the CUDA check only reads ``.type``."""
+
+    type = "cuda"
+
+    def __repr__(self) -> str:
+        return "device(type='cuda')"
+
+
+class _CpuDevice:
+    """Stand-in for ``torch.device('cpu')`` (the silent-fallback case)."""
+
+    type = "cpu"
+
+    def __repr__(self) -> str:
+        return "device(type='cpu')"
+
+
 class _FakePipeline:
     def __init__(self, state: _TransformersStub) -> None:
         self._state = state
         self.tokenizer = state.chat_template
         self.calls: list[dict[str, object]] = []
+        # The real pipelines expose the resolved device; the GPU-required
+        # backends are rejected when it is not CUDA, so the stub models a GPU.
+        self.device = _CudaDevice()
 
     def __call__(self, *, text: str, images: object, **generation: object) -> object:
         call: dict[str, object] = {"text": text, "images": images}
@@ -297,6 +318,8 @@ class _FakeEvalModel:
 
     def __init__(self, state: _TransformersStub) -> None:
         self._state = state
+        # A loaded ``PreTrainedModel`` carries the placement the CUDA check reads.
+        self.device = _CudaDevice()
 
     def eval(self) -> _FakeEvalModel:
         return self
@@ -410,7 +433,7 @@ def test_factory_descriptor_matches_the_plan_table(
     assert descriptor.name == name
     assert descriptor.version == _models.OCR_BACKEND_VERSION
     capabilities = descriptor.capabilities
-    assert capabilities.requires_gpu is True
+    assert capabilities.gpu_requirement == 1.0
     assert capabilities.estimated_vram_gb == vram
     assert capabilities.optional_dependency_group == extra
     assert capabilities.supports_page_ranges is True
@@ -968,6 +991,33 @@ def test_load_transformers_pipeline_maps_load_errors() -> None:
     with pytest.raises(BackendError, match="failed to load model 'org/model'") as excinfo:
         _common.load_transformers_pipeline(_factory, model_source="org/model", model_revision="abc")
     assert "CUDA out of memory" in str(excinfo.value)
+
+
+def test_require_cuda_device_rejects_a_silent_cpu_fallback() -> None:
+    """``device_map='auto'`` picks the CPU when CUDA is unusable: refuse, typed.
+
+    A 9.5 GB VLM generating token-by-token on the CPU is not a slow conversion
+    but an unusable one, so a GPU-hard backend fails here instead of running for
+    hours — the planner can then fall back to a CPU backend.
+    """
+    state = _TransformersStub()
+
+    def _cpu_factory(**_kwargs: object) -> _FakePipeline:
+        pipe = _FakePipeline(state)
+        pipe.device = _CpuDevice()  # ty: ignore[invalid-assignment] — placement fixture
+        return pipe
+
+    with pytest.raises(BackendError, match="declares a hard GPU requirement") as excinfo:
+        _common.load_transformers_pipeline(_cpu_factory, model_source="org/model", model_revision=None, require_gpu=True)
+    assert "loaded on device(type='cpu')" in str(excinfo.value)
+    # The same placement is fine for a backend that does not require a GPU:
+    assert _common.load_transformers_pipeline(_cpu_factory, model_source="org/model", model_revision=None) is not None
+
+
+def test_require_cuda_device_accepts_a_cuda_placement_and_rejects_a_device_less_holder() -> None:
+    _common.require_cuda_device(_FakePipeline(_TransformersStub()), model_source="org/model")
+    with pytest.raises(BackendError, match="loaded on None"):
+        _common.require_cuda_device(object(), model_source="org/model")
 
 
 def test_transformers_transcriber_strips_the_echoed_prompt_and_binds_budget(pil: _PilImageStub) -> None:

@@ -9,7 +9,7 @@ capabilities in `backends/` descriptors.
 ## Ownership
 
 - `models.py` — `EnvironmentInfo` (frozen value object).
-- `probe.py` — `probe_environment()` and `EXTRA_IMPORTS` (the declared
+- `probe.py` — `probe_environment()`, `cuda_runtime_note()` and`EXTRA_IMPORTS` (the declared
   extra → import-package map).
 - `constraints.py` — `constraints_from_environment()` bridge: host facts plus
   the plan inputs `formats`, `allow_ocr`, `max_passes`, and `preference`.
@@ -18,15 +18,23 @@ capabilities in `backends/` descriptors.
 ## Local Contracts
 
 - **Declared vs detected**: descriptors *declare* what a backend can do
-  (name, `requires_gpu`, VRAM estimate, formats, `optional_dependency_group`,
+  (name, `gpu_requirement`, VRAM estimate, formats, `optional_dependency_group`,
   `model_asset`); this package *detects* what this host has — entry points
   present, importable extras, measured VRAM, operator-declared offline.
   Routing/eligibility reads declared capabilities plus these constraints and
   **never probes hardware**; this package never judges eligibility.
 - Never import torch/vLLM here: GPU facts come from a bounded
-  `nvidia-smi` subprocess (missing/failing/malformed → `vram_budget_gb=0.0`),
-  extras from `importlib.util.find_spec` (locates, never imports), offline
-  from `PARSECRAFT_OFFLINE` (connectivity is never probed).
+  `nvidia-smi` subprocess (missing/failing/malformed → `vram_budget_gb=0.0`)
+  plus `cuda_runtime_note()`, which reads the installed torch build's own
+  `version.py` (`cuda = None` for a `+cpu` wheel) — metadata only, so a probe on
+  a CPU-only host stays millisecond-cheap. Extras come from
+  `importlib.util.find_spec` (locates, never imports), offline from
+  `PARSECRAFT_OFFLINE` (connectivity is never probed).
+- **Hardware ≠ runtime**: `vram_budget_gb` is what `nvidia-smi` reports;
+  `gpu_usable` is whether the runtime could use it. A GPU-only backend is
+  dropped by eligibility unless `gpu_usable` is true, and the CLI warns once when
+  a GPU is present but unusable. Report an unreadable/silent torch metadata file
+  as a reason (via `cuda_runtime_note()`), never as a guess.
 - Probe is offline and deterministic: sorted entry points, first GPU only,
   fresh `BackendRegistry` so the process-wide default registry stays
   unpolluted.

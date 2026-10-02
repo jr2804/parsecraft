@@ -176,7 +176,7 @@ def test_descriptor_declares_only_verified_formats_and_stays_cpu_only() -> None:
     assert capabilities.optional_dependency_group == "docling"
     assert capabilities.supports_page_ranges is True
     assert capabilities.supports_multi_page is True
-    assert capabilities.requires_gpu is False
+    assert capabilities.gpu_requirement == 0.0
     assert capabilities.estimated_vram_gb is None
     assert capabilities.model_asset is None
 

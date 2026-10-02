@@ -39,7 +39,7 @@ def test_descriptor_declares_exactly_the_verified_formats() -> None:
     assert capabilities.supports_page_ranges is False
     assert capabilities.supports_multi_page is False
     assert capabilities.optional_dependency_group == "pandoc"
-    assert capabilities.requires_gpu is False
+    assert capabilities.gpu_requirement == 0.0
     assert capabilities.model_asset is None
 
 

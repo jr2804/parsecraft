@@ -26,7 +26,6 @@ DESCRIPTOR = BackendDescriptor(
         supported_formats=["text"],
         supports_page_ranges=True,
         supports_multi_page=True,
-        requires_gpu=False,
     ),
 )
 

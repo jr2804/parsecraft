@@ -41,7 +41,6 @@ CAPABILITIES = BackendCapabilities(
     supported_formats=list(DOCLING_FORMATS),
     supports_page_ranges=True,
     supports_multi_page=True,
-    requires_gpu=False,
     estimated_vram_gb=None,
     optional_dependency_group=_EXTRA,
     model_asset=None,  # local library; layout models ship with docling

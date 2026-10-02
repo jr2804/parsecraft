@@ -1,9 +1,10 @@
 """Host probe: installed backends, importable extras, GPU VRAM, offline flag.
 
 Detected facts only — no network, no torch/vLLM imports. The GPU comes from a
-bounded ``nvidia-smi`` subprocess call, extras from ``importlib.util.find_spec``
-(which locates a module without importing it), backends from a *fresh*
-``BackendRegistry`` so the process-wide default registry is never polluted.
+bounded ``nvidia-smi`` subprocess call plus a metadata read of the installed
+torch build, extras from ``importlib.util.find_spec`` (which locates a module
+without importing it), backends from a *fresh* ``BackendRegistry`` so the
+process-wide default registry is never polluted.
 """
 
 from __future__ import annotations
@@ -11,10 +12,14 @@ from __future__ import annotations
 import os
 import re
 from importlib.util import find_spec
+from pathlib import Path
 from subprocess import TimeoutExpired, run
 
 from parsecraft.backends.registry import BackendRegistry
 from parsecraft.environment.models import EnvironmentInfo
+
+_ABSENT_CUDA_VALUES = frozenset({"None", "''", '""'})
+
 
 #: Declared map: extra name -> import packages whose presence proves it installed.
 EXTRA_IMPORTS: dict[str, tuple[str, ...]] = {
@@ -38,25 +43,61 @@ _NVIDIA_SMI_QUERY = ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noh
 _SMI_TIMEOUT_S = 10.0
 _MIB_PER_GIB = 1024
 _MIB_PATTERN = re.compile(r"(\d+)\s*MiB")
+_TORCH_MODULE = "torch"
+_TORCH_VERSION_FILE = "version.py"
+#: ``cuda: Optional[str] = None`` (CPU wheel) or ``cuda = '12.6'`` (CUDA wheel).
+_TORCH_CUDA_PATTERN = re.compile(r"^cuda(?:\s*:\s*[\w\[\]\. ]+)?\s*=\s*(.+)$", re.MULTILINE)
 
 
 def probe_environment() -> EnvironmentInfo:
     """Detect this host's routing-relevant facts — offline, deterministic.
 
     Never imports torch/vLLM and never touches the network: the offline state
-    is operator-declared via ``PARSECRAFT_OFFLINE``, not probed.
+    is operator-declared via ``PARSECRAFT_OFFLINE``, not probed. The GPU facts
+    are hardware *and* runtime: ``vram_budget_gb`` is nvidia-smi's total, and
+    ``gpu_usable`` is true only when the installed torch build has CUDA support.
     """
     registry = BackendRegistry()  # fresh instance: the default registry stays untouched
     descriptors = registry.list_backends()
     backends = tuple(sorted(descriptor.name for descriptor in descriptors))
     groups = (descriptor.capabilities.optional_dependency_group for descriptor in descriptors)
     installed = frozenset(group for group in groups if group is not None and extra_present(group))
+    vram_budget_gb = _detect_vram_gb()
     return EnvironmentInfo(
         backends=backends,
         installed_extras=installed,
-        vram_budget_gb=_detect_vram_gb(),
+        vram_budget_gb=vram_budget_gb,
+        gpu_usable=vram_budget_gb > 0 and cuda_runtime_note() is None,
         offline=_declared_offline(),
     )
+
+
+def cuda_runtime_note() -> str | None:
+    """``None`` when a CUDA-capable runtime is installed, else *why* it is not.
+
+    Reads the installed torch build's own metadata file (``version.py``, which
+    records ``cuda = None`` for a CPU-only wheel) — a millisecond-scale lookup
+    that never imports torch, so probing stays cheap on hosts that will not use
+    it. ``importlib.metadata.version('torch')`` cannot answer this: it drops the
+    ``+cpu`` local tag. An unreadable or silent file is reported, not guessed.
+    """
+    spec = find_spec(_TORCH_MODULE)
+    if spec is None:
+        return f"{_TORCH_MODULE} is not installed (install a CUDA build to use GPU backends)"
+    origin = spec.origin
+    if origin is None:
+        return f"cannot determine the installed {_TORCH_MODULE} build ({origin!r} origin)"
+    version_file = Path(origin).parent / _TORCH_VERSION_FILE
+    try:
+        text = version_file.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return f"cannot read {version_file} to determine the CUDA runtime: {exc}"
+    match = _TORCH_CUDA_PATTERN.search(text)
+    if match is None:
+        return f"{_TORCH_MODULE} does not declare a CUDA version in {version_file.name}"
+    if match.group(1).strip() in _ABSENT_CUDA_VALUES:
+        return f"the installed {_TORCH_MODULE} build has no CUDA support"
+    return None
 
 
 def extra_present(group: str) -> bool:

@@ -66,7 +66,7 @@ def _descriptor(capabilities: BackendCapabilities, name: str = "candidate") -> B
 def _language_caps(*languages: str) -> BackendCapabilities:
     return BackendCapabilities(
         supported_formats=["application/pdf"],
-        requires_gpu=False,
+        gpu_requirement=0.0,
         languages=tuple(languages),
     )
 

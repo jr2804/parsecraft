@@ -53,7 +53,7 @@ class FakeFactory:
 
     descriptor = BackendDescriptor(
         name="fake",
-        capabilities=BackendCapabilities(supported_formats=["txt"], requires_gpu=False),
+        capabilities=BackendCapabilities(supported_formats=["txt"], gpu_requirement=0.0),
     )
 
     def __call__(self, config: BackendConfig) -> DocumentBackend:
@@ -65,7 +65,7 @@ class GpuFactory:
         name="gpu-one",
         capabilities=BackendCapabilities(
             supported_formats=["pdf"],
-            requires_gpu=True,
+            gpu_requirement=1.0,
             estimated_vram_gb=4.5,
             optional_dependency_group="ocr-ovis",
         ),

@@ -7,7 +7,7 @@ Pinned revisions and licenses verified against the HF API 2026-09-27
 
 from __future__ import annotations
 
-from parsecraft.backends.protocol import AssetFilePin, BackendCapabilities, ModelAssetDescriptor
+from parsecraft.backends.protocol import GPU_REQUIRED, AssetFilePin, BackendCapabilities, ModelAssetDescriptor
 
 #: Shared backend version for the whole OCR family (adapter code, not model).
 OCR_BACKEND_VERSION = "0.1.0"
@@ -187,23 +187,27 @@ def ocr_capabilities(
     *,
     asset: ModelAssetDescriptor,
     optional_dependency_group: str,
-    requires_gpu: bool,
+    gpu_requirement: float = GPU_REQUIRED,
     supports_multi_page: bool,
     estimated_vram_gb: float,
     languages: tuple[str, ...] = (),
 ) -> BackendCapabilities:
     """Build the capability record shared by a factory descriptor and its backend.
 
-    ``languages`` is declared only for narrow card claims: cards saying
-    "multilingual" (or nothing) stay language-agnostic on purpose — an empty
-    tuple is never excluded by a language request, which is the fail-safe
-    direction for set-membership eligibility.
+    ``gpu_requirement`` defaults to :data:`GPU_REQUIRED`: a multi-billion-
+    parameter VLM generating token-by-token on a CPU is not a slow conversion
+    but an unusable one (measured: a 9.5 GB model loading into RAM), so these
+    backends stay out of a plan without a usable GPU. ``languages`` is declared
+    only for narrow card claims: cards saying "multilingual" (or nothing) stay
+    language-agnostic on purpose — an empty tuple is never excluded by a
+    language request, which is the fail-safe direction for set-membership
+    eligibility.
     """
     return BackendCapabilities(
         supported_formats=list(OCR_FORMATS),
         supports_page_ranges=True,
         supports_multi_page=supports_multi_page,
-        requires_gpu=requires_gpu,
+        gpu_requirement=gpu_requirement,
         estimated_vram_gb=estimated_vram_gb,
         optional_dependency_group=optional_dependency_group,
         model_asset=asset,
@@ -214,7 +218,6 @@ def ocr_capabilities(
 OVIS_CAPABILITIES = ocr_capabilities(
     asset=OVIS_ASSET,
     optional_dependency_group=OVIS_EXTRA,
-    requires_gpu=True,
     supports_multi_page=False,
     estimated_vram_gb=OVIS_VRAM_GB,
 )
@@ -222,7 +225,6 @@ OVIS_CAPABILITIES = ocr_capabilities(
 TELE_CAPABILITIES = ocr_capabilities(
     asset=TELE_ASSET,
     optional_dependency_group=TELE_EXTRA,
-    requires_gpu=True,
     supports_multi_page=False,
     estimated_vram_gb=TELE_VRAM_GB,
     # TeleOCR's HF card declares exactly zh + en (cardData.language, 2026-09-27):
@@ -232,7 +234,6 @@ TELE_CAPABILITIES = ocr_capabilities(
 UNLIMITED_CAPABILITIES = ocr_capabilities(
     asset=UNLIMITED_ASSET,
     optional_dependency_group=UNLIMITED_EXTRA,
-    requires_gpu=True,
     supports_multi_page=True,
     estimated_vram_gb=UNLIMITED_VRAM_GB,
 )
@@ -240,7 +241,6 @@ UNLIMITED_CAPABILITIES = ocr_capabilities(
 QIANFAN_CAPABILITIES = ocr_capabilities(
     asset=QIANFAN_ASSET,
     optional_dependency_group=QIANFAN_EXTRA,
-    requires_gpu=True,
     supports_multi_page=False,
     estimated_vram_gb=QIANFAN_VRAM_GB,
 )

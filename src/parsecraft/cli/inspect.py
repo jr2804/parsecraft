@@ -46,6 +46,7 @@ def inspect_source(
         raise convert.ConvertError(str(exc), exit_code=2) from exc
     source = convert.read_source(path, media_type)
     environment = convert.probe_environment()  # a single probe per invocation
+    convert.warn_unusable_gpu(environment)
     try:
         analyzer = choose_analyzer(registry.list_backends(), media_type, installed_extras=environment.installed_extras)
         analysis = analyze_source(source, registry, media_type=media_type, installed_extras=environment.installed_extras)

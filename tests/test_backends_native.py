@@ -127,7 +127,7 @@ def test_text_descriptor_contract() -> None:
     assert descriptor.capabilities.supported_formats == ["text/plain"]
     assert descriptor.capabilities.supports_page_ranges is False
     assert descriptor.capabilities.supports_multi_page is False
-    assert descriptor.capabilities.requires_gpu is False
+    assert descriptor.capabilities.gpu_requirement == 0.0
     assert descriptor.capabilities.optional_dependency_group is None
 
 

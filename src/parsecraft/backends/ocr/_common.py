@@ -416,12 +416,20 @@ def load_transformers_pipeline(
     model_source: str,
     model_revision: str | None,
     trust_remote_code: bool = False,
+    require_gpu: bool = False,
 ) -> ImageTextPipeline:
     """Build the image-to-text pipeline; load failures become typed BackendErrors.
 
     ``model_source`` is a managed local directory (revision omitted — the
     files were pinned and verified by :func:`ensure_assets`) or a hub id
     together with its pinned ``model_revision``.
+
+    ``require_gpu`` refuses a silent CPU fallback. ``device_map="auto"`` sends
+    a GPU-declared model to the CPU when the runtime cannot use the GPU, which
+    for a multi-billion-parameter VLM means hours instead of seconds (measured:
+    a 9.5 GB checkpoint loading into RAM). A backend that declares
+    ``GPU_REQUIRED`` passes ``require_gpu=True`` and gets a typed failure the
+    planner can fall back from, not a conversion that never finishes.
     """
     require_transformers()
     kwargs: dict[str, object] = {
@@ -434,11 +442,36 @@ def load_transformers_pipeline(
     if model_revision is not None:
         kwargs["revision"] = model_revision
     try:
-        return factory(**kwargs)
+        pipe = factory(**kwargs)
     except Exception as exc:  # model/stack load boundary — typed, never raw
         where = f" at revision {model_revision[:12]}" if model_revision is not None else ""
         msg = f"failed to load model {model_source!r}{where}: {type(exc).__name__}: {exc}"
         raise BackendError(msg) from exc
+    _require_device(pipe, model_source=model_source, required=require_gpu)
+    return pipe
+
+
+def require_cuda_device(holder: object, *, model_source: str) -> None:
+    """Reject a CPU placement for a backend that declares ``GPU_REQUIRED``.
+
+    Called by the loaders that build their stack by hand (a vendored model
+    class rather than a pipeline); ``holder`` is whatever carries ``.device``.
+    """
+    _require_device(holder, model_source=model_source, required=True)
+
+
+def _require_device(holder: object, *, model_source: str, required: bool) -> None:
+    """Shared tail of the CUDA check: no-op unless the backend requires a GPU."""
+    if not required:
+        return
+    device = getattr(holder, "device", None)
+    if getattr(device, "type", None) == "cuda":
+        return
+    msg = (
+        f"model {model_source!r} declares a hard GPU requirement but loaded on {device!r} — "
+        'install a CUDA build of torch (check: python -c "import torch; torch.cuda.is_available()")'
+    )
+    raise BackendError(msg)
 
 
 def require_transformers() -> None:

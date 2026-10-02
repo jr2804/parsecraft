@@ -29,7 +29,9 @@ identical plan.
 ## Local Contracts
 
 - Hard constraints are code-owned and never delegated: extras installed,
-  VRAM budget vs `requires_gpu`, source-format coverage, `allow_ocr`,
+  GPU usability *and* VRAM budget vs `gpu_requirement` (only
+  `GPU_REQUIRED` = 1.0 is hard-gated, and only with a usable runtime and a
+  fitting declared estimate), source-format coverage, `allow_ocr`,
   `offline` (excludes model-asset carriers), and `language` (a BCP-47
   request only narrows backends that *declare* `capabilities.languages` —
   language-agnostic candidates such as the native family are never
@@ -40,7 +42,11 @@ identical plan.
   backend covers the source format")`, never silently routing a
   native-intent page to OCR. A judge returning an ineligible/duplicate/
   empty candidate raises `JudgeViolationError` — it can re-rank, never
-  widen.
+  widen. **Ordering is contractual too**: for a NATIVE page the order must
+  keep every OCR candidate behind every native-capable one (they are
+  admitted as fallbacks), so `_validate_native_fallbacks` rejects an order
+  that promotes one — closing the hole where a provider judge could spend
+  minutes on a VLM for text a native backend reads in milliseconds.
 - Feature hints are document-level diagnostics codes
   `feature:tables` / `feature:equations` / `feature:figures` (or
   `image_count` mass ≥ `HEAVY_IMAGE_COUNT`); backends/tests emit them.

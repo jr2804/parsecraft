@@ -10,6 +10,9 @@ from parsecraft.backends.errors import (
     DependencyUnavailableError,
 )
 from parsecraft.backends.protocol import (
+    GPU_NOT_NEEDED,
+    GPU_OPTIONAL,
+    GPU_REQUIRED,
     AnalysisResult,
     BackendCapabilities,
     BackendConfig,
@@ -27,6 +30,9 @@ from parsecraft.backends.registry import ENTRY_POINT_GROUP, BackendRegistry, def
 
 __all__ = [
     "ENTRY_POINT_GROUP",
+    "GPU_NOT_NEEDED",
+    "GPU_OPTIONAL",
+    "GPU_REQUIRED",
     "AnalysisResult",
     "BackendAlreadyRegisteredError",
     "BackendCapabilities",

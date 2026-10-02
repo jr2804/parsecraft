@@ -21,6 +21,13 @@ from parsecraft.ir.models import (
     PassFailure,
 )
 
+#: ``gpu_requirement`` anchors — the soft scale a backend declares.
+GPU_NOT_NEEDED = 0.0
+#: Runs on CPU or GPU alike: a GPU is a speedup, never a precondition.
+GPU_OPTIONAL = 0.5
+#: Must not run on CPU: without a usable GPU this backend is ineligible.
+GPU_REQUIRED = 1.0
+
 
 class SourceDocument(BaseModel):
     """A document handed to a backend: path-based or in-memory."""
@@ -64,7 +71,12 @@ class BackendCapabilities(BaseModel):
     supported_formats: list[str] = Field(default_factory=list)
     supports_page_ranges: bool = True
     supports_multi_page: bool = True
-    requires_gpu: bool = False
+    #: How much this backend depends on a *usable* CUDA GPU, 0.0–1.0 (the
+    #: ``GPU_*`` scale). Only :data:`GPU_REQUIRED` is a hard gate: the planner
+    #: drops it when no usable GPU is present, whatever ranking says. The
+    #: intermediate values are ranking and explanation facts — a CPU-capable
+    #: backend stays eligible either way, because a slow answer beats none.
+    gpu_requirement: float = Field(default=GPU_NOT_NEEDED, ge=0.0, le=1.0)
     estimated_vram_gb: float | None = Field(default=None, ge=0)
     optional_dependency_group: str | None = None
     model_asset: ModelAssetDescriptor | None = None

@@ -134,6 +134,29 @@ def test_gpu_vram_budget_rules() -> None:
     assert is_hard_eligible(cpu, full_constraints(vram_budget_gb=0.0)) is True
 
 
+def test_hard_gpu_backend_needs_a_usable_runtime() -> None:
+    """Hardware present is not runtime usable: a ``+cpu`` torch must drop it.
+
+    A GPU invisible to the planner (``vram_budget_gb=0``) or a GPU the runtime
+    cannot use (``gpu_usable=False``) both exclude a ``GPU_REQUIRED`` backend,
+    while a merely CPU-capable one stays eligible next to it.
+    """
+    hard = make_desc("ocr-ovis", ALL_FORMATS, gpu=True, vram=6.0, group="ocr-ovis")
+    optional = BackendDescriptor(
+        name="cpu-or-gpu",
+        capabilities=BackendCapabilities(
+            supported_formats=list(ALL_FORMATS),
+            gpu_requirement=0.5,
+            estimated_vram_gb=2.0,
+            optional_dependency_group="ocr-ovis",
+        ),
+    )
+    assert is_hard_eligible(hard, full_constraints(gpu_usable=True)) is True
+    assert is_hard_eligible(hard, full_constraints(gpu_usable=False)) is False
+    assert is_hard_eligible(hard, full_constraints(vram_budget_gb=0.0, gpu_usable=False)) is False
+    assert is_hard_eligible(optional, full_constraints(gpu_usable=False)) is True
+
+
 def test_format_coverage_rules() -> None:
     pdf_backend = make_desc("native-pdf", ("application/pdf",))
     assert is_hard_eligible(pdf_backend, full_constraints(formats={"application/pdf"})) is True
@@ -376,13 +399,55 @@ def test_plan_respects_injected_judge() -> None:
             return [descriptor.name for descriptor in sorted(candidates, key=lambda d: d.name, reverse=True)]
 
     plan = plan_route(
-        make_analysis(good_native(), 1),
+        make_analysis(garbled(1), 1),
         all_backends(),
-        full_constraints(formats={"text/plain"}, max_passes=9),
+        full_constraints(formats=set(), max_passes=9),
         ReverseJudge(),
     )
-    assert plan.pages[0].chosen == "ocr-unlimited"  # injected judge's first pick wins, native last
-    assert plan.pages[0].candidates[-1] == "native-text"
+    assert plan.pages[0].intent is Intent.OCR_GENERAL
+    assert plan.pages[0].chosen == "ocr-unlimited"  # injected judge's first pick wins
+    assert plan.pages[0].candidates[-1] == "ocr-ovis"  # ...and its order holds throughout
+
+
+def test_plan_rejects_a_judge_that_leads_a_native_page_with_ocr() -> None:
+    """A NATIVE page's order may reorder, but never promote an OCR fallback.
+
+    The rules admit OCR backends into a NATIVE family as fallbacks; leading with
+    one spends minutes on text a native backend reads in milliseconds.
+    """
+
+    class OcrFirstJudge:
+        @staticmethod
+        def rank(intent: Intent, candidates: Any) -> list[str]:
+            others = [descriptor.name for descriptor in candidates if descriptor.name != "ocr-unlimited"]
+            return ["ocr-unlimited", *others]
+
+    with pytest.raises(JudgeViolationError, match="may not lead a NATIVE page"):
+        plan_route(
+            make_analysis(good_native(), 1),
+            all_backends(),
+            full_constraints(formats=set(), max_passes=9),
+            OcrFirstJudge(),
+        )
+
+
+def test_plan_accepts_a_judge_that_keeps_native_candidates_first() -> None:
+    """The contract constrains the family order, not the judge's taste within it."""
+
+    class NativeFirstJudge:
+        @staticmethod
+        def rank(intent: Intent, candidates: Any) -> list[str]:
+            native = [descriptor.name for descriptor in candidates if not descriptor.name.startswith("ocr-")]
+            ocr = [descriptor.name for descriptor in candidates if descriptor.name.startswith("ocr-")]
+            return [*reversed(native), *reversed(ocr)]
+
+    plan = plan_route(
+        make_analysis(good_native(), 1),
+        all_backends(),
+        full_constraints(formats=set(), max_passes=9),
+        NativeFirstJudge(),
+    )
+    assert plan.pages[0].chosen == "native-text"  # last of the reversed native group
 
 
 def test_plan_max_passes_truncates_candidates() -> None:
@@ -649,6 +714,9 @@ def full_constraints(**overrides: Any) -> RoutingConstraints:
     base: dict[str, Any] = {
         "installed_extras": set(OCR_EXTRAS),
         "vram_budget_gb": 8.0,
+        # These fixtures model a GPU host whose runtime can actually use it;
+        # the unusable-runtime case is covered on its own below.
+        "gpu_usable": True,
         "max_passes": 3,
     }
     base.update(overrides)
@@ -684,7 +752,7 @@ def make_desc(
         name=name,
         capabilities=BackendCapabilities(
             supported_formats=list(formats),
-            requires_gpu=gpu,
+            gpu_requirement=1.0 if gpu else 0.0,
             estimated_vram_gb=vram,
             optional_dependency_group=group,
             model_asset=asset,

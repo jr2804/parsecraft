@@ -63,7 +63,7 @@ class _StubBackend:
 class _CpuFactory:
     descriptor = BackendDescriptor(
         name="cpu-fake",
-        capabilities=BackendCapabilities(supported_formats=["txt", "md"], requires_gpu=False),
+        capabilities=BackendCapabilities(supported_formats=["txt", "md"], gpu_requirement=0.0),
     )
 
     def __call__(self, config: object) -> DocumentBackend:
@@ -75,8 +75,22 @@ class _GpuFactory:
         name="gpu-fake",
         capabilities=BackendCapabilities(
             supported_formats=["pdf"],
-            requires_gpu=True,
+            gpu_requirement=1.0,
             estimated_vram_gb=4.5,
+        ),
+    )
+
+    def __call__(self, config: object) -> DocumentBackend:
+        return _StubBackend()
+
+
+class _OptionalGpuFactory:
+    descriptor = BackendDescriptor(
+        name="either-fake",
+        capabilities=BackendCapabilities(
+            supported_formats=["pdf"],
+            gpu_requirement=0.5,
+            estimated_vram_gb=2.0,
         ),
     )
 
@@ -117,18 +131,22 @@ def test_backends_json_empty(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_backends_table_covers_cpu_and_gpu_rows(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(commands, "default_registry", _registry_with(_CpuFactory(), _GpuFactory()))
+    monkeypatch.setattr(commands, "default_registry", _registry_with(_CpuFactory(), _GpuFactory(), _OptionalGpuFactory()))
     result = _runner.invoke(app, ["backends"])
     assert result.exit_code == 0
     lines = result.output.splitlines()
-    assert len(lines) == 2
-    cpu_line, gpu_line = lines
+    assert len(lines) == 3
+    cpu_line, either_line, gpu_line = lines  # registry order is by name
     assert "cpu-fake" in cpu_line
     assert "txt,md" in cpu_line
     assert "gpu" not in cpu_line
     assert "gpu-fake" in gpu_line
     assert "vram<=4.5G" in gpu_line
     assert "pdf" in gpu_line
+    # The middle of the scale reads as "either", never as a hard GPU row:
+    assert "either-fake" in either_line
+    assert "cpu/gpu" in either_line
+    assert "vram<=2G" in either_line
 
 
 def test_backends_table_shows_placeholder_without_formats(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -161,7 +179,7 @@ def test_backends_json_capability_schema_is_exact(monkeypatch: pytest.MonkeyPatc
         "supported_formats",
         "supports_page_ranges",
         "supports_multi_page",
-        "requires_gpu",
+        "gpu_requirement",
         "estimated_vram_gb",
         "optional_dependency_group",
         "model_asset",

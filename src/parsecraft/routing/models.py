@@ -63,7 +63,13 @@ class RoutingConstraints(BaseModel):
 
     formats: set[str] = Field(default_factory=set)
     installed_extras: set[str] = Field(default_factory=set)
+    #: VRAM the runtime can actually use (0.0 when no usable GPU: see
+    #: ``EnvironmentInfo.gpu_usable``, which also consults the torch build).
     vram_budget_gb: float = Field(default=0.0, ge=0)
+    #: Whether the installed runtime can use a CUDA GPU at all. A GPU-required
+    #: candidate (``gpu_requirement == 1.0``) is dropped without it, so a
+    #: machine whose GPU exists but is unusable never gets a CPU-fallback run.
+    gpu_usable: bool = False
     max_passes: int = Field(default=1, ge=1)
     allow_ocr: bool = True
     offline: bool = True

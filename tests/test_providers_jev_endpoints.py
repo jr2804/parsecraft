@@ -31,23 +31,23 @@ _QUESTION_ID = "lead"
 #: The CPU-only profile: the behavioral anchor's premise (pc-1's smoke host).
 _CPU_ONLY = MachineProfile(vram_budget_gb=0.0)
 #: A GPU host that can host the OCR candidate comfortably.
-_GPU_HOST = MachineProfile(vram_budget_gb=32.0)
+_GPU_HOST = MachineProfile(vram_budget_gb=32.0, gpu_usable=True)
 _NATIVE = BackendDescriptor(
     name="native-pdf",
-    capabilities=BackendCapabilities(supported_formats=["application/pdf"], requires_gpu=False),
+    capabilities=BackendCapabilities(supported_formats=["application/pdf"], gpu_requirement=0.0),
 )
 _OCR_GPU = BackendDescriptor(
     name="ocr-ovis",
     capabilities=BackendCapabilities(
         supported_formats=["application/pdf", "image/png"],
-        requires_gpu=True,
+        gpu_requirement=1.0,
         estimated_vram_gb=6.0,
         optional_dependency_group="ocr-ovis",
     ),
 )
 _OCR_CPU = BackendDescriptor(
     name="ocr-stub",
-    capabilities=BackendCapabilities(supported_formats=["application/pdf"], requires_gpu=False),
+    capabilities=BackendCapabilities(supported_formats=["application/pdf"], gpu_requirement=0.0),
 )
 
 
@@ -137,7 +137,9 @@ def test_machine_profile_is_sent_to_the_endpoint(jev_sdk: StubSdk, monkeypatch: 
     judge = zen.load_judge(JudgeSpec(provider="zen", model="jev-1.13-free"), _GPU_HOST)
     judge.rank(Intent.OCR_GENERAL, [_OCR_GPU, _NATIVE])
     state, _ = jev_sdk.calls[0]
-    assert cast("dict[str, object]", state["machine"]) == {"vram_budget_gb": 32.0}
+    # Usability travels with the budget, so the endpoint can tell a fork of
+    # "GPU present" (hardware) from "GPU usable" (runtime).
+    assert cast("dict[str, object]", state["machine"]) == {"vram_budget_gb": 32.0, "gpu_usable": True}
 
 
 @pytest.mark.parametrize("module", [zen, ollama])

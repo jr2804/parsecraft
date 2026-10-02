@@ -9,8 +9,9 @@ from typing import Annotated
 import typer
 
 from parsecraft.backends import default_registry
+from parsecraft.backends.protocol import GPU_NOT_NEEDED, GPU_REQUIRED, BackendCapabilities
 from parsecraft.cache import ConversionCache
-from parsecraft.cli import args, config
+from parsecraft.cli import args, config, verbosity
 from parsecraft.cli import benchmark as benchmark_module
 from parsecraft.cli import inspect as inspect_module
 from parsecraft.cli import judges as judges_module
@@ -43,9 +44,18 @@ def backends(as_json: args.JsonFlag = False) -> None:
     for descriptor in descriptors:
         caps = descriptor.capabilities
         formats = ",".join(caps.supported_formats) or "-"
-        device = "gpu" if caps.requires_gpu else "cpu"
+        device = _device_label(caps)
         vram = f" vram<={caps.estimated_vram_gb:g}G" if caps.estimated_vram_gb is not None else ""
         typer.echo(f"{descriptor.name:24} {device}{vram:12} {formats}")
+
+
+def _device_label(capabilities: BackendCapabilities) -> str:
+    """The device column: hard-GPU, either, or CPU-only (``gpu_requirement``)."""
+    if capabilities.gpu_requirement >= GPU_REQUIRED:
+        return "gpu"
+    if capabilities.gpu_requirement > GPU_NOT_NEEDED:
+        return "cpu/gpu"
+    return "cpu"
 
 
 def config_check(as_json: args.JsonFlag = False, config_file: args.ConfigFileOption = None) -> None:
@@ -115,22 +125,24 @@ def convert(
     max_passes: Annotated[int, typer.Option("--max-passes", min=1, help="Fallback passes per page group")] = 1,
     no_ocr: Annotated[bool, typer.Option("--no-ocr", help="Forbid OCR backends")] = False,
     use_cache: Annotated[bool, typer.Option("--cache/--no-cache", help="Reuse a content-addressed conversion cache")] = False,
+    verbose: args.VerboseFlag = False,
 ) -> None:
     """Convert a document through the auto-mode pipeline."""
     if not auto and backend is None:
         typer.echo("error: --no-auto requires --backend", err=True)
         raise typer.Exit(code=2)
     try:
-        document = convert_source(
-            source,
-            backend=backend,
-            judge=judge,
-            classifier=classifier,
-            max_passes=max_passes,
-            allow_ocr=False if no_ocr else None,
-            preference=preference,
-            use_cache=use_cache,
-        )
+        with verbosity.third_party_output(verbose=verbose):
+            document = convert_source(
+                source,
+                backend=backend,
+                judge=judge,
+                classifier=classifier,
+                max_passes=max_passes,
+                allow_ocr=False if no_ocr else None,
+                preference=preference,
+                use_cache=use_cache,
+            )
     except ConvertError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=exc.exit_code) from exc
@@ -143,10 +155,12 @@ def inspect(
     as_json: args.JsonFlag = False,
     max_passes: Annotated[int, typer.Option("--max-passes", min=1, help="Fallback passes per page group")] = 1,
     no_ocr: Annotated[bool, typer.Option("--no-ocr", help="Forbid OCR backends")] = False,
+    verbose: args.VerboseFlag = False,
 ) -> None:
     """Analyze a source and preview the routing decision."""
     try:
-        preview = inspect_module.inspect_source(source, default_registry, max_passes=max_passes, allow_ocr=False if no_ocr else None)
+        with verbosity.third_party_output(verbose=verbose):
+            preview = inspect_module.inspect_source(source, default_registry, max_passes=max_passes, allow_ocr=False if no_ocr else None)
     except CliError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=exc.exit_code) from exc
@@ -258,14 +272,16 @@ def benchmark(
     output: Annotated[Path | None, typer.Option("--output", "-o", file_okay=False, help="Directory for benchmark.json and benchmark.md")] = None,
     max_passes: Annotated[int, typer.Option("--max-passes", min=1, help="Fallback passes per page group")] = 1,
     no_ocr: Annotated[bool, typer.Option("--no-ocr", help="Forbid OCR backends")] = False,
+    verbose: args.VerboseFlag = False,
 ) -> None:
     """Benchmark eligible backends over local documents (offline)."""
     if as_json and markdown:
         typer.echo("error: --json and --markdown are mutually exclusive", err=True)
         raise typer.Exit(code=2)
     try:
-        report = benchmark_module.benchmark_report(paths, max_passes=max_passes, allow_ocr=False if no_ocr else None)
-        written = benchmark_module.write_reports(report, output) if output is not None else []
+        with verbosity.third_party_output(verbose=verbose):
+            report = benchmark_module.benchmark_report(paths, max_passes=max_passes, allow_ocr=False if no_ocr else None)
+            written = benchmark_module.write_reports(report, output) if output is not None else []
     except CliError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=exc.exit_code) from exc

@@ -114,11 +114,28 @@ class _FlaggingClassifier:
 
 
 class _ReversingJudge:
-    """Judge stub: reverses the eligible candidate order (re-rank only)."""
+    """Judge stub: reverses the case within each flavor, native-capable first.
+
+    Reordering must respect the NATIVE contract (an OCR backend may never lead a
+    page the rules called native), so this reverses *inside* the two groups and
+    keeps the groups themselves in order — the way a provider judge has to.
+    """
 
     @staticmethod
     def rank(intent: Intent, candidates: Sequence[BackendDescriptor]) -> Sequence[str]:
-        return [descriptor.name for descriptor in reversed(candidates)]
+        native = [descriptor.name for descriptor in candidates if not descriptor.name.startswith("ocr-")]
+        ocr = [descriptor.name for descriptor in candidates if descriptor.name.startswith("ocr-")]
+        return [*reversed(native), *reversed(ocr)]
+
+
+class _OcrLeadingJudge:
+    """Judge stub that promotes an OCR fallback over native candidates."""
+
+    @staticmethod
+    def rank(intent: Intent, candidates: Sequence[BackendDescriptor]) -> Sequence[str]:
+        names = [descriptor.name for descriptor in candidates]
+        ocr = next(name for name in names if name.startswith("ocr-"))
+        return [ocr, *(name for name in names if name != ocr)]
 
 
 class _ExplodingJudge:
@@ -327,6 +344,31 @@ def test_convert_no_ocr_flag(tmp_path: Path, registry: BackendRegistry) -> None:
     assert result.exit_code == 0
 
 
+# ── unusable-GPU warning ─────────────────────────────────────────────────
+
+
+def test_warn_unusable_gpu_explains_a_present_but_unusable_gpu(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(convert_module, "cuda_runtime_note", lambda: "the installed torch build has no CUDA support")
+    convert_module.warn_unusable_gpu(EnvironmentInfo(vram_budget_gb=8.0, gpu_usable=False))
+    err = capsys.readouterr().err
+    assert "8 GiB GPU detected but unusable" in err
+    assert "no CUDA support" in err
+    assert "GPU-only backends are excluded" in err
+
+
+@pytest.mark.parametrize(
+    ("vram", "usable"),
+    [(0.0, False), (8.0, True)],  # no GPU at all, or a GPU that works: nothing to warn about
+)
+def test_warn_unusable_gpu_stays_silent(
+    capsys: pytest.CaptureFixture[str],
+    vram: float,
+    usable: bool,
+) -> None:
+    convert_module.warn_unusable_gpu(EnvironmentInfo(vram_budget_gb=vram, gpu_usable=usable))
+    assert capsys.readouterr().err == ""
+
+
 def test_convert_classifier_flag_folds_ocr_need_into_routing(pdf_registry: Path) -> None:
     register_classifier_provider("cli-fake-classifier", _load_flagging_classifier)
     result = runner.invoke(app, ["convert", str(pdf_registry), "--classifier", "cli-fake-classifier/flag"])
@@ -361,10 +403,22 @@ def test_convert_unavailable_classifier_provider_is_a_runtime_error(pdf_registry
 
 
 def test_convert_judge_flag_reorders_candidates(pdf_registry: Path) -> None:
+    """The resolved provider judge decides the lead — within the NATIVE contract."""
     register_judge_provider("cli-fake-judge", _load_reversing_judge)
-    result = runner.invoke(app, ["convert", str(pdf_registry), "--judge", "cli-fake-judge/j"])
-    assert result.exit_code == 0
-    assert "ocr content" in result.output
+    default = runner.invoke(app, ["convert", str(pdf_registry)])
+    assert default.exit_code == 0
+    assert "aaa native content" in default.output  # name order: aaa-native leads
+    judged = runner.invoke(app, ["convert", str(pdf_registry), "--judge", "cli-fake-judge/j"])
+    assert judged.exit_code == 0
+    assert "native content" in judged.output  # the judge's reversed native lead
+
+
+def test_convert_rejects_a_judge_that_leads_a_native_page_with_ocr(pdf_registry: Path) -> None:
+    """A judge crossing the native/OCR boundary is a usage error, not a plan."""
+    register_judge_provider("cli-ocr-first-judge", _load_ocr_leading_judge)
+    result = runner.invoke(app, ["convert", str(pdf_registry), "--judge", "cli-ocr-first-judge/j"])
+    assert result.exit_code == 2
+    assert "may not lead a NATIVE page" in _text(result)
 
 
 def test_convert_preference_reaches_the_resolved_judge(pdf_registry: Path) -> None:
@@ -417,7 +471,12 @@ def test_convert_preference_quality_flips_the_lead_within_a_family(
     monkeypatch.setattr(
         convert_module,
         "probe_environment",
-        lambda: EnvironmentInfo(installed_extras=frozenset({"ocr-ovis", "ocr-unlimited"}), vram_budget_gb=8.0, offline=True),
+        lambda: EnvironmentInfo(
+            installed_extras=frozenset({"ocr-ovis", "ocr-unlimited"}),
+            vram_budget_gb=8.0,
+            gpu_usable=True,
+            offline=True,
+        ),
     )
     source = str(_source_file(tmp_path, text="hi"))  # below NATIVE_MIN_TEXT_CHARS -> OCR intent
     balanced = runner.invoke(app, ["convert", source])
@@ -431,6 +490,10 @@ def test_convert_preference_quality_flips_the_lead_within_a_family(
 
 def _load_reversing_judge(spec: JudgeSpec, machine: MachineProfile | None = None, preference: RoutingPreference = RoutingPreference.BALANCED) -> RoutingJudge:
     return _ReversingJudge()
+
+
+def _load_ocr_leading_judge(spec: JudgeSpec, machine: MachineProfile | None = None, preference: RoutingPreference = RoutingPreference.BALANCED) -> RoutingJudge:
+    return _OcrLeadingJudge()
 
 
 def test_convert_judge_error_specs_map_to_typed_exit_codes(pdf_registry: Path) -> None:
@@ -490,11 +553,13 @@ def _text(result: Result) -> str:
 
 @pytest.fixture
 def pdf_registry(registry: BackendRegistry, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A PDF source plus a native and an OCR candidate claiming application/pdf.
+    """A PDF source plus two native candidates and one OCR candidate (all PDF).
 
     An OCR extra is reported as installed so ``allow_ocr`` derives ``True`` — the
-    host shape in which an OCR route is actually reachable.
+    host shape in which an OCR route is reachable at all. Two native candidates
+    let a judge demonstrate re-ranking without crossing the NATIVE contract.
     """
+    _register(registry, _descriptor("aaa-native", ("application/pdf",)), content="aaa native content")
     _register(registry, _descriptor("native-pdf", ("application/pdf",)), content="native content")
     _register(registry, _descriptor("ocr-stub", ("application/pdf",)), content="ocr content")
     monkeypatch.setattr(
@@ -532,7 +597,7 @@ def _descriptor(
             supported_formats=list(formats),
             supports_page_ranges=ranges,
             supports_multi_page=multi,
-            requires_gpu=gpu,
+            gpu_requirement=1.0 if gpu else 0.0,
             estimated_vram_gb=vram,
             optional_dependency_group=group,
         ),

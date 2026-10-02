@@ -121,7 +121,7 @@ def test_descriptor_declares_only_verified_formats_and_stays_cpu_only() -> None:
     # Verified against liteparse 2.14.7 — Office needs LibreOffice (undeclared),
     # `.html` is rejected upstream (undeclared):
     assert capabilities.supported_formats == ["application/pdf", "image/jpeg", "image/png", "image/tiff"]
-    assert capabilities.requires_gpu is False
+    assert capabilities.gpu_requirement == 0.0
     assert capabilities.estimated_vram_gb is None
     assert capabilities.optional_dependency_group == "liteparse"
     assert capabilities.model_asset is None

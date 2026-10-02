@@ -34,7 +34,7 @@ from collections.abc import Mapping, Sequence
 from importlib import import_module
 from typing import Protocol, runtime_checkable
 
-from parsecraft.backends.protocol import BackendDescriptor
+from parsecraft.backends.protocol import GPU_NOT_NEEDED, GPU_REQUIRED, BackendDescriptor
 from parsecraft.routing.judge import JudgeSpec, MachineProfile
 from parsecraft.routing.judge_providers import JudgeProviderUnavailableError, JudgeSpecError
 from parsecraft.routing.models import Intent, RoutingError, RoutingPreference
@@ -203,14 +203,20 @@ def instructions(preference: RoutingPreference) -> str:
 
     The preference is spelled out here as well as carried in ``state``: the
     instruction is what steers the answer, the state field is what the endpoint
-    (and any log) can verify it was steered by.
+    (and any log) can verify it was steered by. The two contract sentences
+    (native-before-OCR for a ``native`` intent, and the host facts in
+    ``state.machine``) restate rules ``plan_route`` enforces, so a compliant
+    answer is never rejected as a judge violation.
     """
     return (
         "Which single eligible backend should lead pass 1 for a page whose intent and caller preference "
         "are the ones in `state`? The caller's preference is "
         f"`{preference.value}`: `speed` favours the cheapest sufficient backend, `quality` the most "
         "capable one, `balanced` the middle. Rank every candidate by how likely it is to convert the "
-        "page correctly under that preference."
+        "page correctly under that preference. While `state.intent` is `native`, an `ocr` candidate is "
+        "only a fallback: never rank one above a native-capable candidate. Treat `state.machine` as the "
+        "truth about this host: a candidate with `gpu_requirement` 1.0 cannot lead where `gpu_usable` is "
+        "false, and one whose `estimated_vram_gb` exceeds `vram_budget_gb` does not fit."
     )
 
 
@@ -288,7 +294,7 @@ def request_state(
         "candidates": {descriptor.name: describe(descriptor) for descriptor in candidates},
     }
     if machine is not None:
-        state["machine"] = {"vram_budget_gb": machine.vram_budget_gb}
+        state["machine"] = {"vram_budget_gb": machine.vram_budget_gb, "gpu_usable": machine.gpu_usable}
     return state
 
 
@@ -297,7 +303,7 @@ def describe(descriptor: BackendDescriptor) -> dict[str, object]:
     capabilities = descriptor.capabilities
     return {
         "family": "ocr" if is_ocr(descriptor) else "native",
-        "requires_gpu": capabilities.requires_gpu,
+        "gpu_requirement": capabilities.gpu_requirement,
         "estimated_vram_gb": capabilities.estimated_vram_gb,
         "formats": list(capabilities.supported_formats),
     }
@@ -336,9 +342,11 @@ def _sentence(descriptor: BackendDescriptor) -> str:
     """One capability sentence for a choice label."""
     capabilities = descriptor.capabilities
     family = "OCR" if is_ocr(descriptor) else "native"
-    if capabilities.requires_gpu:
+    if capabilities.gpu_requirement >= GPU_REQUIRED:
         vram = f"~{capabilities.estimated_vram_gb:g} GB VRAM" if capabilities.estimated_vram_gb is not None else "a GPU"
         gpu = f"requires {vram}"
+    elif capabilities.gpu_requirement > GPU_NOT_NEEDED:
+        gpu = "runs on CPU or GPU"
     else:
         gpu = "runs on CPU"
     formats = ", ".join(capabilities.supported_formats) or "no declared formats"

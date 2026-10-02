@@ -23,9 +23,10 @@ def constraints_from_environment(
 
     ``formats`` (empty = no format restriction), ``max_passes`` and
     ``preference`` are plan inputs; ``installed_extras``/``vram_budget_gb``/
-    ``offline`` always come from the probe. ``allow_ocr=None`` derives OCR
-    permission from the detected OCR extras; an explicit value overrides the
-    derivation (e.g. an operator banning OCR on a GPU-capable host).
+    ``gpu_usable``/``offline`` always come from the probe. ``allow_ocr=None``
+    derives OCR permission from the detected OCR extras; an explicit value
+    overrides the derivation (e.g. an operator banning OCR on a GPU-capable
+    host).
     """
     if allow_ocr is None:
         allow_ocr = any(extra.startswith(_OCR_EXTRA_PREFIX) for extra in environment.installed_extras)
@@ -33,6 +34,7 @@ def constraints_from_environment(
         formats=set(formats),
         installed_extras=set(environment.installed_extras),
         vram_budget_gb=environment.vram_budget_gb,
+        gpu_usable=environment.gpu_usable,
         max_passes=max_passes,
         allow_ocr=allow_ocr,
         offline=environment.offline,

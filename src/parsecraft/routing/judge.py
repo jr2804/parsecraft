@@ -77,14 +77,19 @@ class JudgeSpec(BaseModel):
 class MachineProfile(BaseModel):
     """Host facts a judge may use when ranking already-eligible candidates.
 
-    Deliberately narrow: the judge sees the VRAM budget the planner itself
-    enforces, so it can prefer a candidate that fits this machine. It is a
-    ranking input only — a judge never widens, adds, or drops candidates
-    (``plan_route``'s ``_validate_order`` keeps that authority), and ``None``
-    in its place means the host is unknown, not that it has no GPU.
+    Deliberately narrow: the judge sees the VRAM budget and GPU usability the
+    planner itself enforces, so it can prefer a candidate that fits and runs on
+    this machine. It is a ranking input only — a judge never widens, adds, or
+    drops candidates (``plan_route``'s ``_validate_order`` keeps that
+    authority), and ``None`` in the profile's place means the host is unknown,
+    not that it has no GPU.
     """
 
     vram_budget_gb: float = Field(default=0.0, ge=0)
+    #: Whether the installed runtime can use that VRAM at all. A GPU declared
+    #: but unusable (``+cpu`` torch build) must reach the judge as such, or it
+    #: reasonably prefers a GPU-only candidate that would crawl on this CPU.
+    gpu_usable: bool = False
 
 
 class JudgeProviderLoader(Protocol):
