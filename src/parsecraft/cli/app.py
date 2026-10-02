@@ -64,6 +64,7 @@ def _callback(
 ) -> None:
     """Document intelligence: align existing converters, parsers, and OCR/VLM models behind one workflow and one typed output format"""
     output.ensure_utf8_streams()  # one encoding policy for every command's output
+    output.ensure_asset_info_logging()  # first-use download notices reach stderr, never stdout
     if version:
         typer.echo(_get_version())
         raise typer.Exit()

@@ -13,9 +13,11 @@ duplicated; integrity data (per-file SHA-256) lives in `AssetPin`.
 ## Ownership
 
 - `manager.py` — `AssetManager` (ensure/inspect/remove/clear, license store,
-  disk-space and offline checks, checksum verification), `slug`, `sha256_of`.
+  disk-space and offline checks, checksum verification, the first-use
+  download notice), `slug`, `sha256_of`.
 - `downloader.py` — `Downloader` protocol + `HuggingFaceDownloader` adapter.
-- `models.py` — `AssetPin`, `LicenseAcceptance`, cache report records.
+- `models.py` — `AssetPin`, `LicenseAcceptance`, cache report records, and
+  `human_bytes` (the one size formatter, reused by `cli.models`).
 - `errors.py` — typed `AssetError` hierarchy.
 
 ## Local Contracts
@@ -31,6 +33,11 @@ duplicated; integrity data (per-file SHA-256) lives in `AssetPin`.
   `LicenseNotAcceptedError` until `accept_license` records acceptance
   (timestamped, stored in the cache dir as JSON).
 - Offline mode raises `OfflineModeError` for missing files; it never downloads.
+- A first-use fetch announces itself: one `downloading <model> (<size>) into
+  <dir>` INFO record on the `parsecraft.assets` logger, emitted BEFORE the
+  first file request (model + size + destination, no prompt, no flag). The CLI
+  routes that channel to stderr (`cli.output.ensure_asset_info_logging`); the
+  logger is never in `cli.verbosity.QUIET_LOGGERS` — it is our own message.
 
 ## Verification
 

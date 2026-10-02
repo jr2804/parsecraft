@@ -22,13 +22,12 @@ from parsecraft.assets import (
     DownloaderUnavailableError,
     OfflineModeError,
     default_downloader,
+    human_bytes,
 )
 from parsecraft.backends import default_registry
 from parsecraft.backends.protocol import BackendDescriptor, ModelAssetDescriptor
 from parsecraft.cli.errors import CliError
 from parsecraft.environment import probe_environment
-
-_BYTE_UNITS: tuple[str, ...] = ("B", "KiB", "MiB", "GiB", "TiB")
 
 #: Builds the integrity pin for a model asset. The shipped default is a refusal;
 #: the assets pin catalogue (bead pc-4u7.22) plugs in here.
@@ -174,16 +173,3 @@ def render_entries(items: Sequence[ModelEntry]) -> list[str]:
         for entry in items
     )
     return lines
-
-
-def human_bytes(size: int | None) -> str:
-    """Human-readable byte size; ``-`` when unknown."""
-    if size is None:
-        return "-"
-    value = float(size)
-    index = 0
-    while value >= 1024 and index < len(_BYTE_UNITS) - 1:
-        value /= 1024
-        index += 1
-    unit = _BYTE_UNITS[index]
-    return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"

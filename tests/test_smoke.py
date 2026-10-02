@@ -7,6 +7,7 @@ import importlib
 import importlib.metadata
 import io
 import json
+import logging
 import runpy
 import sys
 from importlib.metadata import PackageNotFoundError
@@ -178,6 +179,26 @@ def test_ensure_utf8_streams_accepts_encoding_spellings() -> None:
     assert output._is_utf8("utf_8")
     assert not output._is_utf8("cp1252")
     assert not output._is_utf8(None)
+
+
+def test_asset_info_channel_is_configured_once_per_invocation() -> None:
+    """The root callback installs the parsecraft.assets → stderr channel, idempotently."""
+    channel = logging.getLogger("parsecraft.assets")
+    _runner.invoke(app, ["--version"])
+    _runner.invoke(app, ["--version"])
+    handlers = [handler for handler in channel.handlers if isinstance(handler, output._CurrentStderrHandler)]
+    assert len(handlers) == 1  # installed once, no matter how often the CLI runs
+    assert channel.level == logging.INFO
+    assert channel.propagate is False  # no root handler can duplicate the line
+
+
+def test_asset_info_channel_emits_to_the_current_stderr(capsys: pytest.CaptureFixture[str]) -> None:
+    """A first-use notice lands on stderr — never on stdout, where the IR lives."""
+    output.ensure_asset_info_logging()
+    logging.getLogger("parsecraft.assets").info("downloading acme/model (1.0 GiB) into /cache/acme--model/abc123")
+    captured = capsys.readouterr()
+    assert "downloading acme/model (1.0 GiB) into /cache/acme--model/abc123" in captured.err
+    assert captured.out == ""
 
 
 def test_version_short_flag_matches_long_flag() -> None:

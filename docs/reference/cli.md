@@ -102,7 +102,9 @@ parsecraft convert SOURCE [OPTIONS]
 
 Output is the Markdown projection (`parsecraft.ir.markdown.to_markdown`) or the
 `DocumentResult` as JSON (`--json`) — printed to stdout, or written to `PATH`
-with `--output`/`-o` (which leaves stdout empty). Supported suffixes come from the public
+with `--output`/`-o` (which leaves stdout empty). A first-use model download
+prints one `downloading <model> (<size>) into <dir>` line to **stderr** before
+the fetch starts — informational only, no prompt and no flag. Supported suffixes come from the public
 `parsecraft.pipeline.MEDIA_TYPES` map: the text family (`.txt`, `.text`, `.md`,
 `.markdown`, `.html`, `.htm`, `.rst`, `.tex`, `.log`, `.ini`, `.cfg`, `.toml`,
 `.sh`, `.py`, `.c`, `.cc`, `.cpp`, `.h`, `.hpp`) plus `.pdf`, `.jpg`, `.jpeg`,
@@ -307,6 +309,10 @@ Offline mode comes from the detected host (`PARSECRAFT_OFFLINE`);
     backend) produces a typed "no pinned manifest" error (exit `1`).
     Downloading also requires the `download` extra — without it the error names
     the extra and the install command.
+
+Every first-use fetch — here or during a conversion — announces itself with one
+`downloading <model> (<size>) into <dir>` line on stderr before transferring
+bytes (model, size, destination; no prompt, no flag).
 
 ### `parsecraft benchmark`
 

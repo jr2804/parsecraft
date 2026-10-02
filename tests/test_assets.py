@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import importlib
 import json
+import logging
 import subprocess
 import sys
 import textwrap
@@ -261,6 +262,27 @@ def test_ensure_skips_files_without_pinned_checksum(tmp_path: Path) -> None:
     manager = AssetManager(cache_dir=tmp_path, downloader=FakeDownloader())
     paths = manager.ensure(make_pin(expected_sha256={}))
     assert Path(paths[0]).read_bytes() == CONTENT
+
+
+def test_ensure_announces_the_download_before_fetching(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """One INFO line (model, size, destination) exists before the first fetch call."""
+    announced: list[bool] = []
+
+    class _WatchingDownloader(FakeDownloader):
+        def download(self, model_id: str, revision: str, filename: str, dest_dir: str) -> str:
+            announced.append(any("downloading" in record.getMessage() for record in caplog.records))
+            return super().download(model_id, revision, filename, dest_dir)
+
+    caplog.set_level(logging.INFO, logger="parsecraft.assets")
+    manager = AssetManager(cache_dir=tmp_path, downloader=_WatchingDownloader())
+    manager.ensure(make_pin(descriptor=make_descriptor(size_bytes=5 * 1024**3)))
+    assert announced == [True]  # the notice was already there when the fetch ran
+    notices = [record.getMessage() for record in caplog.records if "downloading" in record.getMessage()]
+    assert notices == [f"downloading acme/model (5.0 GiB) into {tmp_path / 'acme--model' / 'abc123'}"]
+
+    # A second ensure with the files cached fetches (and therefore announces) nothing.
+    manager.ensure(make_pin(descriptor=make_descriptor(size_bytes=5 * 1024**3)))
+    assert [record.getMessage() for record in caplog.records if "downloading" in record.getMessage()] == notices
 
 
 def make_pin(**overrides: Any) -> AssetPin:

@@ -22,6 +22,7 @@ from parsecraft.assets.models import (
     CachedAssetFile,
     CacheReport,
     LicenseAcceptance,
+    human_bytes,
 )
 
 __all__ = [
@@ -39,6 +40,7 @@ __all__ = [
     "LicenseNotAcceptedError",
     "OfflineModeError",
     "default_downloader",
+    "human_bytes",
     "sha256_of",
     "slug",
 ]

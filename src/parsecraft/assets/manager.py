@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import shutil
 from datetime import UTC, datetime
 from importlib.metadata import version as _dist_version
@@ -30,11 +31,18 @@ from parsecraft.assets.models import (
     CachedAssetFile,
     CacheReport,
     LicenseAcceptance,
+    human_bytes,
 )
 from parsecraft.backends.protocol import ModelAssetDescriptor
 
 _LICENSE_STORE_FILENAME = "license-acceptances.json"
 _CHUNK_SIZE = 1 << 20
+
+#: The first-use download notice goes through this logger (INFO); the CLI
+#: routes the channel to stderr (``cli.output.ensure_asset_info_logging``),
+#: library embedders configure it like any other logger. Never in
+#: ``cli.verbosity.QUIET_LOGGERS`` — this is our own message, not chatter.
+logger = logging.getLogger(__name__)
 
 
 class AssetManager:
@@ -173,6 +181,12 @@ class AssetManager:
                 )
             self._check_disk_space(pin)
             target.mkdir(parents=True, exist_ok=True)
+            logger.info(
+                "downloading %s (%s) into %s",
+                model_id,
+                human_bytes(descriptor.size_bytes),
+                target,
+            )
             for filename in pin.filenames:
                 self.downloader.download(model_id, revision, filename, str(target))
 

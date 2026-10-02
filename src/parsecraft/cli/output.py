@@ -10,10 +10,15 @@ lost the whole conversion; ``--json`` was unaffected only because
 UTF-8 represents every code point, so it can only ever substitute an unpaired
 surrogate from an already-broken decode. Nothing extra is written to stdout, so
 its output stays parseable (the JSON projection stays pure ASCII).
+
+This module also owns the CLI's one info channel: the ``parsecraft.assets``
+logger (first-use download notices) is routed to the current stderr by
+:func:`ensure_asset_info_logging`, keeping stdout pure for the IR.
 """
 
 from __future__ import annotations
 
+import logging
 import sys
 from typing import Protocol, cast
 
@@ -33,6 +38,31 @@ class ReconfigurableStream(Protocol):
     def reconfigure(self, *, encoding: str | None = None, errors: str | None = None) -> None:
         """Switch the stream's encoding/error policy in place."""
         ...
+
+
+class _CurrentStderrHandler(logging.Handler):
+    """Writes each record to whatever ``sys.stderr`` is right now."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        print(self.format(record), file=sys.stderr)
+
+
+def ensure_asset_info_logging() -> None:
+    """Route the ``parsecraft.assets`` info channel to the current stderr.
+
+    First-use download notices (model, size, destination) are the library's
+    own INFO records on ``parsecraft.assets``; the CLI is their audience, so
+    the callback installs a handler once per invocation. The handler resolves
+    ``sys.stderr`` at emit time, so a replaced stream (tests, pipes) always
+    receives it, and ``propagate`` is switched off so no root handler can
+    duplicate the line. Library embedders never run this — they configure the
+    channel themselves, or leave it silent.
+    """
+    channel = logging.getLogger("parsecraft.assets")
+    channel.setLevel(logging.INFO)
+    channel.propagate = False
+    if not any(isinstance(handler, _CurrentStderrHandler) for handler in channel.handlers):
+        channel.addHandler(_CurrentStderrHandler())
 
 
 def ensure_utf8_streams() -> None:

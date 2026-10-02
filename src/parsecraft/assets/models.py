@@ -10,6 +10,9 @@ from parsecraft.backends.protocol import ModelAssetDescriptor
 
 RECORD_VERSION = 1
 
+#: Units for :func:`human_bytes`, the one size formatter (tables and notices).
+_BYTE_UNITS: tuple[str, ...] = ("B", "KiB", "MiB", "GiB", "TiB")
+
 
 class AssetPin(BaseModel):
     """A fully pinned asset: descriptor plus per-file integrity data.
@@ -57,3 +60,16 @@ class CacheReport(BaseModel):
     location: str
     assets: list[CachedAsset] = Field(default_factory=list)
     total_bytes: int = Field(ge=0)
+
+
+def human_bytes(size: int | None) -> str:
+    """Human-readable byte size; ``-`` when unknown."""
+    if size is None:
+        return "-"
+    value = float(size)
+    index = 0
+    while value >= 1024 and index < len(_BYTE_UNITS) - 1:
+        value /= 1024
+        index += 1
+    unit = _BYTE_UNITS[index]
+    return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
