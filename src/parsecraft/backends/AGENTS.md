@@ -58,6 +58,9 @@ registration + Python entry points) without editing this package.
   VLM repos ship a broken Mistral-family pre-tokenizer regex and transformers
   warns that tokenization is wrong until the flag is passed. A load site that
   builds its own kwargs dict silently tokenizes differently from its siblings.
+  No runtime fallback is added anywhere: the kwarg is guaranteed by the
+  declared `TRANSFORMERS_RANGE` (see `TOKENIZER_FIX_KWARGS` in `_common.py`
+  for the canonical statement).
   Corollary verified against transformers 5.18: `pipeline()` resolves the
   processor with only its hub/model kwargs, so the flag CANNOT be passed through
   `pipeline(...)`; a backend that needs it loads the processor itself and hands
