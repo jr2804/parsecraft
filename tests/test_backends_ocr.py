@@ -406,6 +406,21 @@ class _AssetManagerSpy:
         return Path("fake-assets") / model_id.replace("/", "--") / revision[:12]
 
 
+# ── _common: transcriber seams ──────────────────────────────────────────────────
+
+
+class _ProcessorLoader:
+    """Records a processor/tokenizer load request — the tokenizer fix lives here."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict[str, object]]] = []
+        self.result: object = object()
+
+    def __call__(self, source: str, **kwargs: object) -> object:
+        self.calls.append((source, dict(kwargs)))
+        return self.result
+
+
 # ── Descriptors and model assets (light, no stubs) ──────────────────────────────
 
 
@@ -487,6 +502,7 @@ def test_unpinned_tele_descriptor_keeps_the_hub_revision(
     processor_load = state.processor_load_calls[0]
     assert processor_load["source"] == _models.TELE_MODEL_ID
     assert processor_load["revision"] == _models.TELE_REVISION
+    assert processor_load["fix_mistral_regex"] is True
 
 
 @pytest.mark.parametrize(("module", "asset", "model_id", "license_name"), _ASSETS)
@@ -941,7 +957,41 @@ def test_load_vllm_returns_the_stub_runtime(vllm_stub: _VllmStub) -> None:
     assert _common.load_vllm() is vllm_stub
 
 
-# ── _common: transcriber seams ──────────────────────────────────────────────────
+def test_tokenizer_load_kwargs_carry_the_mistral_regex_fix() -> None:
+    """One home for the tokenizer correction, merged with caller kwargs."""
+    assert _common.tokenizer_load_kwargs() == {"fix_mistral_regex": True}
+    assert _common.tokenizer_load_kwargs(revision="abc") == {"fix_mistral_regex": True, "revision": "abc"}
+
+
+def test_tokenizer_load_kwargs_are_merged_not_shared() -> None:
+    """A caller mutating its own dict must not change the next load's flags."""
+    mine = _common.tokenizer_load_kwargs(revision="abc")
+    mine["fix_mistral_regex"] = False
+    assert _common.tokenizer_load_kwargs() == {"fix_mistral_regex": True}
+
+
+def test_load_transformers_pipeline_loads_the_processor_with_the_fix() -> None:
+    """The pipeline's own processor load cannot carry the fix, so we load it.
+
+    ``pipeline()`` resolves the processor with only its hub/model kwargs, so a
+    flag passed to it never reaches the tokenizer; an instance we built does.
+    """
+    captured: dict[str, object] = {}
+    loader = _ProcessorLoader()
+
+    def _factory(**kwargs: object) -> _FakePipeline:
+        captured.update(kwargs)
+        return _FakePipeline(_TransformersStub())
+
+    pipe = _common.load_transformers_pipeline(
+        _factory,
+        processor_loader=loader,
+        model_source="org/model",
+        model_revision="abc123",
+    )
+    assert isinstance(pipe, _FakePipeline)
+    assert loader.calls == [("org/model", {"fix_mistral_regex": True, "trust_remote_code": False, "revision": "abc123"})]
+    assert captured["processor"] is loader.result  # the instance, never a string identifier
 
 
 def test_load_transformers_pipeline_passes_pinned_revision() -> None:
@@ -951,8 +1001,10 @@ def test_load_transformers_pipeline_passes_pinned_revision() -> None:
         captured.update(kwargs)
         return _FakePipeline(_TransformersStub())
 
+    loader = _ProcessorLoader()
     pipe = _common.load_transformers_pipeline(
         _factory,
+        processor_loader=loader,
         model_source="org/model",
         model_revision="abc123",
     )
@@ -967,6 +1019,7 @@ def test_load_transformers_pipeline_passes_pinned_revision() -> None:
     captured.clear()
     _common.load_transformers_pipeline(
         _factory,
+        processor_loader=loader,
         model_source="org/model",
         model_revision="abc123",
         trust_remote_code=True,
@@ -975,12 +1028,15 @@ def test_load_transformers_pipeline_passes_pinned_revision() -> None:
 
     # Managed local dir: no hub revision may leak into the load kwargs.
     captured.clear()
+    loader.calls.clear()
     _common.load_transformers_pipeline(
         _factory,
+        processor_loader=loader,
         model_source="fake-assets/org--model",
         model_revision=None,
     )
     assert "revision" not in captured
+    assert loader.calls == [("fake-assets/org--model", {"fix_mistral_regex": True, "trust_remote_code": False})]
 
 
 def test_load_transformers_pipeline_maps_load_errors() -> None:
@@ -989,7 +1045,12 @@ def test_load_transformers_pipeline_maps_load_errors() -> None:
         raise RuntimeError(msg)
 
     with pytest.raises(BackendError, match="failed to load model 'org/model'") as excinfo:
-        _common.load_transformers_pipeline(_factory, model_source="org/model", model_revision="abc")
+        _common.load_transformers_pipeline(
+            _factory,
+            processor_loader=_ProcessorLoader(),
+            model_source="org/model",
+            model_revision="abc",
+        )
     assert "CUDA out of memory" in str(excinfo.value)
 
 
@@ -1008,10 +1069,24 @@ def test_require_cuda_device_rejects_a_silent_cpu_fallback() -> None:
         return pipe
 
     with pytest.raises(BackendError, match="declares a hard GPU requirement") as excinfo:
-        _common.load_transformers_pipeline(_cpu_factory, model_source="org/model", model_revision=None, require_gpu=True)
+        _common.load_transformers_pipeline(
+            _cpu_factory,
+            processor_loader=_ProcessorLoader(),
+            model_source="org/model",
+            model_revision=None,
+            require_gpu=True,
+        )
     assert "loaded on device(type='cpu')" in str(excinfo.value)
     # The same placement is fine for a backend that does not require a GPU:
-    assert _common.load_transformers_pipeline(_cpu_factory, model_source="org/model", model_revision=None) is not None
+    assert (
+        _common.load_transformers_pipeline(
+            _cpu_factory,
+            processor_loader=_ProcessorLoader(),
+            model_source="org/model",
+            model_revision=None,
+        )
+        is not None
+    )
 
 
 def test_require_cuda_device_accepts_a_cuda_placement_and_rejects_a_device_less_holder() -> None:
@@ -1179,19 +1254,28 @@ def test_pipeline_backends_convert_under_the_stub(
     assert isinstance(user_text, str)
     assert user_text.strip().startswith(prompt_prefix)
     pipeline_call = state.pipeline_calls[0]
+    # The tokenizer-regex fix is applied where the tokenizer is actually loaded
+    # (pc-scr): the processor for the pipeline backends, the tokenizer for the
+    # vendored ones. ``pipeline()`` itself cannot forward the flag, so the
+    # pipeline must receive a processor INSTANCE instead of a path.
+    processor_load = state.processor_load_calls[0]
+    assert processor_load["fix_mistral_regex"] is True
     if trust_remote_code is None:
         # Vendored branch (tele, pc-4u7.36): explicit model class + processor,
         # no revision on the local dir, and trust_remote_code is gone.
         model_load = state.vendored_model_loads[0]
         assert str(model_load["source"]).startswith("fake-assets")
         assert "revision" not in model_load
-        assert str(state.processor_load_calls[0]["source"]).startswith("fake-assets")
+        assert str(processor_load["source"]).startswith("fake-assets")
         assert "trust_remote_code" not in pipeline_call
     else:
         # Assets are managed: the pipeline loads the verified LOCAL dir, no hub revision.
         assert str(pipeline_call["model"]).startswith("fake-assets")
         assert "revision" not in pipeline_call
         assert pipeline_call["trust_remote_code"] is trust_remote_code
+        if trust_remote_code is False:
+            # The pipeline backends get the processor we loaded, not a path to load.
+            assert not isinstance(pipeline_call["processor"], str)
 
 
 @pytest.mark.parametrize(
@@ -1604,6 +1688,7 @@ def test_unpinned_unlimited_descriptor_keeps_the_hub_revision(
     assert model_load["revision"] == _models.UNLIMITED_REVISION
     tokenizer_load = state.tokenizer_load_calls[0]
     assert tokenizer_load["revision"] == _models.UNLIMITED_REVISION
+    assert tokenizer_load["fix_mistral_regex"] is True
 
 
 @pytest.fixture

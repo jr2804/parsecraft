@@ -22,6 +22,7 @@ from parsecraft.backends.ocr._common import (
     require_cuda_device,
     require_transformers,
     runtime_choice,
+    tokenizer_load_kwargs,
     transformers_transcriber,
     vllm_transcriber,
 )
@@ -100,7 +101,7 @@ def create(config: BackendConfig) -> DocumentBackend:
         # repo's remote code is 4.x-only — see _vendored/README.md for the
         # port record. vLLM's own loader keeps using the repo as before.
         model_kwargs: dict[str, object] = {"device_map": "auto", "dtype": "auto"}
-        processor_kwargs: dict[str, object] = {}
+        processor_kwargs: dict[str, object] = tokenizer_load_kwargs()
         if revision is not None:
             model_kwargs["revision"] = revision
             processor_kwargs["revision"] = revision

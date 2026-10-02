@@ -50,6 +50,16 @@ from parsecraft.ir.models import (
 #: Runtimes a backend may select through the ``runtime`` config option.
 RUNTIMES: tuple[str, ...] = ("transformers", "vllm")
 
+#: The load kwarg that corrects a known-broken Mistral-family tokenizer regex.
+#: Several VLM repos ship a pre-tokenizer whose Split pattern mishandles case
+#: runs; transformers rewrites it (and skips its ``MistralCommonBackend``
+#: shortcut) when this is passed, and warns loudly otherwise. Verified in
+#: transformers 5.18.0 (``tokenization_utils_tokenizers._patch_mistral_regex``,
+#: which pops this kwarg; ``AutoTokenizer``/``AutoProcessor.from_pretrained``
+#: both forward it to the tokenizer). The declared ``TRANSFORMERS_RANGE`` is
+#: what guarantees the kwarg exists — no runtime fallback is needed.
+TOKENIZER_FIX_KWARGS: dict[str, object] = {"fix_mistral_regex": True}
+
 #: One page transcription: raster bytes + generation cap → page text.
 type Transcriber = Callable[[bytes, int | None], str]
 
@@ -413,6 +423,7 @@ def source_bytes(source: SourceDocument) -> bytes:
 def load_transformers_pipeline(
     factory: Callable[..., ImageTextPipeline],
     *,
+    processor_loader: Callable[..., object],
     model_source: str,
     model_revision: str | None,
     trust_remote_code: bool = False,
@@ -423,6 +434,15 @@ def load_transformers_pipeline(
     ``model_source`` is a managed local directory (revision omitted — the
     files were pinned and verified by :func:`ensure_assets`) or a hub id
     together with its pinned ``model_revision``.
+
+    The processor is loaded HERE, through ``processor_loader`` (the caller's
+    ``AutoProcessor.from_pretrained``), instead of letting the pipeline fetch it:
+    ``pipeline()`` resolves the processor with only its hub/model kwargs
+    (``pipelines.__init__._resolve_processor``), so a correction flag passed to
+    ``pipeline()`` never reaches the tokenizer and the regex warning returns. An
+    instance passed in is reused as-is, and this task loads no separate tokenizer
+    (``ImageTextToTextPipeline._load_tokenizer`` is ``False``), so this is the
+    only tokenizer load for this path.
 
     ``require_gpu`` refuses a silent CPU fallback. ``device_map="auto"`` sends
     a GPU-declared model to the CPU when the runtime cannot use the GPU, which
@@ -442,6 +462,10 @@ def load_transformers_pipeline(
     if model_revision is not None:
         kwargs["revision"] = model_revision
     try:
+        processor_kwargs = tokenizer_load_kwargs(trust_remote_code=trust_remote_code)
+        if model_revision is not None:
+            processor_kwargs["revision"] = model_revision
+        kwargs["processor"] = processor_loader(model_source, **processor_kwargs)
         pipe = factory(**kwargs)
     except Exception as exc:  # model/stack load boundary — typed, never raw
         where = f" at revision {model_revision[:12]}" if model_revision is not None else ""
@@ -449,6 +473,17 @@ def load_transformers_pipeline(
         raise BackendError(msg) from exc
     _require_device(pipe, model_source=model_source, required=require_gpu)
     return pipe
+
+
+def tokenizer_load_kwargs(**extra: object) -> dict[str, object]:
+    """Load kwargs every tokenizer/processor load in this family must carry.
+
+    One home for the tokenizer corrections (see :data:`TOKENIZER_FIX_KWARGS`),
+    so a load site cannot forget one and silently tokenize differently from its
+    siblings. Callers add their own kwargs (``revision`` and the like) here
+    rather than building a loose dict alongside it.
+    """
+    return {**TOKENIZER_FIX_KWARGS, **extra}
 
 
 def require_cuda_device(holder: object, *, model_source: str) -> None:

@@ -52,6 +52,16 @@ registration + Python entry points) without editing this package.
 - `ConversionRequest` carries all bounds (page range, timeout, cancellation,
   output/context budgets) — backends must honor them or return a typed
   `PassFailure`.
+- **Tokenizer/processor loads of VLM backends go through
+  `backends/ocr/_common.tokenizer_load_kwargs()`** (pc-scr): it carries the
+  corrections every tokenizer needs, currently `fix_mistral_regex=True` — several
+  VLM repos ship a broken Mistral-family pre-tokenizer regex and transformers
+  warns that tokenization is wrong until the flag is passed. A load site that
+  builds its own kwargs dict silently tokenizes differently from its siblings.
+  Corollary verified against transformers 5.18: `pipeline()` resolves the
+  processor with only its hub/model kwargs, so the flag CANNOT be passed through
+  `pipeline(...)`; a backend that needs it loads the processor itself and hands
+  the pipeline the instance.
 
 ## Work Guidance
 

@@ -9,7 +9,7 @@ pluggable via ``options["runtime"]``: ``transformers`` (default) or ``vllm``.
 
 from __future__ import annotations
 
-from transformers import pipeline  # ty: ignore[unresolved-import] — extra not installed in dev/CI; heavy by contract
+from transformers import AutoProcessor, pipeline  # ty: ignore[unresolved-import] — extra not installed in dev/CI; heavy by contract
 
 from parsecraft.backends.ocr._common import (
     Transcriber,
@@ -93,6 +93,7 @@ def create(config: BackendConfig) -> DocumentBackend:
     else:
         pipe = load_transformers_pipeline(
             pipeline,
+            processor_loader=AutoProcessor.from_pretrained,
             model_source=source,
             model_revision=revision,
             require_gpu=True,  # GPU_REQUIRED capability: never a silent CPU fallback

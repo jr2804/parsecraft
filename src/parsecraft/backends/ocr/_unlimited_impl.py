@@ -37,6 +37,7 @@ from parsecraft.backends.ocr._common import (
     require_cuda_device,
     require_transformers,
     runtime_choice,
+    tokenizer_load_kwargs,
 )
 from parsecraft.backends.ocr._models import (
     OCR_BACKEND_VERSION,
@@ -200,7 +201,7 @@ def _load(config: BackendConfig) -> tuple[LongHorizonModel, object]:
         "dtype": "bfloat16",
         "device_map": "auto",
     }
-    tokenizer_kwargs: dict[str, object] = {}
+    tokenizer_kwargs: dict[str, object] = tokenizer_load_kwargs()
     if revision is not None:
         config_kwargs["revision"] = revision
         model_kwargs["revision"] = revision
