@@ -1,5 +1,8 @@
 [tasks.test]
 description = "Run tests with coverage (per-run data file, self-cleaned; concurrent runs cannot clash)"
+# Format must complete first: a file rewritten by pyreorder while pytest
+# measures it produces bogus coverage misses (fail_under flakiness).
+depends = ["format", "format-md"]
 run = '''uv run python -c "import glob,os,shutil,subprocess,sys;pid=os.getpid();os.environ['COVERAGE_FILE']=f'.coverage.{pid}';rc=subprocess.call([sys.executable,'-m','pytest','--cov=parsecraft','--cov-report=term-missing',f'--cov-report=html:.htmlcov_{pid}']);shutil.rmtree(f'.htmlcov_{pid}',ignore_errors=True);[os.remove(p) for p in glob.glob(f'.coverage.{pid}')+glob.glob(f'.coverage.{pid}.*')];raise SystemExit(rc)"'''
 
 [tasks.test-corpus]
@@ -20,14 +23,12 @@ description = "Docling vs native-pdf measurement (on-demand, NOT part of the gat
 run = "uv run --extra docling --extra pdf --extra pdf-lite python scripts/bench_docling.py .tmp/docling-bench/*.pdf"
 
 [tasks.all]
-description = "Run all quality checks"
+description = "Run all quality checks (format runs first via the test task's dependency)"
 depends = [
   "test",
   "typecheck",
   "lint",
   "spell",
-  "format",
-  "format-md",
   "docs",
 ]
 
