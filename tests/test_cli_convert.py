@@ -503,10 +503,6 @@ def test_convert_without_classifier_flag_keeps_the_rule_table_route(pdf_registry
     assert "ocr content" not in result.output
 
 
-def _load_flagging_classifier(spec: ClassifierSpec) -> PageOcrClassifier:
-    return _FlaggingClassifier()
-
-
 def test_convert_classifier_spec_error_is_a_usage_error(pdf_registry: Path) -> None:
     result = runner.invoke(app, ["convert", str(pdf_registry), "--classifier", "not-a-spec"])
     assert result.exit_code == 2
@@ -518,6 +514,77 @@ def test_convert_unavailable_classifier_provider_is_a_runtime_error(pdf_registry
     assert result.exit_code == 1
     assert "classifier unavailable" in _text(result)
     assert "call register_classifier_provider" in _text(result)
+
+
+def test_convert_reports_two_unavailable_providers_in_one_diagnosis(pdf_registry: Path) -> None:
+    """Both seams failing names both in one run — no second install round-trip."""
+    result = runner.invoke(app, ["convert", str(pdf_registry), "--classifier", "ghost-thing/flag", "--judge", "phantom-thing/j"])
+    assert result.exit_code == 1
+    lines = _unique_lines(result)
+    header = lines.index("error: routing providers unavailable:")  # error-prefixed like every CLI failure
+    assert lines[header + 1].startswith("  --classifier ghost-thing/flag: ")
+    assert lines[header + 2].startswith("  --judge phantom-thing/j: ")
+    assert len(lines) == header + 3  # the header plus one line per failure, nothing else
+    assert "parsecraft.providers.ghost_thing" in lines[header + 1]  # the body names the module to install
+    assert "parsecraft.providers.phantom_thing" in lines[header + 2]
+
+
+def test_convert_single_provider_failure_keeps_the_single_line_shape(pdf_registry: Path) -> None:
+    """One failing seam stays exactly the message it always was — no header, no bullets."""
+    classifier_only = runner.invoke(app, ["convert", str(pdf_registry), "--classifier", "ghost-thing/flag"])
+    assert classifier_only.exit_code == 1
+    message = _single_message(classifier_only)
+    assert message == f"error: classifier unavailable: {_single_body(classifier_only)}"
+    assert "routing providers unavailable" not in _text(classifier_only)
+
+    register_classifier_provider("cli-fake-classifier", _load_flagging_classifier)
+    judge_only = runner.invoke(app, ["convert", str(pdf_registry), "--classifier", "cli-fake-classifier/flag", "--judge", "phantom-thing/j"])
+    assert judge_only.exit_code == 1  # the classifier resolved; the judge is the only failure, so the shape is the old one
+    assert _single_message(judge_only) == f"error: judge unavailable: {_single_body(judge_only)}"
+
+
+def _load_flagging_classifier(spec: ClassifierSpec) -> PageOcrClassifier:
+    return _FlaggingClassifier()
+
+
+def test_convert_body_is_reused_verbatim_in_the_combined_diagnosis(pdf_registry: Path) -> None:
+    """The bullets are the single-failure bodies, not a re-worded paraphrase."""
+    single = runner.invoke(app, ["convert", str(pdf_registry), "--classifier", "ghost-thing/flag"])
+    body = _single_body(single)
+    combined = runner.invoke(app, ["convert", str(pdf_registry), "--classifier", "ghost-thing/flag", "--judge", "phantom-thing/j"])
+    assert f"  --classifier ghost-thing/flag: {body}" in _text(combined)
+
+
+def _single_body(result: Result) -> str:
+    """The provider error body: the single message without its CLI and seam prefixes."""
+    message = _single_message(result)
+    for prefix in ("error: classifier unavailable: ", "error: judge unavailable: "):
+        if message.startswith(prefix):
+            return message.removeprefix(prefix)
+    raise AssertionError(message)
+
+
+def _single_message(result: Result) -> str:
+    """The one ``error: …`` line of a single-failure run (asserts there is exactly one)."""
+    messages = [line for line in _unique_lines(result) if line.startswith("error: ")]
+    assert len(messages) == 1, messages
+    return messages[0]
+
+
+def _unique_lines(result: Result) -> list[str]:
+    """CLI text lines, deduplicated: CliRunner can capture a stderr line in both streams."""
+    return list(dict.fromkeys(_text(result).strip().splitlines()))
+
+
+def test_convert_collects_a_spec_error_with_an_unavailable_provider(pdf_registry: Path) -> None:
+    """A malformed spec is a caller error too: collect it, and the usage exit code wins."""
+    result = runner.invoke(app, ["convert", str(pdf_registry), "--classifier", "BAD/provider", "--judge", "phantom-thing/j"])
+    assert result.exit_code == 2  # a caller bug outranks environment state, as on the single-failure path
+    text = _text(result)
+    assert "error: routing providers unavailable:" in text
+    assert "  --classifier BAD/provider: " in text
+    assert "  --judge phantom-thing/j: " in text
+    assert "parsecraft.providers.phantom_thing" in text  # the unavailability detail is not lost
 
 
 def test_convert_judge_flag_reorders_candidates(pdf_registry: Path) -> None:

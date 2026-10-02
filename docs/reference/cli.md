@@ -184,14 +184,18 @@ Exit codes: `0` success, `1` analysis or routing failure, `2` usage error
 that is not eligible for the source, a malformed `--judge`/`--classifier` spec,
 an invalid `--preference` value, a missing `--output` directory, or `--backend`
 combined with `--judge`). A missing optional backend dependency
-also exits `1` with an actionable `optional dependency missing: …` message, and
-a conversion in which **every** pass failed exits `1` with
+also exits `1` with an actionable `optional dependency missing: …` message
+naming the extra to install, and a provider that cannot be resolved exits `1`
+with `judge unavailable: …` or `classifier unavailable: …` — a malformed spec
+exits `2` instead. When `--judge` **and** `--classifier` are both named and both
+fail to resolve, the command reports them together (`routing providers
+unavailable:` plus one `<flag> <spec>: <reason>` line each), so one run names
+every missing extra; its exit code follows the failures (`2` when any spec was
+malformed, otherwise `1`). A conversion in which **every** pass failed exits `1` with
 `conversion produced no content: every pass failed for all N page(s) …` naming
 the missing extra — an empty document is never reported as success. Partial
 degradation (some pages converted, some not) stays `0` and records the failed
 pages in the IR.
-naming the extra to install; a spec whose provider cannot be loaded exits `1`
-with `judge unavailable: …` or `classifier unavailable: …`.
 
 Eligibility matches `RoutingConstraints.formats` against each backend's
 `supported_formats`; both declare MIME media types (`text/plain`,

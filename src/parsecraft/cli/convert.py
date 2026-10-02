@@ -54,9 +54,31 @@ from parsecraft.routing.judge_providers import JudgeError, JudgeSpecError, resol
 
 _USAGE_EXIT_CODE = 2
 
+#: Header of a combined provider-resolution failure (two or more seams failed).
+_PROVIDERS_UNAVAILABLE_HEADER = "routing providers unavailable:"
+
 
 class ConvertError(CliError):
     """A ``convert`` request that cannot be served; carries a CLI exit code."""
+
+
+class ProviderResolutionError(ConvertError):
+    """A provider seam failed to resolve; carries what a combined diagnosis needs.
+
+    ``str(error)`` is exactly what a lone failure prints — ``prefix: body`` for an
+    unavailable provider, the bare body for a malformed spec — so the single-seam
+    message shape is preserved by construction. The parts are kept separate so the
+    aggregate can list ``flag spec: body`` per failure without re-parsing a message:
+    ``body`` is the typed provider error's own text, the part that names the missing
+    extra.
+    """
+
+    def __init__(self, *, flag: str, spec: str, body: str, prefix: str | None = None, exit_code: int = 1) -> None:
+        self.flag = flag
+        self.spec = spec
+        self.body = body
+        message = body if prefix is None else f"{prefix}: {body}"
+        super().__init__(message, exit_code=exit_code)
 
 
 class PreferredBackendJudge:
@@ -112,8 +134,7 @@ def convert_source(
         raise ConvertError(str(exc), exit_code=_USAGE_EXIT_CODE) from exc
     environment = probe_environment()  # a single probe per invocation, shared by analysis and the seams
     warn_unusable_gpu(environment)
-    resolved_classifier = _resolve_classifier(classifier)
-    resolved_judge = _resolve_judge(backend, judge, environment, preference)
+    resolved_classifier, resolved_judge = _resolve_providers(classifier, backend, judge, environment, preference)
     source = read_source(path, media_type)
     registry = default_registry
     try:
@@ -176,14 +197,64 @@ def warn_unusable_gpu(environment: EnvironmentInfo) -> None:
     )
 
 
+def _resolve_providers(
+    classifier: str | None,
+    backend: str | None,
+    judge: str | None,
+    environment: EnvironmentInfo,
+    preference: RoutingPreference,
+) -> tuple[PageOcrClassifier | None, RoutingJudge | None]:
+    """Resolve both provider seams, reporting every failure in one diagnosis.
+
+    Each seam is attempted independently, so a command naming two providers with
+    two missing extras learns both in one run instead of one install round-trip
+    each. A lone failure re-raises its original error untouched — the
+    single-provider message shape is a contract — while two or more combine into
+    the header plus one line per failure, carrying the usage exit code when any of
+    them was a malformed spec (a caller bug still outranks environment state).
+    Both seams resolve before the source is read, so the timing is unchanged.
+    """
+    failures: list[ProviderResolutionError] = []
+    resolved_classifier: PageOcrClassifier | None = None
+    resolved_judge: RoutingJudge | None = None
+    try:
+        resolved_classifier = _resolve_classifier(classifier)
+    except ProviderResolutionError as exc:
+        failures.append(exc)
+    try:
+        resolved_judge = _resolve_judge(backend, judge, environment, preference)
+    except ProviderResolutionError as exc:
+        failures.append(exc)
+    if len(failures) == 1:
+        raise failures[0]
+    if failures:
+        raise _combined_provider_error(failures)
+    return resolved_classifier, resolved_judge
+
+
+def _combined_provider_error(failures: Sequence[ProviderResolutionError]) -> ConvertError:
+    """One diagnosis listing every provider that failed to resolve.
+
+    The per-provider ``body`` — the typed error's own text, which names the
+    missing extra — is relayed verbatim, so the combined message adds no new
+    wording to re-verify.
+    """
+    lines = [_PROVIDERS_UNAVAILABLE_HEADER]
+    lines.extend(f"  {failure.flag} {failure.spec}: {failure.body}" for failure in failures)
+    exit_code = _USAGE_EXIT_CODE if any(failure.exit_code == _USAGE_EXIT_CODE for failure in failures) else 1
+    return ConvertError("\n".join(lines), exit_code=exit_code)
+
+
 def _resolve_classifier(spec: str | None) -> PageOcrClassifier | None:
     """Resolve a classifier spec: malformed is a usage error, unavailable is not."""
+    if spec is None:
+        return None
     try:
         return resolve_classifier(spec)
     except ClassifierSpecError as exc:
-        raise ConvertError(str(exc), exit_code=_USAGE_EXIT_CODE) from exc
+        raise ProviderResolutionError(flag="--classifier", spec=spec, body=str(exc), exit_code=_USAGE_EXIT_CODE) from exc
     except ClassifierError as exc:
-        raise ConvertError(f"classifier unavailable: {exc}") from exc  # exit 1
+        raise ProviderResolutionError(flag="--classifier", spec=spec, body=str(exc), prefix="classifier unavailable") from exc
 
 
 def _resolve_judge(
@@ -204,16 +275,16 @@ def _resolve_judge(
     """
     if backend is not None and spec is not None:
         msg = "--backend and --judge are mutually exclusive: both choose the lead candidate"
-        raise ConvertError(msg, exit_code=_USAGE_EXIT_CODE)
+        raise ProviderResolutionError(flag="--judge", spec=spec, body=msg, exit_code=_USAGE_EXIT_CODE)
     if spec is None:
         return PreferredBackendJudge(backend) if backend is not None else None
     machine = MachineProfile(vram_budget_gb=environment.vram_budget_gb, gpu_usable=environment.gpu_usable)
     try:
         return resolve_judge(spec, machine=machine, preference=preference)
     except JudgeSpecError as exc:
-        raise ConvertError(str(exc), exit_code=_USAGE_EXIT_CODE) from exc
+        raise ProviderResolutionError(flag="--judge", spec=spec, body=str(exc), exit_code=_USAGE_EXIT_CODE) from exc
     except JudgeError as exc:
-        raise ConvertError(f"judge unavailable: {exc}") from exc  # exit 1
+        raise ProviderResolutionError(flag="--judge", spec=spec, body=str(exc), prefix="judge unavailable") from exc
 
 
 def read_source(path: Path, media_type: str) -> SourceDocument:
