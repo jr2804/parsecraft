@@ -202,6 +202,61 @@ def mixed_scanned_pdf(text_pages: Sequence[Sequence[str]] | None = None) -> byte
     return _assemble(objects)
 
 
+def code_pdf() -> bytes:
+    """Build a one-page PDF with prose and a positioned monospace code block.
+
+    The code sits in Courier at explicit x offsets, which is what a real code
+    listing looks like in a PDF: the text layer carries glyph positions, not
+    spaces. The block exercises layout recovery v1 end to end — relative
+    indentation (``return;`` two columns in), a wrapped declaration
+    (``unsigned long `` continuing on the next line), a terminated line that
+    must NOT be joined, and a closing brace that dedents.
+
+    Page 1 layout, top to bottom::
+
+        A paragraph of prose above the listing.
+        void f(void) {
+          return;
+        unsigned long mulMode;
+        }
+        A paragraph of prose below the listing.
+    """
+    objects: list[bytes] = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        (
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {_PDF_PAGE_WIDTH} {_PDF_PAGE_HEIGHT}] "
+            f"/Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 4 0 R >>"
+        ).encode("ascii"),
+    ]
+    stream = _code_page_content()
+    objects.append(f"<< /Length {len(stream)} >>\nstream\n".encode("ascii") + stream + b"\nendstream")
+    objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+    objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>")
+    return _assemble(objects)
+
+
+def _code_page_content() -> bytes:
+    """Content stream: prose in Helvetica, code in Courier at explicit offsets."""
+    prose = _PDF_FONT_SIZE
+    code = 10
+    #: (font, size, x, y, text) — y decreases down the page.
+    items: tuple[tuple[str, int, int, int, str], ...] = (
+        ("F1", prose, 72, 720, "A paragraph of prose above the listing."),
+        ("F2", code, 72, 700, "void f(void) {"),
+        ("F2", code, 84, 688, "return;"),
+        ("F2", code, 72, 676, "unsigned long "),
+        ("F2", code, 84, 664, "mulMode; "),
+        ("F2", code, 72, 652, "}"),
+        ("F1", prose, 72, 620, "A paragraph of prose below the listing."),
+    )
+    commands = ["BT"]
+    for font, size, x, y, text in items:
+        commands.append(f"/{font} {size} Tf 1 0 0 1 {x} {y} Tm ({_escape_pdf_text(text)}) Tj")
+    commands.append("ET")
+    return "\n".join(commands).encode("latin-1", "replace")
+
+
 def _assemble(objects: Sequence[bytes]) -> bytes:
     """Wrap numbered objects into a PDF with an exact xref table (byte-identical per call)."""
     out = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")

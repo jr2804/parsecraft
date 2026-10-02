@@ -27,6 +27,12 @@ HEAVY_IMAGE_COUNT = 5
 FEATURE_TABLE_CODE = "feature:tables"
 FEATURE_EQUATIONS_CODE = "feature:equations"
 FEATURE_FIGURES_CODE = "feature:figures"
+#: Convert-time feature code (pc-0uv): the page's text is significantly
+#: monospace, so the IR carries CODE chunks and the projection fences them.
+#: ``analyze()`` runs on pypdf alone and sees no fonts, so this code reaches the
+#: IR but never the planner — no intent rule consumes it, and code pages keep
+#: routing NATIVE, which is correct.
+FEATURE_CODE_CODE = "feature:code"
 
 
 #: Degradation codes: mojibake vs thin content mean different things downstream.
@@ -61,7 +67,9 @@ INTENT_RULES: tuple[IntentRule, ...] = (
     ),
 )
 
-FEATURE_CODES: frozenset[str] = frozenset({FEATURE_TABLE_CODE, FEATURE_EQUATIONS_CODE, FEATURE_FIGURES_CODE})
+#: The closed set of feature codes: the three above are planner hints
+#: (:func:`extract_hints`), ``FEATURE_CODE_CODE`` is IR-only for now.
+FEATURE_CODES: frozenset[str] = frozenset({FEATURE_TABLE_CODE, FEATURE_EQUATIONS_CODE, FEATURE_FIGURES_CODE, FEATURE_CODE_CODE})
 
 
 class FeatureHints(BaseModel):

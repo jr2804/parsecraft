@@ -14,8 +14,9 @@ tests, and keep the 100% coverage gate green.
   tests install in `sys.modules`; it records constructor kwargs, so endpoint
   injection (`base_url`, `api_key`, `timeout`) is asserted, not assumed.
 - `fixtures/documents.py` — deterministic synthetic document generators
-  (.txt/.md/.csv/.json/.html + a minimal PDF built from stdlib bytes, plus an
-  image-only-first-page scan PDF for mixed-OCR fixtures).
+  (.txt/.md/.csv/.json/.html + a minimal PDF built from stdlib bytes, an
+  image-only-first-page scan PDF for mixed-OCR fixtures, and `code_pdf()` — a
+  positioned Courier listing for layout recovery).
 - `fixtures/sources.py` + `fixtures/sources.toml` — public test-document
   manifest: license, URL, why suitable, documented local download step, plus
   corpus expectations as data (`difficulty`, `pages`, `approx_size`,
@@ -29,6 +30,10 @@ tests, and keep the 100% coverage gate green.
   classifier seam and its pdf-inspector provider (`pdf_inspector` stubbed
   through `sys.modules`; the live 1-based indexing test skips without the
   extra).
+- `test_native_code_layout.py` — layout recovery v1 (pc-0uv): font
+  classification, vendor-dictionary mapping, paragraph/CODE grouping,
+  indentation and wrapped-line joins as pure unit tests, plus two
+  `importorskip` integration tests that need the AGPL `pdf` extra.
 - `test_providers_typesafe_ai.py` — the System One judge family against the
   offline SDK stub: spec/credential/extra failures, endpoint injection, the
   distribution-as-ranking contract, the `(intent, candidates)` memo, machine

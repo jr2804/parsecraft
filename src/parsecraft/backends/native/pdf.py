@@ -20,9 +20,9 @@ from parsecraft.backends.native._common import (
     DependencyUnavailableError,
     NativeBackendBase,
     PdfInspection,
-    paragraph_chunks,
     source_bytes,
 )
+from parsecraft.backends.native.code_layout import PageText, build_chunks
 from parsecraft.backends.protocol import (
     AnalysisResult,
     BackendCapabilities,
@@ -50,7 +50,7 @@ class _PdfInspectImpl(Protocol):
 class _PdfTextImpl(Protocol):
     """What this backend needs from the PyMuPDF extraction module."""
 
-    def page_texts(self, data: bytes) -> list[str]: ...
+    def page_layouts(self, data: bytes) -> list[PageText]: ...
 
 
 class PdfBackend(NativeBackendBase):
@@ -137,8 +137,9 @@ def _extract_pdf(source: SourceDocument, data: bytes) -> list[PageResult]:
     except ImportError as exc:
         raise DependencyUnavailableError(_PDF_TEXT_MODULE, "pdf") from exc
     pages: list[PageResult] = []
-    for number, text in enumerate(impl.page_texts(data), start=1):
-        pages.append(PageResult(page_number=number, blocks=paragraph_chunks("native-pdf", number, text)))
+    for number, page in enumerate(impl.page_layouts(data), start=1):
+        layout = build_chunks(page, page_number=number)
+        pages.append(PageResult(page_number=number, blocks=layout.chunks, diagnostics=layout.diagnostics))
     return pages
 
 

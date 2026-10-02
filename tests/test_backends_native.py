@@ -29,6 +29,7 @@ from parsecraft.backends.native._common import (
     source_bytes,
     split_paragraphs,
 )
+from parsecraft.backends.native.code_layout import PageText, page_text
 from parsecraft.backends.protocol import (
     BackendConfig,
     ConversionRequest,
@@ -499,8 +500,9 @@ def test_pdf_convert_missing_pymupdf_yields_typed_failure(monkeypatch: pytest.Mo
 def test_pdf_convert_with_fake_extraction_impl(monkeypatch: pytest.MonkeyPatch) -> None:
     class FakeImpl:
         @staticmethod
-        def page_texts(data: bytes) -> list[str]:
-            return ["first page block\n", "second page\n\nline two"]
+        def page_layouts(data: bytes) -> list[PageText]:
+            # Two pages of prose: one line, then a blank-line-separated pair.
+            return [_page("first page block"), _page("second page", "", "line two")]
 
     def loader(name: str) -> Any:
         if name == _PDF_TEXT_MODULE:
@@ -517,6 +519,28 @@ def test_pdf_convert_with_fake_extraction_impl(monkeypatch: pytest.MonkeyPatch) 
     assert result.failures == []
 
 
+def _page(*texts: str) -> PageText:
+    """A page of 12 pt single-span lines; an empty entry leaves a blank line.
+
+    Blank lines carry no glyphs, so the text layer shows them only as extra
+    vertical space — which is exactly what this helper models.
+    """
+    lines: list[dict[str, object]] = []
+    y = 10.0
+    for text in texts:
+        if not text:
+            y += 24.0  # one blank line of vertical space
+            continue
+        lines.append(
+            {
+                "bbox": (0.0, y, 100.0, y + 12.0),
+                "spans": [{"font": "Helvetica", "size": 12.0, "bbox": (0.0, y, 100.0, y + 12.0), "text": text}],
+            }
+        )
+        y += 12.0
+    return page_text({"blocks": [{"type": 0, "lines": lines}]})
+
+
 def _contents(result: Any, page: int = 1) -> list[str]:
     return [block.content for block in result.pages[page - 1].blocks]
 
@@ -528,8 +552,21 @@ def test_pdf_text_impl_module_loads_with_fake_pymupdf(monkeypatch: pytest.Monkey
         def __init__(self, text: str) -> None:
             self._text = text
 
-        def get_text(self) -> str:
-            return self._text
+        def get_text(self, kind: str) -> dict[str, object]:
+            assert kind == "dict"  # extraction hands over geometry, not plain text
+            return {
+                "blocks": [
+                    {
+                        "type": 0,
+                        "lines": [
+                            {
+                                "bbox": (0.0, 0.0, 40.0, 12.0),
+                                "spans": [{"font": "Helvetica", "size": 12.0, "bbox": (0.0, 0.0, 40.0, 12.0), "text": self._text}],
+                            }
+                        ],
+                    }
+                ]
+            }
 
     class FakeDocument:
         def __init__(self) -> None:
@@ -542,20 +579,18 @@ def test_pdf_text_impl_module_loads_with_fake_pymupdf(monkeypatch: pytest.Monkey
         def close() -> None:
             closed.append(True)
 
-    def fake_open(*, stream: bytes, filetype: str) -> FakeDocument:
-        assert stream.startswith(b"%PDF")
-        assert filetype == "pdf"
-        return FakeDocument()
-
     class FakePymupdf:
         @staticmethod
         def open(*, stream: bytes, filetype: str) -> FakeDocument:
-            return fake_open(stream=stream, filetype=filetype)
+            assert stream.startswith(b"%PDF")
+            assert filetype == "pdf"
+            return FakeDocument()
 
     monkeypatch.setitem(sys.modules, "pymupdf", FakePymupdf)
     monkeypatch.delitem(sys.modules, "parsecraft.backends.native.pdf_text", raising=False)
     impl = cast(Any, importlib.import_module("parsecraft.backends.native.pdf_text"))
-    assert impl.page_texts(b"%PDF-fake") == ["alpha", "beta"]
+    layouts = impl.page_layouts(b"%PDF-fake")
+    assert [line.text for page in layouts for line in page.lines] == ["alpha", "beta"]
     assert closed == [True]
 
 

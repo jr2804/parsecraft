@@ -19,7 +19,11 @@ Four entry-point backends, each a light `factory` (descriptor + `__call__`):
   cancellation, budgets, timeout, typed `PassFailure`s), `source_bytes`,
   paragraph helpers, `PdfInspection`/`PageTextStats`, typed errors.
 - `pdf_inspect.py` — pypdf inspection (`pdf-lite`).
-- `pdf_text.py` — PyMuPDF extraction (`pdf`, AGPL — ADR-0003).
+- `pdf_text.py` — PyMuPDF extraction (`pdf`, AGPL — ADR-0003): maps each page's
+dictionary into typed positioned lines, nothing else.
+- `code_layout.py` — layout recovery v1 (pc-0uv): every rule that turns positioned
+lines into PARAGRAPH/CODE chunks. Light and pure, so it is unit-tested with the
+AGPL extra absent; `pdf_text` only hands it geometry.
 
 ## Local Contracts
 
@@ -43,9 +47,34 @@ Four entry-point backends, each a light `factory` (descriptor + `__call__`):
 - HTML parses structure only (headings/paragraphs/lists/tables/code/quotes);
   skipped markup (`script`/`style`/`head`/`title`) and empty blocks are
   recorded as INFO diagnostics, never silently dropped.
+- **Layout recovery v1** (pc-0uv) — `native-pdf` emits real `CODE` chunks, so the
+  Markdown projection fences code instead of burying it in prose:
+  - CODE is a run of consecutive **monospace-majority** lines (`LINE_CODE_RATIO`);
+    monospace is a font-name fact (`MONOSPACE_MARKERS` minus
+    `MONOSPACE_EXCLUSIONS` — `Monotype` contains "mono" and is proportional).
+  - Indentation is *relative to the block's leftmost glyph*, in estimated columns
+    (`SPACE_WIDTH_RATIO` × size, clamped). PDF positions glyphs: full column
+    reconstruction needs per-glyph advances and is deliberately out of scope.
+  - Wrapped lines join only when the next line is not dedented and the previous
+    one lacks a `STATEMENT_TERMINATORS` ending (the POLQA `unsigned long` +
+    `mulMode;` shape).
+  - PARAGRAPH behaviour is unchanged: a paragraph breaks on a blank line, whether
+    the text layer spells one or only leaves the vertical gap.
+  - A page whose CODE mass reaches `CODE_MASS_THRESHOLD` carries a `feature:code`
+    INFO diagnostic. That code is **IR-only**: `analyze()` runs on pypdf and sees
+    no fonts, so the planner cannot consume it and no intent rule exists — code
+    pages keep routing NATIVE.
+  - Determinism holds as everywhere else: same bytes → identical chunks.
+- `native-text`/`native-markdown`/`native-html` keep `paragraph_chunks`
+  (`_common.py`); only `native-pdf` goes through `code_layout`.
 - Synthetic PDF fixtures come from `tests/fixtures/documents.py` — no PDF
-  bytes are ever committed (ADR-0001 §8).
+  bytes are ever committed (ADR-0001 §8). `code_pdf()` is the positioned-code
+  fixture: prose plus a Courier listing at explicit x offsets.
 
 ## Verification
 
-`mise test` — `tests/test_backends_native.py` (100% coverage gate applies).
+`mise test` — `tests/test_backends_native.py` and
+`tests/test_native_code_layout.py` (100% coverage gate applies). The two
+integration tests in the latter need the AGPL `pdf` extra and therefore skip in
+the canonical light env; run them with
+`uv run --isolated --extra pdf --extra pdf-lite pytest -k code_block_is_fenced`.
