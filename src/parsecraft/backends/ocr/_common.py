@@ -60,6 +60,21 @@ RUNTIMES: tuple[str, ...] = ("transformers", "vllm")
 #: what guarantees the kwarg exists — no runtime fallback is needed.
 TOKENIZER_FIX_KWARGS: dict[str, object] = {"fix_mistral_regex": True}
 
+#: Per-page generation budget when the request names none (pc-c8t).
+#:
+#: Sized for a DENSE page: its Markdown runs to a few thousand characters, which
+#: is roughly a thousand tokens in this family's tokenizers — the pipeline's own
+#: default (256, undocumented) truncates such a page, and truncation is a
+#: correctness defect, not cosmetics. The cap only bounds a runaway: generation
+#: still stops at EOS. One number for both runtimes (``transformers`` and
+#: ``vllm``) so a page cannot get a different budget per runtime; a caller that
+#: wants a tighter or looser cap sets ``ConversionRequest.max_context_tokens``.
+#:
+#: Pinning it does NOT silence transformers' "Both `max_new_tokens` and
+#: `max_length` seem to have been set" advisory: that one comes from the
+#: pipeline's own generation config, not from us (pc-c8t attribution).
+DEFAULT_PAGE_MAX_NEW_TOKENS = 2048
+
 #: One page transcription: raster bytes + generation cap → page text.
 type Transcriber = Callable[[bytes, int | None], str]
 
@@ -563,11 +578,15 @@ def transformers_transcriber(pipe: ImageTextPipeline, *, prompt: str, image_extr
     The pipeline's image loader accepts URLs, base64, paths, or PIL images —
     but NOT raw bytes (verified against transformers 5.17) — so each raster is
     decoded to a PIL image first.
+
+    The generation budget is ALWAYS passed: falling back to the pipeline's own
+    default would make the page budget an upstream implementation detail
+    (see :data:`DEFAULT_PAGE_MAX_NEW_TOKENS`).
     """
 
     def transcribe(image: bytes, max_new_tokens: int | None) -> str:
-        generation: dict[str, object] = {} if max_new_tokens is None else {"max_new_tokens": max_new_tokens}
-        text = extract_generated(pipe(text=prompt, images=pil_image(image, extra=image_extra), **generation))
+        budget = DEFAULT_PAGE_MAX_NEW_TOKENS if max_new_tokens is None else max_new_tokens
+        text = extract_generated(pipe(text=prompt, images=pil_image(image, extra=image_extra), max_new_tokens=budget))
         # The pipeline echoes the templated prompt inside generated_text (verified
         # live on OvisOCR2 + transformers 5.17); removeprefix is a no-op if absent.
         return text.removeprefix(prompt)
@@ -585,7 +604,8 @@ def vllm_transcriber(
     """Bind a prompt to a vLLM engine: image bytes → page text (``runtime='vllm'``)."""
 
     def transcribe(image: bytes, max_new_tokens: int | None) -> str:
-        sampling = module.SamplingParams(max_tokens=max_new_tokens or 2048, temperature=0.0)
+        budget = DEFAULT_PAGE_MAX_NEW_TOKENS if max_new_tokens is None else max_new_tokens
+        sampling = module.SamplingParams(max_tokens=budget, temperature=0.0)
         request: list[dict[str, object]] = [{"prompt": prompt, "multi_modal_data": {"image": pil_image(image, extra=image_extra)}}]
         outputs = engine.generate(request, sampling)
         return str(outputs[0].outputs[0].text)

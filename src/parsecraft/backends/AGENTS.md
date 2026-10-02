@@ -52,6 +52,13 @@ registration + Python entry points) without editing this package.
 - `ConversionRequest` carries all bounds (page range, timeout, cancellation,
   output/context budgets) — backends must honor them or return a typed
   `PassFailure`.
+- **Per-page generation budget is pinned, never inherited from the pipeline**
+  (pc-c8t): both transcribers pass
+  `_common.DEFAULT_PAGE_MAX_NEW_TOKENS` when the request names no
+  `max_context_tokens`, because the transformers pipeline's own default is an
+  undocumented implementation detail and 256 of them truncates a dense page.
+  One number for both runtimes so a page cannot get a different budget per
+  runtime.
 - **Tokenizer/processor loads of VLM backends go through
   `backends/ocr/_common.tokenizer_load_kwargs()`** (pc-scr): it carries the
   corrections every tokenizer needs, currently `fix_mistral_regex=True` — several

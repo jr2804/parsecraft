@@ -1111,8 +1111,7 @@ def test_transformers_transcriber_strips_the_echoed_prompt_and_binds_budget(pil:
     first_image = pipe.calls[0]["images"]
     assert isinstance(first_image, _ImageStub)
     assert first_image.payload == _PNG
-    assert pipe.calls[0] == {"text": "PROMPT\n", "images": first_image}
-    assert "max_new_tokens" not in pipe.calls[0]
+    assert pipe.calls[0] == {"text": "PROMPT\n", "images": first_image, "max_new_tokens": _common.DEFAULT_PAGE_MAX_NEW_TOKENS}
     assert pipe.calls[1]["max_new_tokens"] == 256
 
 
@@ -1158,6 +1157,19 @@ def test_vllm_transcriber_drives_the_engine(vllm_stub: _VllmStub, pil: _PilImage
     assert requests[0]["prompt"] == "PAGE PROMPT"
     assert sampling.kwargs["max_tokens"] == 128
     assert sampling.kwargs["temperature"] == 0.0
+
+
+def test_vllm_transcriber_pins_the_page_budget_when_the_request_names_none(vllm_stub: _VllmStub, pil: _PilImageStub) -> None:
+    """Both runtimes share ONE default budget, so a page cannot differ per runtime."""
+    transcriber = _common.vllm_transcriber(
+        vllm_stub.engine,
+        module=cast("ModuleType", vllm_stub),
+        prompt="PAGE PROMPT",
+        image_extra="ocr-ovis",
+    )
+    assert transcriber(_PNG, None) == "vllm stub page text"
+    _, sampling = vllm_stub.engine.calls[0]
+    assert sampling.kwargs["max_tokens"] == _common.DEFAULT_PAGE_MAX_NEW_TOKENS
 
 
 @pytest.mark.parametrize(
