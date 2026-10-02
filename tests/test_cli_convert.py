@@ -267,6 +267,63 @@ def test_convert_auto_json_emits_ir(tmp_path: Path, registry: BackendRegistry) -
     assert payload["pages"][0]["blocks"][0]["content"] == "converted paragraph"
 
 
+def test_convert_output_flag_writes_byte_identical_projection(tmp_path: Path, registry: BackendRegistry) -> None:
+    """-o writes exactly what stdout would have received; absent -o is unchanged."""
+    _register(registry, _descriptor("native-text", ("text/plain",)), content="converted paragraph")
+    source = _source_file(tmp_path)
+    to_stdout = runner.invoke(app, ["convert", str(source)])
+    assert to_stdout.exit_code == 0
+
+    target = tmp_path / "out.md"
+    target.write_text("stale bytes", encoding="utf-8")  # truncates like '>' redirection
+    to_file = runner.invoke(app, ["convert", str(source), "-o", str(target)])
+    assert to_file.exit_code == 0
+    assert to_file.output == ""  # the sink switch moves ALL output, stdout stays empty
+    assert target.read_text(encoding="utf-8") == to_stdout.output
+    assert "stale bytes" not in target.read_text(encoding="utf-8")
+
+
+def test_convert_output_json_composes(tmp_path: Path, registry: BackendRegistry) -> None:
+    """-o composes with --json: the JSON DocumentResult lands in the file."""
+    _register(registry, _descriptor("native-text", ("text/plain",)), content="converted paragraph")
+    target = tmp_path / "ir.json"
+    result = runner.invoke(app, ["convert", str(_source_file(tmp_path)), "--json", "-o", str(target)])
+    assert result.exit_code == 0
+    payload = json.loads(target.read_text(encoding="utf-8"))
+    assert payload["metadata"]["page_count"] == 1
+
+
+def test_convert_output_missing_directory_is_usage_error(tmp_path: Path, registry: BackendRegistry) -> None:
+    """No auto-create: a missing parent dir is a fail-fast usage error (exit 2)."""
+    _register(registry, _descriptor("native-text", ("text/plain",)), content="converted paragraph")
+    missing = tmp_path / "not-there"
+    target = missing / "out.md"
+    result = runner.invoke(app, ["convert", str(_source_file(tmp_path)), "-o", str(target)])
+    assert result.exit_code == 2
+    text = _text(result)
+    assert str(missing) in text
+    assert "create it first" in text
+    assert not target.exists()  # nothing was converted or written
+
+
+def test_convert_output_write_failure_is_typed_error(tmp_path: Path, registry: BackendRegistry, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A real write failure is a typed exit-1 error, never a raw traceback."""
+    _register(registry, _descriptor("native-text", ("text/plain",)), content="converted paragraph")
+    source = _source_file(tmp_path)  # create BEFORE the patch — the source must stay writable
+    target = tmp_path / "out.md"
+
+    def _deny(self: Path, *args: object, **kwargs: object) -> None:
+        raise PermissionError("disk says no")
+
+    monkeypatch.setattr(Path, "write_text", _deny)
+    result = runner.invoke(app, ["convert", str(source), "-o", str(target)])
+    assert result.exit_code == 1
+    text = _text(result)
+    assert "cannot write" in text
+    assert str(target) in text
+    assert not target.exists()
+
+
 def test_convert_no_auto_requires_backend(tmp_path: Path, registry: BackendRegistry) -> None:
     _register(registry, _descriptor("native-text", ("text/plain",)))
     result = runner.invoke(app, ["convert", str(_source_file(tmp_path)), "--no-auto"])

@@ -125,11 +125,19 @@ def convert(
     max_passes: Annotated[int, typer.Option("--max-passes", min=1, help="Fallback passes per page group")] = 1,
     no_ocr: Annotated[bool, typer.Option("--no-ocr", help="Forbid OCR backends")] = False,
     use_cache: Annotated[bool, typer.Option("--cache/--no-cache", help="Reuse a content-addressed conversion cache")] = False,
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", dir_okay=False, help="Write the result to PATH (UTF-8) instead of stdout; the directory must already exist"),
+    ] = None,
     verbose: args.VerboseFlag = False,
 ) -> None:
     """Convert a document through the auto-mode pipeline."""
     if not auto and backend is None:
         typer.echo("error: --no-auto requires --backend", err=True)
+        raise typer.Exit(code=2)
+    if output is not None and not output.parent.is_dir():
+        # Fail fast as a usage error: never spend minutes converting into a path that cannot be written.
+        typer.echo(f"error: output directory does not exist: {output.parent} (create it first)", err=True)
         raise typer.Exit(code=2)
     try:
         with verbosity.third_party_output(verbose=verbose):
@@ -146,7 +154,15 @@ def convert(
     except ConvertError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=exc.exit_code) from exc
-    typer.echo(render(document, as_json=as_json))
+    rendered = render(document, as_json=as_json)
+    if output is None:
+        typer.echo(rendered)
+        return
+    try:
+        output.write_text(f"{rendered}\n", encoding="utf-8")  # byte-identical to what typer.echo prints above
+    except OSError as exc:
+        typer.echo(f"error: cannot write {output}: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
 
 
 def inspect(

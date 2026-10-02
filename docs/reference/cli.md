@@ -98,9 +98,11 @@ parsecraft convert SOURCE [OPTIONS]
 | `--preference AXIS` | `balanced` | Ranking axis inside the eligible family: `speed`, `balanced`, or `quality`. Reachable in auto mode with or without `--judge`; ignored by `--backend`, which already names the lead |
 | `--json` | off | Emit the IR as JSON instead of the Markdown projection |
 | `--cache` / `--no-cache` | `--no-cache` | Reuse a content-addressed conversion cache |
+| `--output`, `-o PATH` | unset | Write the result to `PATH` (UTF-8) instead of stdout, truncating like `>` redirection; the parent directory must already exist — a missing one exits `2` before any conversion starts |
 
 Output is the Markdown projection (`parsecraft.ir.markdown.to_markdown`) or the
-`DocumentResult` as JSON (`--json`). Supported suffixes come from the public
+`DocumentResult` as JSON (`--json`) — printed to stdout, or written to `PATH`
+with `--output`/`-o` (which leaves stdout empty). Supported suffixes come from the public
 `parsecraft.pipeline.MEDIA_TYPES` map: the text family (`.txt`, `.text`, `.md`,
 `.markdown`, `.html`, `.htm`, `.rst`, `.tex`, `.log`, `.ini`, `.cfg`, `.toml`,
 `.sh`, `.py`, `.c`, `.cc`, `.cpp`, `.h`, `.hpp`) plus `.pdf`, `.jpg`, `.jpeg`,
@@ -178,7 +180,8 @@ System One judge, whose Choice question carries the axis verbatim.
 Exit codes: `0` success, `1` analysis or routing failure, `2` usage error
 (unsupported suffix, missing file, `--no-auto` without `--backend`, a `--backend`
 that is not eligible for the source, a malformed `--judge`/`--classifier` spec,
-an invalid `--preference` value, or `--backend` combined with `--judge`). A missing optional backend dependency
+an invalid `--preference` value, a missing `--output` directory, or `--backend`
+combined with `--judge`). A missing optional backend dependency
 also exits `1` with an actionable `optional dependency missing: …` message, and
 a conversion in which **every** pass failed exits `1` with
 `conversion produced no content: every pass failed for all N page(s) …` naming
