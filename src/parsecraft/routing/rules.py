@@ -67,10 +67,6 @@ INTENT_RULES: tuple[IntentRule, ...] = (
     ),
 )
 
-#: The closed set of feature codes: the three above are planner hints
-#: (:func:`extract_hints`), ``FEATURE_CODE_CODE`` is IR-only for now.
-FEATURE_CODES: frozenset[str] = frozenset({FEATURE_TABLE_CODE, FEATURE_EQUATIONS_CODE, FEATURE_FIGURES_CODE, FEATURE_CODE_CODE})
-
 
 class FeatureHints(BaseModel):
     """Document-level hints distilled from analysis diagnostics/signals."""

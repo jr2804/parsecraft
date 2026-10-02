@@ -284,7 +284,7 @@ environment. OpenRouter serves the same contract at `POST /api/alpha/decisions`
 (typesafe-sdk issue #7, closed on that expectation), so OpenRouter is
 unwired until then.
 
-### Classifier spec — OCR-need facts
+### Classifier spec: OCR-need facts
 
 **Status:** current, at library and CLI level.
 
