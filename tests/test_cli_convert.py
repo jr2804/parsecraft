@@ -46,60 +46,104 @@ runner = CliRunner()
 
 
 class _StubBackend:
-    def __init__(self, name: str, capabilities: BackendCapabilities, content: str) -> None:
+    def __init__(
+        self,
+        name: str,
+        capabilities: BackendCapabilities,
+        content: str,
+        *,
+        pages: int = 1,
+        convert_error: Exception | None = None,
+        fail_on_page: int | None = None,
+    ) -> None:
         self.name = name
         self.capabilities = capabilities
         self._content = content
+        self._pages = pages
+        self._convert_error = convert_error
+        self._fail_on_page = fail_on_page
 
     def convert(self, request: ConversionRequest) -> BackendResult:
+        numbers = self._requested_pages(request)
+        if self._convert_error is not None:
+            raise self._convert_error
+        if self._fail_on_page is not None and self._fail_on_page in numbers:
+            raise BackendError(f"stub cannot convert page {self._fail_on_page}")
         return BackendResult(
             backend=BackendRef(name=self.name, version="0.0.0"),
             pages=[
                 PageResult(
-                    page_number=1,
+                    page_number=number,
                     blocks=[
                         StructuredChunk(
-                            id=f"{self.name}-1-0",
+                            id=f"{self.name}-{number}-0",
                             kind=ChunkKind.PARAGRAPH,
                             content=self._content,
-                            page_number=1,
+                            page_number=number,
                             reading_order=0,
                         )
                     ],
                 )
+                for number in numbers
             ],
             elapsed_s=0.0,
         )
 
-    @staticmethod
-    def analyze(source: SourceDocument) -> AnalysisResult:
+    def analyze(self, source: SourceDocument) -> AnalysisResult:
         data = source.content or b""
         chars = len(data)
         return AnalysisResult(
             source_hash=hashlib.sha256(data).hexdigest(),
-            page_count=1,
+            page_count=self._pages,
             signals=[
                 PageSignal(
-                    page_number=1,
+                    page_number=page,
                     has_native_text=chars >= 40,
                     text_chars=chars,
                     image_count=0,
                     blank=chars == 0,
                 )
+                for page in range(1, self._pages + 1)
             ],
         )
 
+    @staticmethod
+    def _requested_pages(request: ConversionRequest) -> list[int]:
+        page_range = request.page_range
+        if page_range is None:
+            return [1]
+        return list(range(page_range.start, page_range.end + 1))
+
 
 class _StubFactory:
-    def __init__(self, descriptor: BackendDescriptor, *, content: str = "stub content", fail: bool = False) -> None:
+    def __init__(
+        self,
+        descriptor: BackendDescriptor,
+        *,
+        content: str = "stub content",
+        fail: bool = False,
+        pages: int = 1,
+        convert_error: Exception | None = None,
+        fail_on_page: int | None = None,
+    ) -> None:
         self.descriptor = descriptor
         self._content = content
         self._fail = fail
+        self._pages = pages
+        self._convert_error = convert_error
+        self._fail_on_page = fail_on_page
 
     def __call__(self, config: BackendConfig) -> DocumentBackend:
         if self._fail:
             raise BackendError("stub factory failed")
-        return _StubBackend(self.descriptor.name, self.descriptor.capabilities, self._content)
+        return _StubBackend(
+            self.descriptor.name,
+            self.descriptor.capabilities,
+            self._content,
+            pages=self._pages,
+            convert_error=self._convert_error,
+            fail_on_page=self._fail_on_page,
+        )
 
 
 # ── --classifier / --judge spec flags ─────────────────────────────────────────
@@ -344,6 +388,23 @@ def test_convert_no_ocr_flag(tmp_path: Path, registry: BackendRegistry) -> None:
     assert result.exit_code == 0
 
 
+def test_convert_projection_survives_a_codepage_stdout(tmp_path: Path, registry: BackendRegistry) -> None:
+    """pc-edn: a glyph outside the platform codepage must not fail the conversion.
+
+    A redirected Windows stdout defaults to cp1252, where U+25AA raised
+    UnicodeEncodeError and lost the whole projection; the CLI boundary now forces
+    UTF-8, so the character arrives intact. The runner's ``charset`` reproduces
+    that stdout on every platform.
+    """
+    _register(registry, _descriptor("native-text", ("text/plain",)), content="bullet \u25aa and \u201equote\u201c")
+    source = _source_file(tmp_path, text=f"{_LONG_TEXT}\n")
+
+    result = CliRunner(charset="cp1252").invoke(app, ["convert", str(source)])
+
+    assert result.exit_code == 0, result.output
+    assert "bullet \u25aa and \u201equote\u201c".encode() in result.stdout_bytes
+
+
 # ── unusable-GPU warning ─────────────────────────────────────────────────
 
 
@@ -512,6 +573,67 @@ def test_convert_backend_and_judge_are_mutually_exclusive(pdf_registry: Path) ->
     assert "mutually exclusive" in _text(result)
 
 
+def test_convert_total_pass_failure_is_not_an_empty_success(registry: BackendRegistry, tmp_path: Path) -> None:
+    """Every pass failing is exit 1 with a diagnosis — never an empty document and exit 0.
+
+    Regression pin for the defect the POLQA manual exposed: a PDF whose converter
+    extra is missing (analyzer present, converter absent) used to convert into
+    empty pages and report success.
+    """
+    _register(
+        registry,
+        _descriptor("native-text", ("text/plain",)),
+        convert_error=DependencyUnavailableError("parsecraft.backends.native.text_impl", "text"),
+    )
+    source = str(_source_file(tmp_path))
+    result = runner.invoke(app, ["convert", source])
+    assert result.exit_code == 1
+    text = _text(result)
+    assert "produced no content" in text
+    assert "dependency_missing in native-text" in text
+    assert "install the 'text' extra" in text  # the extra is named
+    assert "stub content" not in text  # and no document is rendered
+    assert runner.invoke(app, ["convert", source, "--json"]).exit_code == 1  # same verdict as JSON
+
+
+def test_convert_reports_the_no_content_failure_on_stderr(registry: BackendRegistry, tmp_path: Path) -> None:
+    """The diagnosis reaches the console once — stdout stays empty, nothing is rendered."""
+    _register(
+        registry,
+        _descriptor("native-text", ("text/plain",)),
+        convert_error=DependencyUnavailableError("parsecraft.backends.native.text_impl", "text"),
+    )
+    result = runner.invoke(app, ["convert", str(_source_file(tmp_path))])
+    assert result.exit_code == 1
+    assert "produced no content" in (result.stderr or "")
+    assert "<!-- page 1 -->" not in result.output  # nothing was rendered: no page markers
+
+
+def test_convert_partial_page_failure_stays_a_success(registry: BackendRegistry, tmp_path: Path) -> None:
+    """A document with content AND a failed page is degraded, not failed: exit 0.
+
+    Pages dispatch alone here (the stub is range-incapable), so page 2 forms its
+    own group, fails, and keeps its per-page warning — while the document stays a
+    successful conversion with page 1's content.
+    """
+    _register(
+        registry,
+        _descriptor("native-text", ("text/plain",)),
+        content="page content",
+        pages=2,
+        fail_on_page=2,
+    )
+    result = runner.invoke(app, ["convert", str(_source_file(tmp_path)), "--json"])
+    assert result.exit_code == 0
+    payload = cast("dict[str, object]", json.loads(result.output))
+    assert cast("dict[str, object]", payload["metadata"])["page_count"] == 2
+    pages = cast("list[dict[str, object]]", payload["pages"])
+    assert cast("list[dict[str, object]]", pages[0]["blocks"])  # page 1 converted
+    assert [d["code"] for d in cast("list[dict[str, object]]", pages[0]["diagnostics"])] == []
+    assert [d["code"] for d in cast("list[dict[str, object]]", pages[1]["diagnostics"])] == ["pipeline-all-passes-failed"]
+    assert payload["quality"] == []  # no document-level failure verdict
+
+
 def test_judge_seam_is_not_gated_by_the_offline_constraint(registry: BackendRegistry, tmp_path: Path) -> None:
     """`offline` excludes model-asset backends; naming a judge IS the network opt-in.
 
@@ -604,8 +726,27 @@ def _descriptor(
     )
 
 
-def _register(registry: BackendRegistry, descriptor: BackendDescriptor, *, content: str = "stub content", fail: bool = False) -> None:
-    registry.register(descriptor.name, _StubFactory(descriptor, content=content, fail=fail))
+def _register(
+    registry: BackendRegistry,
+    descriptor: BackendDescriptor,
+    *,
+    content: str = "stub content",
+    fail: bool = False,
+    pages: int = 1,
+    convert_error: Exception | None = None,
+    fail_on_page: int | None = None,
+) -> None:
+    registry.register(
+        descriptor.name,
+        _StubFactory(
+            descriptor,
+            content=content,
+            fail=fail,
+            pages=pages,
+            convert_error=convert_error,
+            fail_on_page=fail_on_page,
+        ),
+    )
 
 
 @pytest.fixture

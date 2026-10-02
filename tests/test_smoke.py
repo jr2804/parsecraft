@@ -28,7 +28,7 @@ from parsecraft.backends import (
 )
 from parsecraft.backends.errors import BackendLoadError
 from parsecraft.backends.protocol import AnalysisResult, PageSignal
-from parsecraft.cli import commands
+from parsecraft.cli import commands, output
 from parsecraft.cli.app import app
 
 _runner = CliRunner()
@@ -107,6 +107,77 @@ class _NoFormatsFactory:
 
 def test_commands_share_the_process_default_registry() -> None:
     assert commands.default_registry is default_registry
+
+
+def test_cp1252_stdout_rejects_a_non_codepage_glyph() -> None:
+    """The control: this is the failure class the CLI must not inherit."""
+    stream, _ = _cp1252_stream()
+    with pytest.raises(UnicodeEncodeError, match="charmap"):
+        stream.write("\u25aa")
+
+
+def test_ensure_utf8_streams_switches_a_codepage_stream(monkeypatch: pytest.MonkeyPatch) -> None:
+    stdout, stdout_bytes = _cp1252_stream()
+    stderr, _ = _cp1252_stream()
+    monkeypatch.setattr(sys, "stdout", stdout)
+    monkeypatch.setattr(sys, "stderr", stderr)
+
+    output.ensure_utf8_streams()
+
+    assert output._is_utf8(stdout.encoding)
+    assert output._is_utf8(stderr.encoding)
+    assert stdout.write("\u25aa") == 1  # no UnicodeEncodeError
+    stdout.flush()
+    assert stdout_bytes.getvalue() == "\u25aa".encode()  # the glyph, preserved as UTF-8
+
+
+# ── Output encoding (pc-edn) ────────────────────────────────────────────────
+
+
+def _cp1252_stream() -> tuple[io.TextIOWrapper, io.BytesIO]:
+    """A stdout the way Windows gives it to a redirected CLI: the legacy codepage.
+
+    Returns the wrapper plus the raw buffer behind it, so a test can read the
+    bytes the platform would have received.
+    """
+    raw = io.BytesIO()
+    return io.TextIOWrapper(raw, encoding="cp1252", errors="strict", newline=""), raw
+
+
+def test_ensure_utf8_streams_leaves_a_utf8_stream_untouched(monkeypatch: pytest.MonkeyPatch) -> None:
+    stream = io.TextIOWrapper(io.BytesIO(), encoding="utf-8", errors="surrogateescape", newline="")
+    monkeypatch.setattr(sys, "stdout", stream)
+    monkeypatch.setattr(sys, "stderr", stream)
+    output.ensure_utf8_streams()
+    assert stream.errors == "surrogateescape"  # never rewrite a stream we do not need to
+
+
+def test_ensure_utf8_streams_ignores_streams_without_reconfigure(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "stdout", io.StringIO())
+    monkeypatch.setattr(sys, "stderr", io.StringIO())
+    output.ensure_utf8_streams()  # a replaced stream is not ours to fix
+
+
+def test_ensure_utf8_streams_tolerates_a_refusing_stream(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Refusing:
+        encoding = "cp1252"
+
+        @staticmethod
+        def reconfigure(**_kwargs: object) -> None:
+            msg = "I/O operation on closed file"
+            raise ValueError(msg)
+
+    monkeypatch.setattr(sys, "stdout", Refusing())
+    monkeypatch.setattr(sys, "stderr", Refusing())
+    output.ensure_utf8_streams()  # detached/closed: keep the default, never raise
+
+
+def test_ensure_utf8_streams_accepts_encoding_spellings() -> None:
+    assert output._is_utf8("utf-8")
+    assert output._is_utf8("UTF8")
+    assert output._is_utf8("utf_8")
+    assert not output._is_utf8("cp1252")
+    assert not output._is_utf8(None)
 
 
 def test_version_short_flag_matches_long_flag() -> None:

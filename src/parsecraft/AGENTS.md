@@ -32,7 +32,11 @@ Markdown as a deterministic projection.
   `benchmark/AGENTS.md`).
 - `cli/` — Typer CLI; commands are plain functions in `commands.py`,
   registered in `app.py` (never decorators in `commands.py`, never import
-  `app` there — circular import breaks pyreorder).
+  `app` there — circular import breaks pyreorder). `output.py` owns the one
+  output-encoding policy: `app._callback` forces UTF-8 on stdout/stderr before
+  every command, because a document's glyphs (U+25AA in a projection) crashed a
+  redirected cp1252 stdout and lost the conversion; file writes pass
+  `encoding="utf-8"` explicitly at their own call sites.
 - `__about__.py` — package metadata; `__version__` re-exported from
   `parsecraft.__init__` (distribution metadata, fallback `0.0.0`).
 - `py.typed` — PEP 561 marker; must stay in the wheel

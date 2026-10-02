@@ -6,7 +6,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 import typer
 
-from parsecraft.cli import commands
+from parsecraft.cli import commands, output
 
 app = typer.Typer(
     name="parsecraft",
@@ -63,6 +63,7 @@ def _callback(
     ),
 ) -> None:
     """Document intelligence: align existing converters, parsers, and OCR/VLM models behind one workflow and one typed output format"""
+    output.ensure_utf8_streams()  # one encoding policy for every command's output
     if version:
         typer.echo(_get_version())
         raise typer.Exit()
