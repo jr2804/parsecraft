@@ -72,7 +72,10 @@ TOKENIZER_FIX_KWARGS: dict[str, object] = {"fix_mistral_regex": True}
 #:
 #: Pinning it does NOT silence transformers' "Both `max_new_tokens` and
 #: `max_length` seem to have been set" advisory: that one comes from the
-#: pipeline's own generation config, not from us (pc-c8t attribution).
+#: pipeline's own generation config, not from us (pc-c8t attribution). It is
+#: cosmetic by upstream's own precedence rule — our `max_new_tokens` takes
+#: precedence over the config's `max_length=20`, so the effective page cap is
+#: this value.
 DEFAULT_PAGE_MAX_NEW_TOKENS = 2048
 
 #: One page transcription: raster bytes + generation cap → page text.
