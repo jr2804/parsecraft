@@ -130,7 +130,7 @@ A page needs OCR when it is blank, has no native text, has fewer than
 `MAX_REPLACEMENT_RATIO`. An optional classifier can add OCR-need for a page
 (`PageSignal.classifier_needs_ocr is True`) but never remove it: a `text_based`
 verdict cannot force a page that fails the tests above onto `NATIVE` (see
-[auto routing](auto-routing.md#classifier-spec--ocr-need-facts)). The OCR
+[auto routing](auto-routing.md#classifier-spec-ocr-need-facts)). The OCR
 flavor comes from document-level diagnostics
 (`feature:tables`, `feature:equations`, `feature:figures`) or from
 `sum(image_count) >= HEAVY_IMAGE_COUNT`:
