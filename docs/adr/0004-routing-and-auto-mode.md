@@ -182,6 +182,29 @@ subject to A1–A4. The requirement "a no-heuristic LLM path must be
 configurable" is met by spec-string resolution (`provider/model[:variant]`)
 on both seams; the heuristic path remains the default when no spec is given.
 
+### A8. The judge ranks with page context — authority refinement, not a boundary move (2026-10-02 amendment)
+
+User decision: the System One judge is the PRIMARY ranking driver; the
+deterministic judge remains the no-spec fallback. This refines d3–d5 without
+moving any rail:
+
+- For OCR-needy pages the judge state MAY carry bounded page context: the
+  rule-table flavor label (`OCR_TABLES`/`OCR_VISION`/`OCR_GENERAL`), the
+  document-level `FeatureHints`, and class-level page facts (blank,
+  needs-OCR) — in addition to intent, candidate capabilities, machine,
+  preference. Still no document content, still bounded (d5).
+- The judge's ordering stays fully authoritative WITHIN the family. The code
+  rails are untouched: OCR-need is code/classifier-owned and augment-only
+  (A2), a NATIVE page is never led by OCR (`_validate_native_fallbacks`),
+  eligibility is never delegated (d3).
+- Flavor-specialized candidates MAY declare OCR flavor capabilities; the
+  planner uses declarations to narrow or label — never to admit what the
+  rules rejected.
+- Memoization contract: per-page-variable facts must not enter the judge
+  state without entering the memo key; document-level facts (hints, machine,
+  preference) are constant per plan and stay out of it (machine/preference
+  precedent).
+
 ### Alternatives considered (classifier attachment)
 
 - **Enrich `native-pdf.analyze()` with the classifier.** Rejected: the same
