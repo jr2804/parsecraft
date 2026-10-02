@@ -23,12 +23,14 @@ _ABSENT_CUDA_VALUES = frozenset({"None", "''", '""'})
 
 #: Declared map: extra name -> import packages whose presence proves it installed.
 EXTRA_IMPORTS: dict[str, tuple[str, ...]] = {
+    "docling": ("docling",),
     "download": ("huggingface_hub",),
     "liteparse": ("liteparse",),
     "ocr-ovis": ("transformers",),
     "ocr-qianfan": ("transformers",),
     "ocr-tele": ("transformers",),
     "ocr-unlimited": ("transformers",),
+    "pandoc": ("pypandoc",),
     "pdf": ("pymupdf",),
     "pdf-inspector": ("pdf_inspector",),
     "pdf-lite": ("pypdf",),
@@ -36,6 +38,14 @@ EXTRA_IMPORTS: dict[str, tuple[str, ...]] = {
     "vllm": ("vllm",),
     "web": ("httpx",),
 }
+
+#: Extras with nothing to import: they exist to pull other extras in (a
+#: self-referential *meta* extra). Detectability is not a property of them —
+#: installing one installs the extras it names, and those are detected
+#: individually — so they must never appear in ``EXTRA_IMPORTS``. Declared here
+#: so the "every declared extra is either import-detectable or explicitly meta"
+#: contract stays checkable (``tests/test_environment.py``).
+META_EXTRAS: frozenset[str] = frozenset({"auto"})
 
 _OFFLINE_ENV = "PARSECRAFT_OFFLINE"
 _OFFLINE_TRUE_VALUES = frozenset({"1", "true", "yes"})

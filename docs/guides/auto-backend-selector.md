@@ -90,6 +90,10 @@ parsecraft convert report.pdf --judge zen/jev-1.13-free     # cloud, OPENCODE_AP
 parsecraft convert report.pdf --judge typesafe-ai/jev-latest # cloud, TYPESAFE_API_KEY
 ```
 
+Both provider extras install in one step: `pip install "parsecraft[auto]"`
+(the `systemone` judge stack plus the `pdf-inspector` classifier). It carries no
+PDF or OCR backend — add those separately.
+
 The spec is `provider/model[:variant]`: the provider token names **who serves**
 the model, the model token is the upstream model id, and a `:variant` is
 rejected rather than ignored. `parsecraft judges` is the live list — it reports

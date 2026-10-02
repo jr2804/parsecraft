@@ -64,6 +64,18 @@ The optional `vllm` extra is **Linux/WSL2-only**: its marker
 the vLLM runtime does not run there, so those backends use the default
 `transformers` runtime on Windows.
 
+### The `auto` convenience extra
+
+`parsecraft[auto]` is a **meta-extra**: it pulls in `parsecraft[systemone]`
+(the judge providers) and `parsecraft[pdf-inspector]` (the `--classifier`
+provider), so one install covers the whole auto-routing flags story. It adds no
+dependency of its own, and it deliberately does **not** include `pdf`/`pdf-lite`
+or any OCR backend extra — routing flags and PDF extraction are separate
+choices, and a convenience extra must not smuggle in a copyleft or GPU stack.
+Judge credentials still come from the environment (`TYPESAFE_API_KEY`,
+`OPENCODE_API_KEY`; the local Ollama endpoint needs none) — see
+`parsecraft judges`.
+
 A host whose installed `transformers` falls outside the shared window gets a
 typed `UnsupportedDependencyVersionError` before any model load — the detail
 names the package, the actual version, and the required range; it is never a

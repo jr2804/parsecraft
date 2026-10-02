@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 from subprocess import TimeoutExpired
 
@@ -18,7 +19,7 @@ from parsecraft.backends.protocol import (
 from parsecraft.environment import probe as probe_module
 from parsecraft.environment.constraints import constraints_from_environment
 from parsecraft.environment.models import EnvironmentInfo
-from parsecraft.environment.probe import EXTRA_IMPORTS, probe_environment
+from parsecraft.environment.probe import EXTRA_IMPORTS, META_EXTRAS, probe_environment
 from parsecraft.routing.models import RoutingConstraints, RoutingPreference
 
 #: The one module the probe looks up outside the extras map (CUDA runtime check).
@@ -261,6 +262,26 @@ def test_extra_imports_map_covers_the_declared_ocr_and_pdf_groups() -> None:
     for group in ("liteparse", "ocr-ovis", "ocr-tele", "ocr-unlimited", "ocr-qianfan", "pdf", "pdf-inspector", "pdf-lite"):
         assert group in EXTRA_IMPORTS
         assert EXTRA_IMPORTS[group]
+
+
+def test_every_declared_extra_is_detectable_or_explicitly_meta() -> None:
+    """The extras contract, in both directions and against pyproject itself.
+
+    A declared extra in neither map is undetectable — the planner would never
+    see it installed — and a stale ``META_EXTRAS`` name would hide that.
+    """
+    declared = set(_declared_extras())
+    assert declared, "pyproject declares no extras — the reader is wrong"
+    assert declared == set(EXTRA_IMPORTS) | META_EXTRAS
+    assert not set(EXTRA_IMPORTS) & META_EXTRAS  # a meta extra imports nothing
+    assert all(EXTRA_IMPORTS[group] for group in EXTRA_IMPORTS)  # every map entry is useful
+
+
+def _declared_extras() -> tuple[str, ...]:
+    """Extra names from pyproject.toml (the single source of truth)."""
+    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    return tuple(data["project"]["optional-dependencies"])
 
 
 # ── Offline flag and determinism ────────────────────────────────────────────────

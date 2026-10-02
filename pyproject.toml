@@ -71,6 +71,16 @@ ocr-unlimited = [
 # `load_judge` imports it via importlib, so it stays out of the core import path
 # and out of the dev/CI venv.
 systemone = ["typesafe-sdk>=0.7.2"]
+# Meta-extra: one install for the whole auto-routing flags story — the classifier
+# (`--classifier pdfinspector/detect_pdf`) and the judge providers (`--judge
+# typesafe-ai|zen|ollama`). Self-referential by design: it pulls in extras this
+# package already declares, so the parts stay independently installable and this
+# adds no dependency of its own. Deliberately NOT widened with `pdf`/`pdf-lite`
+# (or any OCR backend extra): routing flags and PDF extraction are separate
+# decisions, and a meta-extra must never smuggle in a copyleft or GPU stack.
+# Nothing imports it, so it has no `EXTRA_IMPORTS` entry — `META_EXTRAS` in
+# `environment/probe.py` records that distinction.
+auto = ["parsecraft[systemone]", "parsecraft[pdf-inspector]"]
 
 [project.entry-points."parsecraft.backends"]
 native-text = "parsecraft.backends.native.text:factory"

@@ -36,6 +36,22 @@ parsecraft backends
 
 Current version on [PyPI](https://pypi.org/project/parsecraft/).
 
+Optional features live in extras, and one of them is a shortcut:
+
+```bash
+pip install "parsecraft[auto]"        # the judge providers + the classifier provider
+parsecraft judges                     # provider tokens, credentials, extras
+```
+
+`auto` is a meta-extra that pulls in `parsecraft[systemone]` and
+`parsecraft[pdf-inspector]` for the `--judge` and `--classifier` flags. It does
+not include `pdf`/`pdf-lite` or any OCR backend, so pick those separately when
+you need PDF extraction. Judge credentials come from the environment
+(`TYPESAFE_API_KEY`, `OPENCODE_API_KEY`) — see
+[Backends](../reference/backends.md) for the full extras list and
+[Steer the auto-backend selector](../guides/auto-backend-selector.md) for the
+flags themselves.
+
 ## From source
 
 Use a checkout when contributing or testing unreleased changes. Clone and sync:
