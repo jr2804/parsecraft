@@ -103,11 +103,6 @@ class TextSpan(BaseModel):
 
     model_config = {"frozen": True}
 
-    @property
-    def width(self) -> float:
-        """Horizontal extent of the span."""
-        return max(self.x1 - self.x0, 0.0)
-
 
 class TextLine(BaseModel):
     """One text line: its vertical extent plus the spans it is made of."""
@@ -304,12 +299,14 @@ def is_monospace_font(name: str) -> bool:
 
 
 def _starts_paragraph(previous: TextLine | None, line: TextLine) -> bool:
-    """Whether the gap above ``line`` is a paragraph break rather than a line break."""
+    """Whether the gap above ``line`` is a paragraph break rather than a line break.
+
+    ``height`` cannot be zero: a line that reaches here carries text, so it has at
+    least one span, and ``TextSpan.size`` is validated ``> 0``.
+    """
     if previous is None:
         return False
     height = previous.height or line.height or line.size
-    if height <= 0:
-        return False
     return (line.y0 - previous.y1) > PARAGRAPH_GAP_RATIO * height
 
 

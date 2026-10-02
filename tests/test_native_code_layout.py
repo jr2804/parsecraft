@@ -384,6 +384,37 @@ def test_a_deeper_indented_continuation_is_joined() -> None:
     assert layout.chunks[0].content == "int total = a + b;"
 
 
+def test_an_empty_line_is_not_code() -> None:
+    """A hand-built line with no spans is not code (and not a crash)."""
+    layout = build_chunks(PageText(lines=(TextLine(y0=0.0, y1=10.0, spans=()),)), page_number=_PAGE, prefix=_PREFIX)
+    assert layout.chunks == []
+    assert layout.code_mass == 0.0
+
+
+def test_a_zero_height_line_falls_back_to_its_font_size() -> None:
+    """Degenerate geometry falls back to the font size, so no break is invented."""
+    flat = TextLine(y0=5.0, y1=5.0, spans=(_span("first", x0=40.0),))
+    also_flat = TextLine(y0=5.0, y1=5.0, spans=(_span("second", x0=40.0),))
+    layout = build_chunks(PageText(lines=(flat, also_flat)), page_number=_PAGE, prefix=_PREFIX)
+    assert [chunk.content for chunk in layout.chunks] == ["first second"]
+
+
+def test_a_whitespace_only_code_line_is_not_joined() -> None:
+    """A blank monospace line carries no text, so nothing is joined into it."""
+    layout = build_chunks(
+        _page(
+            _code_line("int a", y=0.0),
+            _code_line("   ", y=10.0),
+            _code_line("int b;", y=20.0),
+        ),
+        page_number=_PAGE,
+        prefix=_PREFIX,
+    )
+    # The blank line is dropped from the block; the two statements stay separate
+    # because "int a" was unterminated but the join target carried no text.
+    assert layout.chunks[0].content == "int a\nint b;"
+
+
 # ── Diagnostics ─────────────────────────────────────────────────────────────
 
 
