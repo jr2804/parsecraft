@@ -294,6 +294,35 @@ def test_partial_failure_is_a_successful_document_not_a_pipeline_failure(monkeyp
     assert document.quality == []  # nothing document-level to report
 
 
+def test_an_empty_but_converted_document_is_not_a_pipeline_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No content and no failure records: a legitimate empty conversion, not a failure.
+
+    The predicate keys on the all-passes-failed warning, never on emptiness plus a
+    page count — otherwise a source whose pages convert to nothing would exit 1.
+    """
+    registry = make_registry(monkeypatch)
+    add_stub(registry, make_descriptor("native-a"), convert_fn=empty_ok)
+    result = execute(make_analysis(2), registry, make_constraints(max_passes=1), make_source(), produced_at=PRODUCED)
+    document = result.document
+
+    assert document.pages
+    assert all(page.blocks == [] for page in document.pages)
+    assert all(page.diagnostics == [] for page in document.pages)
+    assert pipeline_failure(document) is None
+    assert document.quality == []
+
+
+def empty_ok(request: ConversionRequest, name: str) -> BackendResult:
+    """Convert to pages that genuinely carry no blocks and no failure."""
+    page_range = request.page_range
+    numbers = list(range(page_range.start, page_range.end + 1)) if page_range is not None else [1]
+    return BackendResult(
+        backend=BackendRef(name=name, version=_VERSION),
+        pages=[PageResult(page_number=number) for number in numbers],
+        elapsed_s=0.01,
+    )
+
+
 def fail_on_second_page(request: ConversionRequest, name: str) -> BackendResult:
     page_range = request.page_range
     if page_range is not None and page_range.start == 2:

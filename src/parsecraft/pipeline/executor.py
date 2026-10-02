@@ -390,17 +390,6 @@ def _exception_failure(
     return failure, elapsed
 
 
-def _failure_detail(exc: BackendError) -> str:
-    """Failure text — the exception's own words, so every path reads the same.
-
-    ``DependencyUnavailableError`` already names the missing extra; a backend
-    that returns a failure record instead of raising uses the same text, so no
-    path gets a different hint (the command that installs it is deliberately not
-    appended here — that would make this path disagree with the others).
-    """
-    return str(exc)
-
-
 def _result_failure(
     result: BackendResult,
     name: str,
