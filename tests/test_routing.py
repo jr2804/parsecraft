@@ -713,6 +713,29 @@ def test_no_degradation_when_ocr_family_is_available() -> None:
     assert "degraded to native" not in page.reason
 
 
+def test_docling_extra_makes_the_backend_routable() -> None:
+    # ff741ad regression pin: the docling extra was declared in pyproject but
+    # absent from EXTRA_IMPORTS, so the probe could never report it installed
+    # and the planner silently dropped the backend even when the extra was
+    # present. Eligibility must follow the installed extra, not the map.
+    signal = make_signal(1, text_chars=120)
+    descriptors = [make_desc("native-text"), make_desc("docling", ALL_FORMATS, group="docling")]
+
+    routed = plan_route(
+        make_analysis([signal], 1),
+        descriptors,
+        full_constraints(formats={"text/plain"}, installed_extras={"docling"}),
+    )
+    assert "docling" in routed.pages[0].candidates  # eligible: the extra is installed
+
+    unrouted = plan_route(
+        make_analysis([signal], 1),
+        descriptors,
+        full_constraints(formats={"text/plain"}, installed_extras=set()),
+    )
+    assert "docling" not in unrouted.pages[0].candidates
+
+
 def test_can_degrade_requires_a_non_ocr_backend() -> None:
     signal = make_signal(1, text_chars=34)
     assert can_degrade_to_native(signal, [make_desc("native-text")]) is True
