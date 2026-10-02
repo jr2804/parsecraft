@@ -43,8 +43,14 @@ a `DocumentResult` with `TraceEntry` records — no silent drops.
   trace), or the page-number check. Every attempt emits one `PassAttempt`
   AND `TraceEntry` (`status` ↔ `failure` bijective; `pass_kind` NATIVE for
   native intent, VISUAL for OCR; `settings={"intent": ...}`).
-- Exhaustion is loud, not silent: `winner=None` and every page of the group
-  gets a `WARNING` diagnostic `pipeline-all-passes-failed`.
+- Exhaustion is loud, not silent, on two levels: `winner=None`, every page of
+  the group gets a `WARNING` diagnostic `pipeline-all-passes-failed` (the
+  per-page record), and when **no** page of the document produced a block the
+  document gains one `QualitySignal` of the same name with `page_number=None`.
+  `pipeline_failure(document)` reads that verdict back (a partial degradation —
+  some pages with content — is deliberately *not* a failure), and such a failed
+  document is never written to the cache: a missing extra is environment state,
+  not a property of the content.
 - One backend instance at a time (8 GB VRAM ceiling): instances are created
   per attempt and dropped (`del backend`) before the next one — no pool.
   Marked with a `ponytail:` comment at the creation site.

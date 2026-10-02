@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Sequence
 from datetime import datetime
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _dist_version
@@ -50,6 +51,8 @@ from parsecraft.routing import (
 from parsecraft.routing.models import PageRoute
 
 #: Placeholder diagnostic emitted when every candidate of a group failed.
+#: The same code names the document-level quality signal, so one greppable name
+#: covers the per-page record and the whole-document verdict.
 ALL_PASSES_FAILED_CODE = "pipeline-all-passes-failed"
 
 
@@ -81,6 +84,12 @@ def execute(
     fields are runtime measurements). Heavy imports happen only inside
     ``registry.create`` — the instantiation boundary.
 
+    A document no page of which could be converted is still returned, but it
+    carries one document-level quality signal naming the diagnosis
+    (:func:`pipeline_failure` reads it back), so callers can fail loudly instead
+    of shipping an empty success. Such a document is never written to ``cache``:
+    a missing extra is environment state, not a property of the content.
+
     ``cache`` (default ``None`` = exactly the previous behaviour) is keyed on
     source bytes + registry fingerprint + canonical constraints + effective
     judge identity: a hit returns the stored ``DocumentResult`` without any
@@ -92,7 +101,7 @@ def execute(
     key = _cache_key(source, registry, constraints, judge) if cache is not None else None
     if cache is not None and key is not None:
         cached = cache.get(key)
-        if cached is not None:
+        if cached is not None and pipeline_failure(cached) is None:
             return PipelineResult(document=cached, plan=plan, groups=_planned_groups(plan, registry))
     pages: list[PageResult] = []
     trace: list[TraceEntry] = []
@@ -112,10 +121,59 @@ def execute(
         produced_at=produced_at if produced_at is not None else utcnow(),
         package_version=_package_version(),
     )
-    document = DocumentResult(metadata=metadata, pages=pages, trace=trace, quality=_quality_from_plan(plan))
-    if cache is not None and key is not None:
+    document = DocumentResult(metadata=metadata, pages=pages, trace=trace, quality=_document_quality(plan, pages, trace))
+    if cache is not None and key is not None and pipeline_failure(document) is None:
         cache.put(key, document)
     return PipelineResult(document=document, plan=plan, groups=groups)
+
+
+def pipeline_failure(document: DocumentResult) -> PassFailure | None:
+    """The failure that left the whole document empty, or ``None``.
+
+    A document counts as failed only when no page produced a single block **and**
+    every page carries the all-passes-failed warning. So a source whose pages
+    legitimately convert to nothing is not a failure, and a partial degradation
+    (some pages with content, some without) is not one either — that stays a
+    successful document with a warning.
+
+    Derived from the document alone rather than from ``PipelineResult.groups``,
+    because a cache hit records plan-shaped groups with no attempts; the document
+    carries its own verdict either way.
+    """
+    return _total_failure(document.pages, document.trace)
+
+
+def _document_quality(
+    plan: RoutingPlan,
+    pages: Sequence[PageResult],
+    trace: Sequence[TraceEntry],
+) -> list[QualitySignal]:
+    """Plan degradations plus, when nothing converted, one document-level diagnosis."""
+    quality = _quality_from_plan(plan)
+    failure = _total_failure(pages, trace)
+    if failure is not None:
+        quality.append(_all_passes_failed_signal(failure, len(pages)))
+    return quality
+
+
+def _total_failure(pages: Sequence[PageResult], trace: Sequence[TraceEntry]) -> PassFailure | None:
+    """``pipeline_failure`` over the raw pieces, for the aggregator that has no document yet."""
+    if not pages or any(page.blocks for page in pages):
+        return None
+    flagged = all(any(diagnostic.code == ALL_PASSES_FAILED_CODE for diagnostic in page.diagnostics) for page in pages)
+    if not flagged:
+        return None
+    return next((entry.failure for entry in trace if entry.failure is not None), None)
+
+
+def _all_passes_failed_signal(failure: PassFailure, page_count: int) -> QualitySignal:
+    """One document-level quality signal stating the diagnosis once (``page_number=None``)."""
+    return QualitySignal(
+        name=ALL_PASSES_FAILED_CODE,
+        score=0.0,
+        detail=f"all {page_count} page(s) failed: {failure.code.value} in {failure.backend}: {failure.detail}",
+        page_number=None,
+    )
 
 
 def _cache_key(
@@ -330,6 +388,17 @@ def _exception_failure(
         occurred_at=utcnow(),
     )
     return failure, elapsed
+
+
+def _failure_detail(exc: BackendError) -> str:
+    """Failure text — the exception's own words, so every path reads the same.
+
+    ``DependencyUnavailableError`` already names the missing extra; a backend
+    that returns a failure record instead of raising uses the same text, so no
+    path gets a different hint (the command that installs it is deliberately not
+    appended here — that would make this path disagree with the others).
+    """
+    return str(exc)
 
 
 def _result_failure(

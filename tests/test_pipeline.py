@@ -51,6 +51,7 @@ from parsecraft.pipeline import (
     choose_analyzer,
     execute,
     media_type_for,
+    pipeline_failure,
 )
 from parsecraft.pipeline.executor import ALL_PASSES_FAILED_CODE
 from parsecraft.routing import Intent, RoutingConstraints, RoutingError
@@ -207,10 +208,6 @@ def test_fallback_on_convert_raising_backend_error(monkeypatch: pytest.MonkeyPat
     assert "convert exploded" in group.attempts[0].failure.detail
 
 
-def boom(request: ConversionRequest, name: str) -> BackendResult:
-    raise BackendError("convert exploded")
-
-
 def test_fallback_on_wrong_pages(monkeypatch: pytest.MonkeyPatch) -> None:
     registry = make_registry(monkeypatch)
     add_stub(registry, make_descriptor("native-a"), convert_fn=wrong_pages)
@@ -253,6 +250,77 @@ def test_all_candidates_fail_is_loud_not_silent(monkeypatch: pytest.MonkeyPatch)
         assert [d.code for d in page.diagnostics] == [ALL_PASSES_FAILED_CODE]
         assert page.diagnostics[0].level is DiagnosticLevel.WARNING
     assert all(entry.status is PassStatus.FAILED for entry in document.trace)
+
+
+def test_total_failure_records_one_document_signal_and_reads_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An empty document says why ONCE at document level, and ``pipeline_failure`` finds it."""
+    registry = make_registry(monkeypatch)
+    add_stub(
+        registry,
+        make_descriptor("native-pdf"),
+        create_error=DependencyUnavailableError("parsecraft.backends.native.pdf_text", "pdf"),
+    )
+    result = execute(make_analysis(2), registry, make_constraints(max_passes=1), make_source(), produced_at=PRODUCED)
+    document = result.document
+
+    assert [signal.name for signal in document.quality] == [ALL_PASSES_FAILED_CODE]
+    signal = document.quality[0]
+    assert signal.page_number is None  # document level, not one whisper per page
+    assert signal.score == 0.0
+    assert signal.detail is not None
+    assert "dependency_missing in native-pdf" in signal.detail
+    assert "install the 'pdf' extra" in signal.detail  # the fix is named once, at document level
+
+    failure = pipeline_failure(document)
+    assert failure is not None
+    assert failure.code is FailureCode.DEPENDENCY_MISSING
+    assert failure.backend == "native-pdf"
+    # the per-page record stays for machine consumers
+    assert all([d.code for d in page.diagnostics] == [ALL_PASSES_FAILED_CODE] for page in document.pages)
+
+
+def test_partial_failure_is_a_successful_document_not_a_pipeline_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """One page converted, one page failed: degraded (exit 0), not a document failure."""
+    registry = make_registry(monkeypatch)
+    add_stub(registry, make_descriptor("native-a", ranges=False, multi=False), convert_fn=fail_on_second_page)
+    result = execute(make_analysis(2), registry, make_constraints(max_passes=1), make_source(), produced_at=PRODUCED)
+    document = result.document
+
+    assert pipeline_failure(document) is None
+    assert [page.page_number for page in document.pages] == [1, 2]
+    assert document.pages[0].blocks  # page 1 converted
+    assert document.pages[1].blocks == []
+    assert [d.code for d in document.pages[1].diagnostics] == [ALL_PASSES_FAILED_CODE]
+    assert document.quality == []  # nothing document-level to report
+
+
+def fail_on_second_page(request: ConversionRequest, name: str) -> BackendResult:
+    page_range = request.page_range
+    if page_range is not None and page_range.start == 2:
+        raise BackendError("page 2 exploded")
+    return echo_ok(request, name)
+
+
+def test_a_total_failure_is_never_cached(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A missing extra is environment state, not content: a failed document is not cacheable."""
+    registry = make_registry(monkeypatch)
+    calls = add_stub(registry, make_descriptor("native-a"), convert_fn=boom)
+    store = ConversionCache(root=tmp_path / "conversions")
+    for _ in range(2):
+        result = execute(
+            make_analysis(1),
+            registry,
+            make_constraints(max_passes=1),
+            make_source(),
+            produced_at=PRODUCED,
+            cache=store,
+        )
+        assert pipeline_failure(result.document) is not None
+    assert len(calls) == 2  # neither served from cache nor stored: every run dispatches
+
+
+def boom(request: ConversionRequest, name: str) -> BackendResult:
+    raise BackendError("convert exploded")
 
 
 def test_all_reported_failures_reach_the_trace(monkeypatch: pytest.MonkeyPatch) -> None:

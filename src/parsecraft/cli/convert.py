@@ -24,7 +24,8 @@ from parsecraft.cache import ConversionCache
 from parsecraft.cli.errors import CliError
 from parsecraft.environment import EnvironmentInfo, constraints_from_environment, cuda_runtime_note, probe_environment
 from parsecraft.ir import DocumentResult, to_markdown
-from parsecraft.pipeline import execute
+from parsecraft.ir.models import PassFailure
+from parsecraft.pipeline import execute, pipeline_failure
 from parsecraft.pipeline.analysis import (
     NoAnalyzerError,
     UnsupportedSourceError,
@@ -126,11 +127,26 @@ def convert_source(
     constraints = build_constraints(media_type, max_passes=max_passes, allow_ocr=allow_ocr, environment=environment, preference=preference)
     try:
         cache = ConversionCache() if use_cache else None
-        return execute(analysis, registry, constraints, source, resolved_judge, cache=cache).document
+        pipeline = execute(analysis, registry, constraints, source, resolved_judge, cache=cache)
     except JudgeViolationError as exc:
         raise ConvertError(f"backend {backend!r} is not eligible for this source: {exc}", exit_code=_USAGE_EXIT_CODE) from exc
     except (NoEligibleBackendError, RoutingError) as exc:
         raise ConvertError(f"routing failed: {exc}") from exc
+    failure = pipeline_failure(pipeline.document)
+    if failure is not None:
+        raise ConvertError(no_content_message(failure, pipeline.document))  # exit 1
+    return pipeline.document
+
+
+def no_content_message(failure: PassFailure, document: DocumentResult) -> str:
+    """Diagnosis for a document no page of which converted — never an empty success.
+
+    The failure detail already names what is missing (a backend's
+    ``DependencyUnavailableError`` text carries the extra and the command that
+    installs it), so it is relayed verbatim rather than re-parsed.
+    """
+    pages = document.metadata.page_count
+    return f"conversion produced no content: every pass failed for all {pages} page(s) ({failure.code.value} in {failure.backend}) — {failure.detail}"
 
 
 def warn_unusable_gpu(environment: EnvironmentInfo) -> None:

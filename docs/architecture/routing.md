@@ -270,7 +270,11 @@ A group merges contiguous pages only when the chosen backend declares both
 `supports_page_ranges` and `supports_multi_page`; otherwise each page converts
 alone. When every candidate fails, each page gets a placeholder `PageResult`
 with a `pipeline-all-passes-failed` warning diagnostic (constant
-`ALL_PASSES_FAILED_CODE`) — no silent drops.
+`ALL_PASSES_FAILED_CODE`) — no silent drops. If *no* page of the document
+produced a block, the document also carries one `QualitySignal` of the same
+name (`page_number=None`) and `pipeline_failure(document)` reports the verdict,
+so `parsecraft convert` exits `1` with the diagnosis instead of returning an
+empty document — a document with *some* content stays a success.
 
 ## Judge seam
 
