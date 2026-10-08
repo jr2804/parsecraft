@@ -10,7 +10,7 @@ bun = "latest"
 "ty" = "latest"
 "rumdl" = "latest"
 "pypi:pyreorder" = "latest"
-"pipx:codespell" = "latest"
+"pypi:codespell" = "latest"
 
 # CLI tools rg and tree-cli -> use `rg --files | tree-cli --fromfile` to get a nice tree view of the project files
 ripgrep = "latest"
