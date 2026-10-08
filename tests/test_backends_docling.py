@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import os
 import re
 import sys
 import time
@@ -19,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from parsecraft.backends.docling import docling as docling_module
+from parsecraft.backends.docling.libreoffice import LIBREOFFICE_ENV
 from parsecraft.backends.errors import BackendError, DependencyUnavailableError
 from parsecraft.backends.protocol import BackendConfig, BackendResult, ConversionRequest, DocumentBackend, SourceDocument
 from parsecraft.ir.models import ChunkKind, FailureCode, PageRange, PassKind
@@ -377,6 +379,20 @@ def test_source_bytes_reads_local_files_and_wraps_errors(tmp_path: Path, docling
     assert impl.source_bytes(SourceDocument(uri=target.absolute().as_uri())) == b"hello"
     with pytest.raises(BackendError, match="cannot read source"):
         impl.source_bytes(SourceDocument(uri=(tmp_path / "missing.txt").absolute().as_uri()))
+
+
+@pytest.fixture(autouse=True)
+def _isolate_libreoffice_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Keep ``DOCLING_LIBREOFFICE_CMD`` out of this module — and out of the suite.
+
+    ``create()`` calls ``configure_libreoffice_env()``, which writes the process
+    environment on purpose (docling reads that variable). Without this, a host
+    that HAS LibreOffice leaks the value past the test that set it, and later
+    tests inherit a declaration they never made.
+    """
+    monkeypatch.delenv(LIBREOFFICE_ENV, raising=False)
+    yield
+    os.environ.pop(LIBREOFFICE_ENV, None)
 
 
 @pytest.fixture

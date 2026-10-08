@@ -68,8 +68,11 @@ plus a bound-checked `convert()` that maps docling items to typed IR chunks.
 
 `mise test` — `tests/test_backends_docling.py` (offline; the heavy import is a
 stub in `sys.modules`) and `tests/test_backends_docling_libreoffice.py` (pure
-stdlib, no extra needed). Live smoke: `uv pip install "docling>=2.130"` in a
-throwaway venv and convert a fixture PDF/HTML/Markdown.
+stdlib, no extra needed). Live smoke: `uv run --isolated --extra docling
+parsecraft convert FIXTURE` in a throwaway environment — dependencies are never
+installed with `uv pip install`, the project routes dependency changes through
+`uv add` (root rule), and `--isolated --extra` is the idiom for exercising a
+real conversion.
 
 On-demand measurement (never part of `mise test`/CI, resumable):
 `mise run bench-docling` / `scripts/bench_docling.py`; results live in

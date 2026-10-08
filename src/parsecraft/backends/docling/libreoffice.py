@@ -75,10 +75,15 @@ def configure_libreoffice_env() -> bool:
     """Point docling at the discovered LibreOffice; ``False`` when there is none.
 
     Docling reads ``DOCLING_LIBREOFFICE_CMD`` from the process environment, so
-    setting it is the entire integration — no docling API takes the path. Never
-    raises: office formats are deliberately NOT in ``supported_formats``, so a
-    host without LibreOffice still converts PDF, HTML, Markdown and plain text.
-    An operator's own value is never overwritten.
+    setting it is the entire integration — no docling API takes the path. A
+    missing LibreOffice is not a failure: office formats are deliberately NOT in
+    ``supported_formats``, so a host without it still converts PDF, HTML,
+    Markdown and plain text. An operator's own value is never overwritten.
+
+    The scan cannot raise either: :meth:`pathlib.Path.is_file` reports ``False``
+    on ``OSError`` and :meth:`pathlib.Path.glob` suppresses them outright on
+    3.13+, the project's floor — so "never raises" rests on those documented
+    behaviours rather than on swallowed errors.
     """
     found = find_libreoffice_cmd()
     if found is None:
