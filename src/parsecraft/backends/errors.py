@@ -55,3 +55,16 @@ class UnsupportedDependencyVersionError(BackendError):
         self.actual = actual
         self.expected = expected
         super().__init__(f"{package}=={actual} does not satisfy the required range {expected!r} — pip install '{package}{expected}'")
+
+
+class UnsupportedFormatError(BackendError):
+    """A backend cannot handle the source's media format.
+
+    Raised (not recorded as a PassFailure) so callers get a typed, inspectable
+    signal before any heavy work begins. The pipeline executor catches
+    ``BackendError`` uniformly; this subclass names the *why* precisely.
+    """
+
+    def __init__(self, media_type: str) -> None:
+        self.media_type = media_type
+        super().__init__(f"backend does not support format: {media_type!r}")

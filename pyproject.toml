@@ -81,6 +81,10 @@ systemone = ["typesafe-sdk>=0.7.2"]
 # Nothing imports it, so it has no `EXTRA_IMPORTS` entry — `META_EXTRAS` in
 # `environment/probe.py` records that distinction.
 auto = ["parsecraft[systemone]", "parsecraft[pdf-inspector]"]
+# Marker PDF→Markdown backend. Apache-2.0 wrapper + OpenRAIL-M restricted
+# weights (Surya). Opt-in extra per ADR-0006; install only where the licence
+# and the weight cap are acceptable for your use case.
+marker = ["marker-pdf>=2.0.0"]
 
 [project.entry-points."parsecraft.backends"]
 native-text = "parsecraft.backends.native.text:factory"
@@ -91,6 +95,7 @@ liteparse = "parsecraft.backends.liteparse.liteparse:factory"
 pandoc = "parsecraft.backends.pandoc.pandoc:factory"
 docling = "parsecraft.backends.docling.docling:factory"
 pdf-inspector = "parsecraft.backends.pdf_inspector.pdf_inspector:factory"
+marker = "parsecraft.backends.marker.marker:factory"
 ocr-ovis = "parsecraft.backends.ocr.ovis:factory"
 ocr-tele = "parsecraft.backends.ocr.tele:factory"
 ocr-unlimited = "parsecraft.backends.ocr.unlimited:factory"
