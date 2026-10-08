@@ -12,6 +12,10 @@ plus a bound-checked `convert()` that maps docling items to typed IR chunks.
 
 - `docling.py` — light factory (`DoclingFactory`), `DOCLING_FORMATS`,
   `DESCRIPTOR`, `DOCLING_BACKEND_VERSION`. Imports no docling code.
+- `libreoffice.py` — LibreOffice discovery (`find_libreoffice_cmd`,
+  `resolve_libreoffice_cmd`, `configure_libreoffice_env`,
+  `LibreOfficeUnavailableError`); light and stdlib-only, so discovery is
+  testable without the `docling` extra.
 - `_impl.py` — heavy implementation (`DoclingBackend`, `create`); the only
   module that imports `docling`, `docling_core`, and `pypdfium2`.
 - `__init__.py` — package docstring only (entry point lives in `docling.py`).
@@ -26,6 +30,19 @@ plus a bound-checked `convert()` that maps docling items to typed IR chunks.
   load through `importlib.import_module` at instantiation, never inline
   (`pyreorder` would hoist an inline import to module level and break the
   offline-import gate).
+- **LibreOffice discovery (pc-ct9)** lives in `libreoffice.py` and follows the
+  environment-probe discipline: detect, never estimate. The operator's
+  `DOCLING_LIBREOFFICE_CMD` is taken VERBATIM (a declaration is a decision,
+  never probed); Windows then scans a bounded set of Program Files locations
+  (`LibreOffice*/program/soffice.exe` — two roots, one non-recursive listing
+  each, no drive-letter guessing); every other platform is PATH-only. Docling
+  reads that variable itself, so setting it is the entire wiring — `create()`
+  calls `configure_libreoffice_env()`, which never raises: no DECLARED format
+  needs LibreOffice (office formats stay undeclared until conversion-verified),
+  so a host without it still converts PDF/HTML/Markdown/text. Hosts asking for
+  LibreOffice explicitly get the typed `LibreOfficeUnavailableError`, naming the
+  environment variable. The Windows branch cannot run on a Linux CI runner
+  (memory #1127): tests drive it with a synthetic Program Files tree.
 - `supported_formats` lists only inputs **conversion-verified** against the
   real library (2026-09-28, docling 2.130.0): `application/pdf`,
   `text/html`, `text/markdown`, `text/plain`. docling also registers
@@ -50,7 +67,8 @@ plus a bound-checked `convert()` that maps docling items to typed IR chunks.
 ## Verification
 
 `mise test` — `tests/test_backends_docling.py` (offline; the heavy import is a
-stub in `sys.modules`). Live smoke: `uv pip install "docling>=2.130"` in a
+stub in `sys.modules`) and `tests/test_backends_docling_libreoffice.py` (pure
+stdlib, no extra needed). Live smoke: `uv pip install "docling>=2.130"` in a
 throwaway venv and convert a fixture PDF/HTML/Markdown.
 
 On-demand measurement (never part of `mise test`/CI, resumable):

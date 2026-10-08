@@ -30,6 +30,7 @@ from docling_core.types.doc.document import DoclingDocument, TableItem, TextItem
 from docling_core.types.io import DocumentStream  # ty: ignore[unresolved-import]
 
 from parsecraft.backends.docling.docling import DESCRIPTOR, DOCLING_BACKEND_VERSION
+from parsecraft.backends.docling.libreoffice import configure_libreoffice_env
 from parsecraft.backends.errors import BackendError
 from parsecraft.backends.protocol import (
     AnalysisResult,
@@ -128,6 +129,9 @@ class DoclingBackend:
 
 def create(config: BackendConfig) -> DocumentBackend:
     """Instantiate the backend — the sanctioned heavy-import boundary."""
+    # Docling reads DOCLING_LIBREOFFICE_CMD for its office path; discovery is
+    # best-effort and silent, because no declared format needs LibreOffice.
+    configure_libreoffice_env()
     return DoclingBackend(config)
 
 
