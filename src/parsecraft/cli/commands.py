@@ -30,12 +30,20 @@ from parsecraft.routing import RoutingPreference
 
 
 def backends(as_json: args.JsonFlag = False) -> None:
-    """List registered document backends."""
+    """List registered document backends.
+
+    ``--json`` carries each descriptor plus its derived ``suffixes`` (the
+    ``MEDIA_TYPES`` × ``supported_formats`` projection, installed extras only)
+    so hosts need not re-derive the join.
+    """
     descriptors = default_registry.list_backends()
     for name, error in sorted(default_registry.load_errors.items()):
         typer.echo(f"warning: backend {name!r} failed to load: {error}", err=True)
     if as_json:
-        payload = [descriptor.model_dump(mode="json") for descriptor in descriptors]
+        payload = [
+            {**descriptor.model_dump(mode="json"), "suffixes": sorted(default_registry.suffixes_for(descriptor))}
+            for descriptor in descriptors
+        ]
         typer.echo(json.dumps(payload, indent=2, sort_keys=True))
         return
     if not descriptors:

@@ -60,20 +60,27 @@ No backends registered.
 ```
 
 `--json` emits the descriptor list as JSON (`indent=2`, keys sorted). The list
-is `[]` when none are registered; the schema is `BackendDescriptor`:
+is `[]` when none are registered. Each entry is the `BackendDescriptor` plus the
+derived `suffixes` array (what this backend can ingest — see
+[Backends](backends.md#hosts-suffixes)), sorted, including only backends whose
+optional extra is installed:
 
 ```json
 [
   {
     "capabilities": {
       "estimated_vram_gb": null,
-      "optional_dependency_group": null,
       "gpu_requirement": 0.0,
-      "supported_formats": ["text"],
-      "supports_multi_page": true,
-      "supports_page_ranges": true
+      "languages": [],
+      "model_asset": null,
+      "optional_dependency_group": null,
+      "supported_formats": ["text/plain"],
+      "supports_multi_page": false,
+      "supports_page_ranges": false
     },
-    "name": "example-echo"
+    "name": "native-text",
+    "suffixes": [".cfg", ".ini", ".log", ".toml", ".txt"],
+    "version": "0.1.0"
   }
 ]
 ```

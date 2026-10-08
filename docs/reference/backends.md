@@ -114,6 +114,31 @@ it never excludes a language-agnostic backend (see
 | `ocr-ovis`, `ocr-unlimited`, `ocr-qianfan` | agnostic (multilingual) |
 | `pandoc`, `docling`, `pdf-inspector` | agnostic (no claim) |
 
+## Hosts: suffixes
+
+A host that fronts ParseCraft asks "which suffixes can this backend ingest?"
+instead of re-deriving the extension→MIME join. That projection is public:
+
+```python
+from parsecraft.backends import BackendDescriptor, default_registry
+
+default_registry.suffixes()                        # every ingestible suffix, installed backends only
+default_registry.suffixes(installed_only=False)    # ignore which extras are installed
+default_registry.suffixes_for(descriptor)          # one backend's suffixes
+default_registry.suffixes_for(descriptor, installed_only=False)
+```
+
+The result is a **projection**, never a second table: it is
+`pipeline.MEDIA_TYPES` joined with each descriptor's declared
+`supported_formats`, so a suffix exists only where the MIME table has it and a
+backend claims that MIME. `parsecraft backends --json` carries the same
+`suffixes` array per descriptor.
+
+The projection is the *declared* answer. GPU/VRAM/`--no-ocr` eligibility remains
+`routing.rules.is_hard_eligible`'s job — it needs a probed host — so a host that
+wants full eligibility joins this projection with that funnel rather than
+re-implementing it.
+
 ## Choosing a backend
 
 | Document trait | Route | Why |

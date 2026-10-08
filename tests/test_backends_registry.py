@@ -29,6 +29,7 @@ from parsecraft.backends import registry as registry_module
 from parsecraft.backends.errors import DependencyUnavailableError
 from parsecraft.backends.registry import BackendRegistry
 from parsecraft.ir.models import PageRange
+from parsecraft.pipeline.analysis import MEDIA_TYPES
 
 # ── Test doubles ─────────────────────────────────────────────────────────
 
@@ -413,3 +414,85 @@ def test_dependency_unavailable_error_is_public_and_typed() -> None:
     assert isinstance(error, BackendError)
     assert (error.module, error.extra) == ("some.module", "some-extra")
     assert str(error) == ("backend dependency 'some.module' is not installed — install the 'some-extra' extra")
+
+
+# ── Suffix projection (pc-53p) ───────────────────────────────────────────
+
+
+def test_suffixes_are_the_media_types_join_for_every_registered_descriptor() -> None:
+    """Contract: the helper IS the join of the two sources — for EVERY descriptor.
+
+    Computed here from scratch, independently of the helper, so a second table
+    sneaking into the registry fails this instead of passing itself.
+    """
+    descriptors = default_registry.list_backends()
+    assert descriptors, "the installed registry is empty — the contract test proves nothing"
+    for descriptor in descriptors:
+        expected = {
+            suffix
+            for suffix, media_type in MEDIA_TYPES.items()
+            if media_type in descriptor.capabilities.supported_formats
+        }
+        assert default_registry.suffixes_for(descriptor, installed_only=False) == expected, descriptor.name
+    union: set[str] = set()
+    for descriptor in descriptors:
+        union |= default_registry.suffixes_for(descriptor, installed_only=False)
+    assert default_registry.suffixes(installed_only=False) == union
+
+
+def test_suffixes_projection_never_leaks_unclaimed_suffixes() -> None:
+    """A suffix reaches the projection only via MEDIA_TYPES — there is no second table."""
+    registry = _isolated_registry()
+    text_only = _register(registry, "text-only", ("text/plain",))
+    assert registry.suffixes_for(text_only, installed_only=False) == {s for s, m in MEDIA_TYPES.items() if m == "text/plain"}
+    assert ".pdf" not in registry.suffixes_for(text_only, installed_only=False)
+    # A declared format with no MEDIA_TYPES entry contributes nothing (e.g. csv).
+    csv_only = _register(registry, "csv-only", ("text/csv",))
+    assert registry.suffixes_for(csv_only, installed_only=False) == set()
+
+
+def test_suffixes_installed_only_hides_backends_whose_extra_is_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """installed_only is the extra gate; the declared join is unaffected by the environment."""
+    registry = _isolated_registry()
+    gated = _register(registry, "gated", ("text/plain",), group="absent-extra")
+    assert registry.suffixes_for(gated, installed_only=False) != set()  # declared regardless
+    assert registry.suffixes_for(gated) == set()  # extra missing → no suffixes
+    monkeypatch.setattr("parsecraft.environment.probe.extra_present", lambda group: group == "absent-extra")
+    assert registry.suffixes_for(gated) != set()
+    assert registry.suffixes() != set()
+
+
+def _isolated_registry() -> BackendRegistry:
+    """A registry with discovery pre-satisfied, so only explicit fakes exist."""
+    registry = BackendRegistry()
+    registry._entry_points_loaded = True  # noqa: SLF001 — the suite's isolation idiom
+    return registry
+
+
+class _DescriptorFactory:
+    """Factory double built around one descriptor (suffix-projection tests)."""
+
+    def __init__(self, descriptor: BackendDescriptor) -> None:
+        self.descriptor = descriptor
+
+    def __call__(self, config: BackendConfig) -> DocumentBackend:
+        return _Backend()
+
+
+def _register(
+    registry: BackendRegistry,
+    name: str,
+    formats: tuple[str, ...],
+    group: str | None = None,
+) -> BackendDescriptor:
+    """Register a descriptor-only double carrying fixed formats and an extra group."""
+    registry.register(
+        name,
+        _DescriptorFactory(
+            BackendDescriptor(
+                name=name,
+                capabilities=BackendCapabilities(supported_formats=list(formats), optional_dependency_group=group),
+            )
+        ),
+    )
+    return registry.get(name)

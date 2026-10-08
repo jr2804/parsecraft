@@ -266,7 +266,7 @@ def test_backends_json_capability_schema_is_exact(monkeypatch: pytest.MonkeyPatc
     assert result.exit_code == 0
     payload = json.loads(result.output)
     entry = payload[0]
-    assert set(entry) == {"name", "version", "capabilities"}
+    assert set(entry) == {"name", "version", "capabilities", "suffixes"}  # suffixes: the host-facing join (pc-53p)
     assert set(entry["capabilities"]) == {
         "supported_formats",
         "supports_page_ranges",
@@ -277,6 +277,32 @@ def test_backends_json_capability_schema_is_exact(monkeypatch: pytest.MonkeyPatc
         "model_asset",
         "languages",
     }
+
+
+def test_backends_json_exposes_derived_suffixes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each entry carries the suffixes that descriptor can ingest (pc-53p).
+
+    ``_CpuFactory`` declares ``"txt"``/``"md"`` — not MIME types — so it derives
+    no suffix at all: the join only ever reads ``MEDIA_TYPES`` values.
+    """
+    registry = _registry_with(_CpuFactory())
+    registry.register("mime-fake", _MimeFactory())
+    monkeypatch.setattr(commands, "default_registry", registry)
+    payload = json.loads(_runner.invoke(app, ["backends", "--json"]).output)
+    by_name = {entry["name"]: entry for entry in payload}
+    assert by_name["mime-fake"]["suffixes"] == [".pdf"]
+    assert by_name["cpu-fake"]["suffixes"] == []
+    assert sorted(by_name) == ["cpu-fake", "mime-fake"]
+
+
+class _MimeFactory:
+    descriptor = BackendDescriptor(
+        name="mime-fake",
+        capabilities=BackendCapabilities(supported_formats=["application/pdf"]),
+    )
+
+    def __call__(self, config: object) -> DocumentBackend:
+        return _StubBackend()
 
 
 def test_backends_json_enabled_via_environment_variable(monkeypatch: pytest.MonkeyPatch) -> None:

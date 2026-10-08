@@ -101,6 +101,37 @@ class BackendRegistry:
         formats = {fmt for descriptor in self.list_backends() for fmt in descriptor.capabilities.supported_formats}
         return sorted(formats)
 
+    def suffixes(self, *, installed_only: bool = True) -> set[str]:
+        """Source suffixes some registered backend can ingest (a projection).
+
+        A pure PROJECTION of ``parsecraft.pipeline.MEDIA_TYPES`` joined with each
+        descriptor's declared ``supported_formats`` — the MIME table stays the
+        single source and this is never a second one. Hosts ask "which suffixes
+        can my selected backend ingest" through this instead of re-deriving the
+        join across two modules.
+
+        ``installed_only=True`` (the default) drops backends whose optional
+        extra is absent, so an uninstalled backend never advertises suffixes.
+        GPU/VRAM/allow-OCR eligibility stays ``routing.rules.is_hard_eligible``'s
+        job (it needs a probed host); a host that wants full eligibility joins
+        this projection with that funnel rather than duplicating it here.
+        """
+        suffixes: set[str] = set()
+        for descriptor in self.list_backends():
+            suffixes |= self.suffixes_for(descriptor, installed_only=installed_only)
+        return suffixes
+
+    def suffixes_for(self, descriptor: BackendDescriptor, *, installed_only: bool = True) -> set[str]:
+        """The suffixes ONE descriptor can ingest — the per-backend half of :meth:`suffixes`."""
+        if installed_only and not _extra_installed(descriptor):
+            return set()
+        # Imported here, not at module scope: ``parsecraft.pipeline`` imports
+        # ``parsecraft.backends``, so a module-level import would cycle.
+        from parsecraft.pipeline.analysis import MEDIA_TYPES
+
+        formats = descriptor.capabilities.supported_formats
+        return {suffix for suffix, media_type in MEDIA_TYPES.items() if media_type in formats}
+
     def fingerprint(self) -> str:
         """Deterministic identity of the registered backend set — a cache key.
 
@@ -156,3 +187,14 @@ class BackendRegistry:
 
 #: Process-wide registry used by the CLI and default application wiring.
 default_registry = BackendRegistry()
+
+
+def _extra_installed(descriptor: BackendDescriptor) -> bool:
+    """Whether a descriptor's optional extra is actually installed (detected)."""
+    group = descriptor.capabilities.optional_dependency_group
+    if group is None:  # no extra gate — the backend is always a candidate
+        return True
+    # Local import: ``parsecraft.environment`` imports ``parsecraft.backends``.
+    from parsecraft.environment.probe import extra_present
+
+    return extra_present(group)

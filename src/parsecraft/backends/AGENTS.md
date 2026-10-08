@@ -12,7 +12,7 @@ registration + Python entry points) without editing this package.
 
 - `protocol.py` — public protocol + request/result/descriptor models.
 - `registry.py` — `BackendRegistry`, `default_registry`,
-  `ENTRY_POINT_GROUP`.
+  `ENTRY_POINT_GROUP`, and the `suffixes()`/`suffixes_for()` projection.
 - `errors.py` — `BackendError` hierarchy incl. recorded `BackendLoadError`.
 - `__init__.py` — curated re-exports (keep `__all__` sorted).
 
@@ -21,8 +21,12 @@ registration + Python entry points) without editing this package.
 - Frozen entry-point group: `parsecraft.backends`
   (`ENTRY_POINT_GROUP` is the single definition — ADR-0001 §1).
 - `supported_formats` is a **capability** statement in **MIME media types** (one
-  vocabulary across every backend family), never a file-discovery list —
-  consumers own the lossy extension→MIME mapping.
+  vocabulary across every backend family), never a file-discovery list — the
+  lossy extension→MIME mapping belongs to `pipeline.MEDIA_TYPES`, which stays
+  the single source. `registry.suffixes()`/`suffixes_for()` (pc-53p) are the
+  public PROJECTION of that table joined with the descriptors; they are never a
+  second table, and their `pipeline`/`environment` imports are function-local
+  because both packages import `parsecraft.backends`.
 - Discovery is lazy and never raises: at most one metadata scan per registry
   instance; a broken plugin is recorded in `registry.load_errors`, and
   callers (CLI) MUST surface those — silent omission is a bug.
