@@ -18,6 +18,24 @@ title: Installation
 | CPython 3.14 | Supported, including the free-threaded `3.14t` build (CI: ubuntu, macos, windows) |
 | CPython 3.15-dev | Best-effort; CI allows this job to fail |
 
+## GPU torch
+
+OCR backends need `torch`, and the PyPI Windows/Linux wheels are **CPU builds**
+— so an OCR backend on a CUDA host would silently run on the CPU. When `torch`
+or `torchvision` is resolved from this project (a checkout, or a downstream
+project that copies the index block from `pyproject.toml`), uv therefore pulls
+them from the **PyTorch cu128 index** automatically:
+
+| Platform | `torch` source | Device |
+| -------- | -------------- | ------ |
+| Windows, Linux | `download.pytorch.org/whl/cu128` | CUDA (cu128; older GPUs may need a different CUDA — override the index in your own `pyproject.toml`) |
+| macOS | PyPI (index excluded by marker) | CPU + MPS |
+
+The project's `torch` version *ranges* are unchanged by this — the index only
+provides the CUDA variant. `uv tool install`/`uvx` installs of the CLI carry no
+torch at all (torch arrives with the OCR extras), so plain CLI installs are
+unaffected.
+
 ## From PyPI
 
 First release: `2026.9.2`. Add the dependency with uv:

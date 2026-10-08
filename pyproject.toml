@@ -46,9 +46,8 @@ vllm = ["vllm>=0.11 ; sys_platform != 'win32'"]
 # ONE transformers window for all four OCR models — `uv sync -U --all-extras`
 # must always resolve (root AGENTS.md rule 10; extras are never mutually
 # exclusive). 5.17.0 is the verified member of the window; a runtime guard
-# names it (`backends/ocr/_common.py`). For GPU use, install torch and
-# torchvision from the PyTorch CUDA index first (they are CPU-only on PyPI for
-# Windows).
+# names it (`backends/ocr/_common.py`). GPU torch comes from the pinned
+# PyTorch cu128 index (see [tool.uv.index] below) — no manual CUDA install.
 # The same window is enforced at runtime as TRANSFORMERS_RANGE in backends/ocr/_models.py.
 ocr-ovis = ["transformers>=5.17,<6", "torch>=2.5", "torchvision", "pillow>=10.4", "accelerate>=0.34"]
 ocr-qianfan = ["transformers>=5.17,<6", "torch>=2.5", "torchvision", "pillow>=10.4", "accelerate>=0.34"]
@@ -126,6 +125,24 @@ fallback-version = "0.0.0"
 # prefix, so declare the CalVer form explicitly. Without this, bare tags are
 # ignored and the build falls back to a local version PyPI rejects.
 pattern = '^(?P<base>\d+\.\d+\.\d+)$'
+
+# GPU torch comes from the PyTorch index, not PyPI: the PyPI Windows and Linux
+# wheels are CPU builds, so the OCR backends would silently run on the CPU even
+# on a CUDA host. macOS is excluded by marker and falls through to PyPI's mac
+# build (CPU + MPS), because the PyTorch index publishes no macOS wheels.
+#
+# `explicit = true` keeps the index scoped to torch/torchvision (the packages
+# pinned in `tool.uv.sources`); everything else still resolves from PyPI, and
+# the version *ranges* in the extras stay unchanged — the index only provides
+# the CUDA variant of those two.
+[tool.uv.sources]
+torch = [{ index = "pytorch", marker = "sys_platform != 'darwin'" }]
+torchvision = [{ index = "pytorch", marker = "sys_platform != 'darwin'" }]
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

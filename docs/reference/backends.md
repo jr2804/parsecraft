@@ -56,8 +56,15 @@ modeling code so they load on the unified major.
 
 The OCR extras are **not** mutually exclusive. Every extra installs jointly, and
 `uv sync -U --all-extras --all-groups --all-packages` is expected to succeed
-(root `AGENTS.md` rule 10). On a GPU host, install `torch`/`torchvision` from
-the PyTorch CUDA index first — the PyPI Windows wheels are CPU builds.
+(root `AGENTS.md` rule 10).
+
+GPU `torch` needs no manual install step: `torch`/`torchvision` are pinned to
+the **PyTorch cu128 index** in `pyproject.toml` (`[tool.uv.sources]`, gated
+to non-macOS), so a checkout sync gets the CUDA builds on Windows/Linux
+automatically — see the [GPU torch](../getting-started/installation.md#gpu-torch)
+section for the platform matrix. On a GPU host you may still want the CUDA
+runtime's driver, and older GPUs may need a different CUDA wheel; macOS resolves
+PyPI's CPU+MPS build because the index publishes no macOS wheels.
 
 The optional `vllm` extra is **Linux/WSL2-only**: its marker
 (`vllm>=0.11 ; sys_platform != 'win32'`) keeps Windows installs resolvable, but
