@@ -94,6 +94,16 @@ class FakeEntryPoint:
         return self._loader()
 
 
+class _DescriptorFactory:
+    """Factory double built around one descriptor (suffix-projection tests)."""
+
+    def __init__(self, descriptor: BackendDescriptor) -> None:
+        self.descriptor = descriptor
+
+    def __call__(self, config: BackendConfig) -> DocumentBackend:
+        return _Backend()
+
+
 # ── Explicit registration ────────────────────────────────────────────────
 
 
@@ -428,11 +438,7 @@ def test_suffixes_are_the_media_types_join_for_every_registered_descriptor() -> 
     descriptors = default_registry.list_backends()
     assert descriptors, "the installed registry is empty — the contract test proves nothing"
     for descriptor in descriptors:
-        expected = {
-            suffix
-            for suffix, media_type in MEDIA_TYPES.items()
-            if media_type in descriptor.capabilities.supported_formats
-        }
+        expected = {suffix for suffix, media_type in MEDIA_TYPES.items() if media_type in descriptor.capabilities.supported_formats}
         assert default_registry.suffixes_for(descriptor, installed_only=False) == expected, descriptor.name
     union: set[str] = set()
     for descriptor in descriptors:
@@ -467,16 +473,6 @@ def _isolated_registry() -> BackendRegistry:
     registry = BackendRegistry()
     registry._entry_points_loaded = True  # noqa: SLF001 — the suite's isolation idiom
     return registry
-
-
-class _DescriptorFactory:
-    """Factory double built around one descriptor (suffix-projection tests)."""
-
-    def __init__(self, descriptor: BackendDescriptor) -> None:
-        self.descriptor = descriptor
-
-    def __call__(self, config: BackendConfig) -> DocumentBackend:
-        return _Backend()
 
 
 def _register(

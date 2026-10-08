@@ -40,10 +40,7 @@ def backends(as_json: args.JsonFlag = False) -> None:
     for name, error in sorted(default_registry.load_errors.items()):
         typer.echo(f"warning: backend {name!r} failed to load: {error}", err=True)
     if as_json:
-        payload = [
-            {**descriptor.model_dump(mode="json"), "suffixes": sorted(default_registry.suffixes_for(descriptor))}
-            for descriptor in descriptors
-        ]
+        payload = [{**descriptor.model_dump(mode="json"), "suffixes": sorted(default_registry.suffixes_for(descriptor))} for descriptor in descriptors]
         typer.echo(json.dumps(payload, indent=2, sort_keys=True))
         return
     if not descriptors:

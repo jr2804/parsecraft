@@ -106,6 +106,16 @@ class _NoFormatsFactory:
         return _StubBackend()
 
 
+class _MimeFactory:
+    descriptor = BackendDescriptor(
+        name="mime-fake",
+        capabilities=BackendCapabilities(supported_formats=["application/pdf"]),
+    )
+
+    def __call__(self, config: object) -> DocumentBackend:
+        return _StubBackend()
+
+
 def test_commands_share_the_process_default_registry() -> None:
     assert commands.default_registry is default_registry
 
@@ -293,16 +303,6 @@ def test_backends_json_exposes_derived_suffixes(monkeypatch: pytest.MonkeyPatch)
     assert by_name["mime-fake"]["suffixes"] == [".pdf"]
     assert by_name["cpu-fake"]["suffixes"] == []
     assert sorted(by_name) == ["cpu-fake", "mime-fake"]
-
-
-class _MimeFactory:
-    descriptor = BackendDescriptor(
-        name="mime-fake",
-        capabilities=BackendCapabilities(supported_formats=["application/pdf"]),
-    )
-
-    def __call__(self, config: object) -> DocumentBackend:
-        return _StubBackend()
 
 
 def test_backends_json_enabled_via_environment_variable(monkeypatch: pytest.MonkeyPatch) -> None:
