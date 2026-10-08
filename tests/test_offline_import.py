@@ -34,6 +34,8 @@ _SCRIPT = textwrap.dedent(
     import parsecraft.backends.ocr.unlimited
     import parsecraft.backends.liteparse
     import parsecraft.backends.liteparse.liteparse
+    import parsecraft.backends.marker
+    import parsecraft.backends.marker.marker
     import parsecraft.backends.pdf_inspector
     import parsecraft.backends.pdf_inspector.pdf_inspector
     import parsecraft.backends.registry
@@ -62,6 +64,7 @@ _SCRIPT = textwrap.dedent(
             "pdf_inspector",
             "typesafe_sdk",
             "huggingface_hub",
+            "marker",
         )
         if m in sys.modules
     ]

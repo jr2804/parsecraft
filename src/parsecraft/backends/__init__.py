@@ -8,6 +8,7 @@ from parsecraft.backends.errors import (
     BackendLoadError,
     BackendNotFoundError,
     DependencyUnavailableError,
+    UnsupportedFormatError,
 )
 from parsecraft.backends.protocol import (
     GPU_NOT_NEEDED,
@@ -48,6 +49,7 @@ __all__ = [
     "ConversionRequest",
     "DependencyUnavailableError",
     "DocumentBackend",
+    "UnsupportedFormatError",
     "ModelAssetDescriptor",
     "PageSignal",
     "SourceDocument",
