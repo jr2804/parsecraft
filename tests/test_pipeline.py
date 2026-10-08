@@ -584,6 +584,23 @@ def test_media_type_for_covers_extended_families(tmp_path: Path) -> None:
         media_type_for(tmp_path / "data.xyz")
 
 
+def test_matlab_sources_map_to_plain_text(tmp_path: Path) -> None:
+    """`.m` is MATLAB, and IVAS trees ship .m test vectors (pc-74p)."""
+    assert media_type_for(tmp_path / "olaVectors.m") == "text/plain"
+
+
+def test_the_text_family_is_pinned_by_count() -> None:
+    """The host-facing text family has a deliberate size — hosts build file filters.
+
+    Adding or removing a text suffix changes this number on purpose; the count
+    is here so an accidental rename or deletion fails loudly. (20 = 16 plain +
+    2 markdown + 2 html.)
+    """
+    text_family = [suffix for suffix, media_type in MEDIA_TYPES.items() if media_type.startswith("text/")]
+    assert len(text_family) == 20
+    assert len([suffix for suffix, media_type in MEDIA_TYPES.items() if media_type == "text/plain"]) == 16
+
+
 def test_media_types_values_are_claimed_by_registered_backends() -> None:
     # Classifier ⇄ capability invariant: no MIME in the table may drift away
     # from what installed backends actually declare.

@@ -45,6 +45,7 @@ MEDIA_TYPES: dict[str, str] = {
     ".jpeg": "image/jpeg",
     ".jpg": "image/jpeg",
     ".log": "text/plain",
+    ".m": "text/plain",
     ".markdown": "text/markdown",
     ".md": "text/markdown",
     ".odt": "application/vnd.oasis.opendocument.text",

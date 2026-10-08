@@ -79,7 +79,7 @@ optional extra is installed:
       "supports_page_ranges": false
     },
     "name": "native-text",
-    "suffixes": [".cfg", ".ini", ".log", ".toml", ".txt"],
+    "suffixes": [".c", ".cc", ".cfg", ".cpp", ".h", ".hpp", ".ini", ".log", ".m", ".py", ".rst", ".sh", ".tex", ".text", ".toml", ".txt"],
     "version": "0.1.0"
   }
 ]
@@ -114,7 +114,7 @@ prints one `downloading <model> (<size>) into <dir>` line to **stderr** before
 the fetch starts — informational only, no prompt and no flag. Supported suffixes come from the public
 `parsecraft.pipeline.MEDIA_TYPES` map: the text family (`.txt`, `.text`, `.md`,
 `.markdown`, `.html`, `.htm`, `.rst`, `.tex`, `.log`, `.ini`, `.cfg`, `.toml`,
-`.sh`, `.py`, `.c`, `.cc`, `.cpp`, `.h`, `.hpp`) plus `.pdf`, `.jpg`, `.jpeg`,
+`.sh`, `.py`, `.c`, `.cc`, `.cpp`, `.h`, `.hpp`, `.m`) plus `.pdf`, `.jpg`, `.jpeg`,
 `.png`, `.tif`, and `.tiff`. `.csv`, `.json`, and `.xml` are deliberately
 unsupported (no backend claims those media types).
 
