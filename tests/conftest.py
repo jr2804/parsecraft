@@ -21,12 +21,12 @@ _RUN_CORPUS = "--run-corpus"
 _RUN_GPU = "--run-gpu"
 _RUN_JUDGE = "--run-judge"
 
-_test_dir = Path(__file__).parent
-
 #: Opt-in tiers that legitimately connect. The offline tripwire exempts on the
 #: MARKER alone — never on test names or module lists — so the mechanism stays
 #: general (pc-mp2).
 _NETWORK_EXEMPT_MARKERS = frozenset({_NETWORK_MARKER, _CORPUS_MARKER, _GPU_MARKER, _JUDGE_MARKER})
+
+_test_dir = Path(__file__).parent
 
 
 class _LooseCall(Protocol):
@@ -39,11 +39,6 @@ class _HasKeywords(Protocol):
     """What the tripwire reads off ``request.node`` (pytest does not export Node)."""
 
     keywords: Mapping[str, object]
-
-
-def _may_reach_network(item: _HasKeywords) -> bool:
-    """Whether ``item`` carries an opt-in tier marker (keyed on the marker alone)."""
-    return any(marker in item.keywords for marker in _NETWORK_EXEMPT_MARKERS)
 
 
 @pytest.fixture(autouse=True)
@@ -97,6 +92,11 @@ def _offline_tripwire(request: pytest.FixtureRequest, monkeypatch: pytest.Monkey
     monkeypatch.setattr(socket, "create_connection", _forbidden_create_connection)
     monkeypatch.setattr(socket.socket, "connect", _forbidden_connect)
     yield
+
+
+def _may_reach_network(item: _HasKeywords) -> bool:
+    """Whether ``item`` carries an opt-in tier marker (keyed on the marker alone)."""
+    return any(marker in item.keywords for marker in _NETWORK_EXEMPT_MARKERS)
 
 
 @pytest.fixture
