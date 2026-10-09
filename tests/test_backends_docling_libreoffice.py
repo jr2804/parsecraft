@@ -39,14 +39,6 @@ def _isolate_libreoffice_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     os.environ.pop(LIBREOFFICE_ENV, None)
 
 
-def _soffice(root: Path, *parts: str) -> Path:
-    """Create a fake soffice.exe under ``root`` and return its path."""
-    target = root.joinpath(*parts, "program", "soffice.exe")
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(b"")
-    return target
-
-
 # ── 1. The operator's declaration wins, verbatim and unprobed ──────────────
 
 
@@ -122,6 +114,14 @@ def test_windows_falls_through_to_the_x86_root(monkeypatch: pytest.MonkeyPatch, 
     monkeypatch.delenv("ProgramFiles", raising=False)
     monkeypatch.setenv("ProgramFiles(x86)", str(x86))
     assert find_libreoffice_cmd() == str(expected)
+
+
+def _soffice(root: Path, *parts: str) -> Path:
+    """Create a fake soffice.exe under ``root`` and return its path."""
+    target = root.joinpath(*parts, "program", "soffice.exe")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(b"")
+    return target
 
 
 # ── 3. POSIX: PATH only ───────────────────────────────────────────────────

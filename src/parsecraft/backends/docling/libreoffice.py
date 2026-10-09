@@ -52,16 +52,6 @@ class LibreOfficeUnavailableError(BackendError):
     """No LibreOffice installation could be located on this host."""
 
 
-def find_libreoffice_cmd() -> str | None:
-    """The ``soffice`` command for this host, or ``None`` when there is none."""
-    declared = os.environ.get(LIBREOFFICE_ENV, "").strip()
-    if declared:  # the operator's declaration wins and is used verbatim
-        return declared
-    if sys.platform == "win32":
-        return _windows_scan()
-    return _path_lookup()
-
-
 def resolve_libreoffice_cmd() -> str:
     """Like :func:`find_libreoffice_cmd`, but a typed failure instead of ``None``."""
     found = find_libreoffice_cmd()
@@ -90,6 +80,16 @@ def configure_libreoffice_env() -> bool:
         return False
     os.environ.setdefault(LIBREOFFICE_ENV, found)
     return True
+
+
+def find_libreoffice_cmd() -> str | None:
+    """The ``soffice`` command for this host, or ``None`` when there is none."""
+    declared = os.environ.get(LIBREOFFICE_ENV, "").strip()
+    if declared:  # the operator's declaration wins and is used verbatim
+        return declared
+    if sys.platform == "win32":
+        return _windows_scan()
+    return _path_lookup()
 
 
 def _windows_scan() -> str | None:
