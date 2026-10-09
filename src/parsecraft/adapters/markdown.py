@@ -217,6 +217,19 @@ class _ChunkBuilder:
         return "\n".join(parts)
 
 
+def markdown_blocks(text: str) -> list[StructuredChunk]:
+    """Project Markdown text into ordered typed chunks.
+
+    Output-side twin of :func:`parse_markdown`: the same token stream and the
+    same chunk kinds, but no document metadata — a backend that *renders*
+    Markdown (rather than parsing a Markdown source) projects its output
+    through this so headings, lists, tables and code fences land in the IR as
+    typed chunks instead of one undifferentiated paragraph.
+    """
+    blocks, _ = _project(text)
+    return blocks
+
+
 def parse_markdown(
     source: str | bytes,
     source_uri: str,
@@ -227,15 +240,9 @@ def parse_markdown(
 ) -> DocumentResult:
     """Parse a Markdown document (text or UTF-8 bytes) into the canonical IR."""
     text = source.decode("utf-8") if isinstance(source, bytes) else source
-    tokens = MarkdownIt("commonmark").enable("table").parse(text)
 
     produced = produced_at if produced_at is not None else datetime.now(UTC)
-    offsets = [0]
-    for line in text.split("\n"):
-        offsets.append(offsets[-1] + len(line) + 1)
-
-    builder = _ChunkBuilder(text, offsets)
-    blocks = builder.build(tokens)
+    blocks, diagnostics = _project(text)
 
     metadata = DocumentMetadata(
         source_uri=source_uri,
@@ -248,8 +255,18 @@ def parse_markdown(
     )
     return DocumentResult(
         metadata=metadata,
-        pages=[PageResult(page_number=1, blocks=blocks, diagnostics=builder.diagnostics)],
+        pages=[PageResult(page_number=1, blocks=blocks, diagnostics=diagnostics)],
     )
+
+
+def _project(text: str) -> tuple[list[StructuredChunk], list[Diagnostic]]:
+    """Shared core: tokenise ``text`` and build the ordered chunk projection."""
+    offsets = [0]
+    for line in text.split("\n"):
+        offsets.append(offsets[-1] + len(line) + 1)
+    builder = _ChunkBuilder(text, offsets)
+    blocks = builder.build(MarkdownIt("commonmark").enable("table").parse(text))
+    return blocks, builder.diagnostics
 
 
 def _inline_text(inline: Token | None) -> tuple[str, list[Token]]:

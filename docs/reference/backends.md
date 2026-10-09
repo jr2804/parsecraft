@@ -70,6 +70,7 @@ the installer, while an extra shape makes the terms a condition of installing.
 | `pandoc` | `parsecraft[pandoc]` (`pypandoc` 1.17, MIT) | docx, pptx, xlsx (read-only), odt, rtf, epub — the verified MIME set | [pandoc.org](https://pandoc.org/) — **GPL-2.0-or-later** binary, MIT wrapper | Broad office and e-book coverage through one wrapper | Needs the external **Pandoc binary**; `.ods`/`.odp` are unsupported by pandoc 3.11; copyleft gate | Available |
 | `liteparse` | `parsecraft[liteparse]` (`liteparse` 2.14.7, Apache-2.0) | `application/pdf`, `image/jpeg`, `image/png`, `image/tiff` | [`run-llama/liteparse`](https://github.com/run-llama/liteparse) — Apache-2.0 | Broad and permissive; no copyleft gate | Office/ODF formats require a system LibreOffice; `.html` is not supported; larger extra dependency surface | Available |
 | `docling` | `parsecraft[docling]` (`docling` 2.130.0, MIT) | `application/pdf`, `text/html`, `text/markdown`, `text/plain` | [`docling`](https://pypi.org/project/docling/) — MIT | Layout, tables, and reading order | Heavy dependency graph; office/image formats are registered upstream but undeclared pending conversion verification; the motivating incident ran >1 h on a 113-page PDF | Available |
+| `trafilatura` | `parsecraft[trafilatura]` (`trafilatura` 2.3.1, Apache-2.0) | `text/html` | [`adbar/trafilatura`](https://github.com/adbar/trafilatura) — Apache-2.0 | Readability-class main-content extraction: starts at the article H1, keeps tables as Markdown tables, drops link/image/formula syntax; **asset-free** — no weights, so no download notice and no offline carve-out | Under-extracts very long single-page specs (RFC-class counter-case below); a single-row table without `<thead>`, and a single-line `<pre><code>`, do not survive as typed blocks | Available |
 | `pdf-inspector` | `parsecraft[pdf-inspector]` (`pdf-inspector` 1.25.2, MIT) | `application/pdf` | [`firecrawl/pdf-inspector`](https://github.com/firecrawl/pdf-inspector) — MIT | Fastest verified text-PDF path: Rust/PyO3 extraction straight to Markdown, no ML models and no OCR runtime loaded; classifies text-based vs scanned PDFs before extraction | PDF only (no docx/pptx/xlsx path exists upstream); no OCR, so scanned pages need an OCR backend; ships as a prebuilt Rust extension wheel only for `cp38-abi3` — Linux x86_64/aarch64, macOS Intel/ARM, Windows x64 (other platforms build from source and need a Rust toolchain); not yet benchmarked in this repo | Available |
 | `marker` | none — `marker-pdf` 2.0.0 is a **bring-your-own dependency** (ADR-0006) | `application/pdf` | [`datalab-to/marker`](https://github.com/datalab-to/marker) — Apache-2.0; model weights under OpenRAIL-M (restricted use) | High-fidelity PDF→Markdown: figures, tables, math, reading order; page-aware pagination | PDF only — DOCX/XLSX/PPTX/HTML/EPUB route through weasyprint, which needs GTK/Pango system libraries and is unverified on Windows; model weights are fetched at converter creation (network I/O, see ADR-0006); no extra is declared, so the consumer's own dependency graph installs `marker-pdf` | Bring-your-own dependency (ADR-0006) |
 | `mineru` | `parsecraft[mineru]` (`mineru` 4.0.11, Apache-2.0 + conditional terms) | `application/pdf` | [`opendatalab/MinerU`](https://github.com/opendatalab/MinerU) — Apache-2.0 code; weights conditional (see the warning above) | VLM layout, tables, equations, and reading order; **text PDFs run weight-free** at flash effort (no checkpoint download, no VRAM) | Heavy 55-package web stack; page-range input base is delegated downstream and post-filtered; not yet benchmarked against siblings; conditional licence | **GIL builds only** — see [Interpreter / platform availability](#interpreter--platform-availability) |
@@ -79,6 +80,28 @@ a revision directory of the managed model cache
 (`<cache>/models/<slug>/<revision>`), which makes those weights visible to
 `parsecraft models list` and reclaimable by `models clean`/`remove` instead of
 accumulating unseen in `~/.mineru`.
+
+!!! note "Readability-class under-extraction, and two shape quirks"
+    `trafilatura` trades completeness for cleanliness, and the counter-case is
+    measured: on a 1.2 MB single-page specification it kept **5,592 of 503,420
+    characters**, having classified the page as a summary/landing page and
+    dropped the body (`favor_recall=True` does not recover it). There is no v1
+    mitigation — reach for `native-html` when completeness matters more than
+    chrome removal.
+
+```text
+Two shape quirks, both verified against 2.3.1, are stated here rather than
+papered over with heuristics: a single-row `<table>` with no `<thead>` is
+emitted without a `|---|` separator, so it is not a CommonMark table and
+yields no `table` chunk; and a single-line `<pre><code>` comes back as an
+inline code span, yielding a `paragraph` chunk rather than `code`.
+Multi-line code yields a fenced block and does project to `code`.
+
+A third quirk, same voice: trafilatura sometimes passes raw HTML straight
+through (an `<img …>` survives next to a code fence), and the shared Markdown
+projection has no block for that — it lands as `unknown`. Measured: exactly
+one such block across the four verified fixtures (the MDN page).
+```
 
 ## OCR / document-VLM (GPU)
 
@@ -207,7 +230,7 @@ it never excludes a language-agnostic backend (see
 | `ocr-tele` | `zh`, `en` |
 | `ocr-ovis`, `ocr-unlimited`, `ocr-qianfan` | agnostic (multilingual) |
 | `ocr-tesseract` | `eng`, `deu` |
-| `pandoc`, `docling`, `pdf-inspector` | agnostic (no claim) |
+| `pandoc`, `docling`, `pdf-inspector`, `trafilatura` | agnostic (no claim) |
 | `mineru` | agnostic (no claim) |
 
 ## Hosts: suffixes
@@ -247,6 +270,7 @@ re-implementing it.
 | Broad office formats (docx, pptx, xlsx) | `pandoc` | Convert to a readable format first |
 | Layout-heavy, reading order matters | `docling` | Layout, tables, and reading order |
 | Layout-heavy PDF, VLM reading order | `mineru` | VLM layout/tables/equations; text PDFs run weight-free at flash effort |
+| HTML article page, chrome removal matters | `trafilatura` | Readability-class main-content extraction; use `native-html` when completeness matters more |
 
 Native extraction runs before OCR. OCR is selective and expensive: it is used
 per page range, under a time budget, only where analysis shows native text is

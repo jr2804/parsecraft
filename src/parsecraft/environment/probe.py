@@ -44,6 +44,7 @@ EXTRA_IMPORTS: dict[str, tuple[str, ...]] = {
     "pdf-inspector": ("pdf_inspector",),
     "pdf-lite": ("pypdf",),
     "systemone": ("typesafe_sdk",),
+    "trafilatura": ("trafilatura",),
     "vllm": ("vllm",),
     "web": ("httpx",),
 }
