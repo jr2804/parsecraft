@@ -5,12 +5,15 @@
 node = "latest"
 bun = "latest"
 
-# Linter/formatter/type checker tools
-"ruff" = "latest"
-"ty" = "latest"
-"rumdl" = "latest"
-"pypi:pyreorder" = "latest"
-"pypi:codespell" = "latest"
+# Linter/formatter/type checker tools — PINNED, not "latest": the gate must
+# be deterministic (2026-10-09: ruff 0.16.10 / ty 0.0.85 rule updates turned
+# long-green committed code red with no code change). Bump deliberately, in
+# a commit that fixes whatever the new rules flag.
+"ruff" = "0.16.10"
+"ty" = "0.0.85"
+"rumdl" = "0.2.78"
+"pypi:pyreorder" = "2026.10.1"
+"pypi:codespell" = "2.4.3"
 
 # CLI tools rg and tree-cli -> use `rg --files | tree-cli --fromfile` to get a nice tree view of the project files
 ripgrep = "latest"
