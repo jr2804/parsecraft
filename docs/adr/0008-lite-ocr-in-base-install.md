@@ -89,6 +89,18 @@ tier for one engine's packaging gap.
    accelerator runtime a user installs (ONNX Runtime providers, OpenVINO, a
    Vulkan-class engine) is their own install — no new primitives, no new probe
    facts in v1.
+10. **The base gains a permissive PDF raster surface: `pypdfium2`.** Scanned-PDF
+    OCR needs page rasterization, and the only one we had was `_common.py`'s
+    PyMuPDF surface — the AGPL `pdf` extra (ADR-0003 opt-in). Putting AGPL on the
+    default path is not acceptable, so the base depends on `pypdfium2` and the
+    shared raster surface prefers it, keeping the PyMuPDF path for hosts that
+    installed the AGPL extra. Verified at 5.14.0: licence **BSD-3-Clause +
+    Apache-2.0** (permissive, no copyleft addendum), and 22 of 23 published files
+    are **`py3-none-<platform>`** — ABI-independent, so unlike `onnxruntime` this
+    dependency carries no interpreter-version risk (it installs on the GIL tiers
+    and would install on free-threaded builds too). This also removes the AGPL
+    requirement from OCR-on-PDF generally, which is a strict improvement for the
+    existing `ocr-*` family.
 
 ## Alternatives considered
 
