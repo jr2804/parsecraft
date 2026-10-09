@@ -11,10 +11,12 @@ optional install that carries the backend; **Availability** separates what ships
 today from what is planned. Each third-party tool keeps its own licence.
 
 !!! warning "Copyleft extras are opt-in"
-    `native-pdf` extraction and OCR PDF input need PyMuPDF
+    `native-pdf` extraction needs PyMuPDF
     (**AGPL-3.0-or-commercial**, `pdf` extra), and `pandoc` needs the Pandoc
-    binary (**GPL-2.0-or-later**). These are never core or dev dependencies. The
-    OCR extras deliberately exclude PyMuPDF so the choice stays explicit.
+    binary (**GPL-2.0-or-later**). These are never core or dev dependencies.
+    OCR PDF input does **not** need PyMuPDF — the base install rasterizes
+    through the permissive `pypdfium2` (ADR-0008), so no copyleft sits on the
+    default OCR path.
     Installing one is your own licence decision; see
     [ADR-0003](../adr/0003-optional-agpl-pymupdf.md).
 
@@ -126,9 +128,12 @@ typed `UnsupportedDependencyVersionError` before any model load — the detail
 names the package, the actual version, and the required range; it is never a
 crash inside weight loading, and it is distinct from a missing extra.
 
-The OCR extras exclude PyMuPDF, so **PDF input additionally needs
-`parsecraft[pdf]`** (AGPL — see the warning above). All OCR backends accept
-`application/pdf`, `image/jpeg`, and `image/png`.
+All OCR backends accept `application/pdf`, `image/jpeg`, and `image/png`, and
+**PDF input needs no extra**: the base install carries the permissive
+[`pypdfium2`](https://pypi.org/project/pypdfium2/) raster engine (BSD-3-Clause +
+Apache-2.0) with Pillow as its image bridge, so OCR on a scanned PDF stays off
+the AGPL path (ADR-0008 decisions 10 and 14). PyMuPDF remains available behind
+`parsecraft[pdf]` for `native-pdf` extraction.
 
 Every backend declares `supported_formats` as **MIME types** — one
 vocabulary shared with `RoutingConstraints.formats`, which is built from the
