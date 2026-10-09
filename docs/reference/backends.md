@@ -146,8 +146,32 @@ source's media type. The OCR backends declare `application/pdf`,
 | `ocr-tele` | `ocr-tele` | images, scans | [`StarDoc-AI/TeleOCR`](https://huggingface.co/StarDoc-AI/TeleOCR) — Apache-2.0 ([code](https://github.com/caipeng328/TeleOCR)) | Geometry-aware; camera captures | GPU required (~1.2 GB VRAM); not yet benchmarked | Available (adapter implemented; not yet benchmarked — GPU/weights pending) |
 | `ocr-unlimited` | `ocr-unlimited` | multi-page | [`baidu/Unlimited-OCR`](https://huggingface.co/baidu/Unlimited-OCR) — MIT | Long-horizon multi-page documents | 3 B; quantization required under an 8 GB budget; not yet benchmarked | Available (adapter implemented; not yet benchmarked — GPU/weights pending) |
 | `ocr-qianfan` | `ocr-qianfan` | images | [`baidu/Qianfan-OCR`](https://huggingface.co/baidu/Qianfan-OCR) — Apache-2.0 (`Layout-as-Thought`) | Strong element, box, and reading-order control | 4 B; quantization required under an 8 GB budget; not yet benchmarked | Available (adapter implemented; not yet benchmarked — GPU/weights pending) |
+| `ocr-tesseract` | none — in the base install | PDF pages, page images (PNG/JPEG/TIFF) | [`tesseract-ocr/tessdata_fast`](https://github.com/tesseract-ocr/tessdata_fast) — Apache-2.0 | No extra, no GPU, no model weights; runs anywhere the OS engine is installed | Needs the `tesseract` OS binary (parsecraft never installs it); weaker layout and formula handling than the VLM backends | Available wherever the engine is present — see below |
 
 Model licences apply to the weights; the ParseCraft adapter code is MIT.
+
+### `ocr-tesseract` — the base-install OCR path
+
+It is in the default install because its dependency is an **OS package**, not a
+wheel: install `tesseract` with your platform's package manager and the backend
+appears. ParseCraft **never downloads the engine** — no upstream publishes a
+portable, hash-published release to verify against (the official project ships a
+Windows *installer*), so a pull path would be unauditable. A missing engine is a
+typed `dependency_missing` failure naming the package for your platform
+(`apt install tesseract-ocr tesseract-ocr-eng tesseract-ocr-deu`,
+`brew install tesseract`, or choco/winget on Windows).
+
+Tesseract reads page images, so a PDF is rasterized at 300 dpi first — see
+[ADR-0008 decision 10](../adr/0008-lite-ocr-in-base-install.md). Language data
+(`eng`, `deu`) comes from your system tessdata when it is present and complete,
+and otherwise from a pinned, checksum-verified download into the managed cache.
+
+**Formula handling is the known limitation.** The `equ` model ships with the
+pushed set so it is available, but v1 never selects it automatically: page-type
+dependent engine selection would be a new routing primitive for a bounded gain,
+and `equ` recognition is weak enough that promising it would overstate what this
+backend does. For formula-critical documents use the heavyweight `ocr-*` extras,
+which are geometry-aware.
 
 ## Interpreter / platform availability
 
@@ -182,6 +206,7 @@ it never excludes a language-agnostic backend (see
 | `liteparse` | agnostic (no claim) |
 | `ocr-tele` | `zh`, `en` |
 | `ocr-ovis`, `ocr-unlimited`, `ocr-qianfan` | agnostic (multilingual) |
+| `ocr-tesseract` | `eng`, `deu` |
 | `pandoc`, `docling`, `pdf-inspector` | agnostic (no claim) |
 | `mineru` | agnostic (no claim) |
 
