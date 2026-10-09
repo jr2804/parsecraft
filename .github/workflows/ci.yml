@@ -174,7 +174,10 @@ jobs:
         # 3.14t (free-threaded) cells are SUSPENDED (ADR-0001 amendment
         # 2026-10-09): onnxruntime publishes no free-threaded macOS/Windows
         # wheels and has no sdist, so a heavy extra cannot resolve there.
-        # Re-enable the three include entries unchanged when those wheels exist.
+        # Re-enable when those wheels exist: re-add the three include entries in
+        # the DEEPENED shape used below (list item at 10 spaces, its nested key at
+        # 12) - the original 8-space form is a hand-edited shape this file no
+        # longer uses.
         include:
           - os: ubuntu-latest
             python-version: "3.15-dev"
