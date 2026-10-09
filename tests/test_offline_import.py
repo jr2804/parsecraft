@@ -79,17 +79,6 @@ _SCRIPT = textwrap.dedent(
 )
 
 
-def test_package_imports_offline_without_heavy_runtimes() -> None:
-    proc = subprocess.run(  # noqa: S603
-        [sys.executable, "-c", _SCRIPT],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert proc.returncode == 0, proc.stderr
-    assert "IMPORTS_OK" in proc.stdout
-
-
 _COLLECTION_SCRIPT = textwrap.dedent(
     """
     import importlib.abc
@@ -175,6 +164,17 @@ _COLLECTION_SCRIPT = textwrap.dedent(
     print(f"COLLECTION_OK {len(paths)}")
     """,
 )
+
+
+def test_package_imports_offline_without_heavy_runtimes() -> None:
+    proc = subprocess.run(  # noqa: S603
+        [sys.executable, "-c", _SCRIPT],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "IMPORTS_OK" in proc.stdout
 
 
 def test_every_test_module_collects_without_heavy_packages() -> None:
