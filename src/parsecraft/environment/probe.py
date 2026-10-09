@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
+from collections.abc import Collection
 from importlib.util import find_spec
 from pathlib import Path
 from subprocess import TimeoutExpired, run
@@ -49,6 +51,14 @@ EXTRA_IMPORTS: dict[str, tuple[str, ...]] = {
 #: contract stays checkable (``tests/test_environment.py``).
 META_EXTRAS: frozenset[str] = frozenset({"auto"})
 
+#: Engine name -> the environment variable that DECLARES it. A declaration is
+#: honoured verbatim and never probed (ADR-0008 decision 2): an operator who
+#: points at an engine outside PATH gets it counted. Keyed by ENGINE name, not
+#: backend name, so no backend is special-cased (decision 13). Pandoc and the
+#: docling LibreOffice path are the obvious future members; they are
+#: deliberately not wired here.
+ENGINE_DECLARATIONS: dict[str, str] = {"tesseract": "PARSECRAFT_TESSERACT"}
+
 _OFFLINE_ENV = "PARSECRAFT_OFFLINE"
 _OFFLINE_TRUE_VALUES = frozenset({"1", "true", "yes"})
 _NVIDIA_SMI_QUERY = ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader"]
@@ -80,12 +90,14 @@ def probe_environment() -> EnvironmentInfo:
     # description, and short-circuiting it would make the probe result depend
     # on the host's GPU presence rather than the installed torch build.
     cuda_note = cuda_runtime_note()
+    required_engines = {d.capabilities.required_engine for d in descriptors if d.capabilities.required_engine is not None}
     return EnvironmentInfo(
         backends=backends,
         installed_extras=installed,
         vram_budget_gb=vram_budget_gb,
         gpu_usable=vram_budget_gb > 0 and cuda_note is None,
         offline=_declared_offline(),
+        engines=_detect_engines(required_engines),
     )
 
 
@@ -128,6 +140,18 @@ def extra_present(group: str) -> bool:
 def _declared_offline() -> bool:
     """Operator-declared offline flag; connectivity is never probed."""
     return os.environ.get(_OFFLINE_ENV, "").strip().lower() in _OFFLINE_TRUE_VALUES
+
+
+def _detect_engines(required: Collection[str]) -> frozenset[str]:
+    """Which of the *required* engines this host can actually use.
+
+    Only engines some registered backend declares are probed, so the cost is
+    paid only for facts somebody asked for. Presence is the engine's
+    declaration when set (ADR-0008 decision 2 — honoured verbatim, never
+    probed), else a PATH lookup, which is a generic question needing no
+    per-engine knowledge.
+    """
+    return frozenset(name for name in required if os.environ.get(ENGINE_DECLARATIONS.get(name, ""), "").strip() or shutil.which(name) is not None)
 
 
 def _detect_vram_gb() -> float:

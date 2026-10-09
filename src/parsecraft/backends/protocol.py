@@ -9,6 +9,7 @@ imported *inside* factory/backend methods, never at module import time.
 from __future__ import annotations
 
 from collections.abc import Callable
+from enum import StrEnum
 from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
@@ -27,6 +28,21 @@ GPU_NOT_NEEDED = 0.0
 GPU_OPTIONAL = 0.5
 #: Must not run on CPU: without a usable GPU this backend is ineligible.
 GPU_REQUIRED = 1.0
+
+
+class ModelSource(StrEnum):
+    """Which upstream publishes a pinned asset (ADR-0008 decision 11).
+
+    The Hugging Face Hub is what every descriptor written before this field
+    already assumed; ``GITHUB`` names an asset whose publisher is a git host.
+    Provenance for a hashed download belongs with the upstream that publishes
+    the file — a mirror can re-tag it or vanish, and a mirror that lacks a file
+    (the Hub copy of ``tessdata_fast`` has no ``equ``) would silently void the
+    asset's own formula decision.
+    """
+
+    HUGGINGFACE = "huggingface"
+    GITHUB = "github"
 
 
 class SourceDocument(BaseModel):
@@ -60,6 +76,10 @@ class ModelAssetDescriptor(BaseModel):
     estimated_vram_gb: float | None = Field(default=None, ge=0)
     #: Per-file integrity manifest for downloads (empty until pinned).
     file_pins: tuple[AssetFilePin, ...] = ()
+    #: Which upstream the pinned files are fetched from. Defaulted, so a
+    #: descriptor that says nothing keeps the historical Hub behaviour and
+    #: every existing backend is unaffected.
+    model_source: ModelSource = ModelSource.HUGGINGFACE
 
 
 class BackendCapabilities(BaseModel):
@@ -82,6 +102,12 @@ class BackendCapabilities(BaseModel):
     model_asset: ModelAssetDescriptor | None = None
     #: BCP-47 tags this backend declares support for; empty = language-agnostic.
     languages: tuple[str, ...] = ()
+    #: External engine this backend cannot run without — an OS package or other
+    #: binary, discovered rather than imported. ``None`` (the default) means the
+    #: backend needs nothing beyond its Python dependencies. The name is
+    #: generic on purpose: routing compares it against the host's probed
+    #: engines and special-cases no backend name (ADR-0008 decision 13).
+    required_engine: str | None = None
 
 
 class BackendDescriptor(BaseModel):

@@ -426,8 +426,11 @@ class _AssetManagerSpy:
     instances: list[_AssetManagerSpy] = []
     error: Exception | None = None
 
-    def __init__(self, *, offline: bool = False) -> None:
+    def __init__(self, *, offline: bool = False, downloader: object = None) -> None:
         self.offline = offline
+        # The downloader is selected from the descriptor's ``model_source``
+        # (ADR-0008 decision 11); the spy records it without touching a network.
+        self.downloader = downloader
         self.pins: list[AssetPin] = []
         type(self).instances.append(self)
 

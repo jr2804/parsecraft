@@ -24,14 +24,16 @@ from parsecraft.assets import (
     AssetPin,
     ChecksumMismatchError,
     DownloaderUnavailableError,
+    GitHubDownloader,
     InsufficientDiskSpaceError,
     LicenseNotAcceptedError,
     OfflineModeError,
     default_downloader,
+    downloader_for,
     sha256_of,
     slug,
 )
-from parsecraft.backends.protocol import ModelAssetDescriptor
+from parsecraft.backends.protocol import ModelAssetDescriptor, ModelSource
 
 CONTENT = b"weights-bytes-for-tests"
 DIGEST = hashlib.sha256(CONTENT).hexdigest()
@@ -48,6 +50,25 @@ class FakeDownloader:
         target = Path(dest_dir) / filename
         target.write_bytes(CONTENT)
         return str(target)
+
+
+# ── GitHub adapter + source discriminator (ADR-0008 decision 11) ───────────
+
+
+class _FakeResponse:
+    """Minimal context-manager response, as ``urlopen`` returns."""
+
+    def __init__(self, payload: bytes) -> None:
+        self._payload = payload
+
+    def read(self) -> bytes:
+        return self._payload
+
+    def __enter__(self) -> _FakeResponse:
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        return None
 
 
 # ── helpers ────────────────────────────────────────────────────────────────
@@ -518,6 +539,84 @@ def test_huggingface_downloader_delegates_to_hub(tmp_path: Path, monkeypatch: py
     assert calls == [{"repo_id": "acme/model", "filename": "weights.bin", "revision": "abc123", "local_dir": str(tmp_path)}]
 
 
+def test_github_downloader_writes_the_pinned_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, float]] = []
+    monkeypatch.setattr("urllib.request.urlopen", _record_urlopen(calls))
+
+    result = GitHubDownloader.download("tesseract-ocr/tessdata_fast", "4.1.0", "eng.traineddata", str(tmp_path))
+
+    assert result == str(tmp_path / "eng.traineddata")
+    assert (tmp_path / "eng.traineddata").read_bytes() == CONTENT
+    url, timeout = calls[0]
+    assert url == "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/4.1.0/eng.traineddata"
+    assert timeout > 0
+
+
+def test_github_downloader_percent_encodes_each_segment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A repo id keeps its ``/`` separators; every other segment is fully encoded.
+
+    Encoding the filename's own ``/`` matters: it is what stops a ``../`` in a
+    pinned name from surviving as a path separator on the wire, independently of
+    the cache-directory check.
+    """
+    calls: list[tuple[str, float]] = []
+    monkeypatch.setattr("urllib.request.urlopen", _record_urlopen(calls))
+
+    GitHubDownloader.download("acme/repo", "a b", "sub dir/../file.bin", str(tmp_path))
+
+    url, _ = calls[0]
+    assert url == "https://raw.githubusercontent.com/acme/repo/a%20b/sub%20dir%2F..%2Ffile.bin"
+    assert url.split("/")[3:5] == ["acme", "repo"]
+
+
+def test_github_downloader_rejects_a_path_that_escapes_the_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A pinned filename may never write outside the cache directory."""
+    calls: list[tuple[str, float]] = []
+    monkeypatch.setattr("urllib.request.urlopen", _record_urlopen(calls))
+
+    with pytest.raises(AssetError, match="escapes the cache directory"):
+        GitHubDownloader.download("acme/repo", "r1", "../escaped.bin", str(tmp_path))
+
+    assert calls == []
+    assert not (tmp_path.parent / "escaped.bin").exists()
+
+
+def _record_urlopen(calls: list[tuple[str, float]], payload: bytes = CONTENT):  # noqa: ANN202 - local stub
+    def fake_urlopen(url: str, timeout: float) -> _FakeResponse:
+        calls.append((url, timeout))
+        return _FakeResponse(payload)
+
+    return fake_urlopen
+
+
+def test_github_downloader_maps_a_transfer_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A failed transfer is typed, and leaves no partial file behind."""
+
+    def failing_urlopen(url: str, timeout: float) -> _FakeResponse:
+        raise OSError("connection reset")
+
+    monkeypatch.setattr("urllib.request.urlopen", failing_urlopen)
+
+    with pytest.raises(AssetError, match="could not download"):
+        GitHubDownloader.download("acme/repo", "r1", "weights.bin", str(tmp_path))
+
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_downloader_for_github_needs_no_download_extra() -> None:
+    """The GitHub adapter is stdlib-only, so a GitHub-sourced asset installs without it."""
+    downloader = downloader_for(ModelSource.GITHUB)
+
+    assert isinstance(downloader, GitHubDownloader)
+    assert "huggingface_hub" not in sys.modules
+
+
+def test_downloader_for_keeps_the_hub_as_the_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = import_huggingface(monkeypatch)
+
+    assert isinstance(downloader_for(ModelSource.HUGGINGFACE), module.HuggingFaceDownloader)
+
+
 def import_huggingface(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
     """Import the heavy adapter against a fake ``huggingface_hub``.
 
@@ -538,6 +637,19 @@ def import_huggingface(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
 
 def _hub_sentinel(**kwargs: str) -> str:
     raise AssertionError("the fake hub must never be called directly")
+
+
+def test_model_source_defaults_to_the_hub() -> None:
+    """A descriptor written before the discriminator existed keeps its meaning."""
+    descriptor = ModelAssetDescriptor(
+        model_id="acme/model",
+        model_revision="r1",
+        model_license="Apache-2.0",
+        code_license="Apache-2.0",
+        asset_license="none",
+    )
+
+    assert descriptor.model_source is ModelSource.HUGGINGFACE
 
 
 # ── import hygiene ─────────────────────────────────────────────────────────

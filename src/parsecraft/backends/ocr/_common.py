@@ -21,6 +21,7 @@ from typing import Protocol, cast, runtime_checkable
 import pypdfium2 as pdfium
 from packaging.specifiers import SpecifierSet
 
+from parsecraft.assets.downloader import downloader_for
 from parsecraft.assets.manager import AssetManager
 from parsecraft.assets.models import AssetPin
 from parsecraft.backends.errors import BackendError, DependencyUnavailableError, UnsupportedDependencyVersionError
@@ -240,7 +241,7 @@ def ensure_assets(descriptor: ModelAssetDescriptor, config: BackendConfig) -> st
         filenames=[file_pin.path for file_pin in descriptor.file_pins],
         expected_sha256={file_pin.path: file_pin.sha256 for file_pin in descriptor.file_pins},
     )
-    manager = AssetManager(offline=offline)
+    manager = AssetManager(offline=offline, downloader=downloader_for(descriptor.model_source))
     manager.ensure(pin)
     return str(manager.revision_dir(descriptor.model_id, descriptor.model_revision))
 

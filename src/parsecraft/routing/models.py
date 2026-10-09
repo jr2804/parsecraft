@@ -70,6 +70,10 @@ class RoutingConstraints(BaseModel):
     #: candidate (``gpu_requirement == 1.0``) is dropped without it, so a
     #: machine whose GPU exists but is unusable never gets a CPU-fallback run.
     gpu_usable: bool = False
+    #: External engines this host can use (see ``EnvironmentInfo.engines``). A
+    #: candidate declaring ``required_engine`` is dropped unless its engine is
+    #: in here; every other candidate is unaffected.
+    engines: frozenset[str] = Field(default_factory=frozenset)
     max_passes: int = Field(default=1, ge=1)
     allow_ocr: bool = True
     offline: bool = True

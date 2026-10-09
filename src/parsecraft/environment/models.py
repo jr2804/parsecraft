@@ -20,6 +20,12 @@ class EnvironmentInfo(BaseModel):
     Hardware presence and runtime usability are deliberately separate facts:
     a host can report 8 GiB of VRAM through ``nvidia-smi`` while the installed
     torch is a ``+cpu`` build, and only the runtime matters for routing.
+
+    ``engines`` names the external engine binaries the registered backends
+    require that this host can actually use — probed from the PATH, or declared
+    outright through the engine's environment variable (ADR-0008 decision 2). It
+    is a routing fact, not an inventory: only engines some backend declares as
+    required are probed, so a host never pays for a fact nobody asked for.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -29,3 +35,4 @@ class EnvironmentInfo(BaseModel):
     vram_budget_gb: float = Field(default=0.0, ge=0)
     gpu_usable: bool = False
     offline: bool = False
+    engines: frozenset[str] = Field(default_factory=frozenset)

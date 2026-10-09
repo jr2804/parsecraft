@@ -265,6 +265,67 @@ def test_extra_imports_map_covers_the_declared_ocr_and_pdf_groups() -> None:
         assert EXTRA_IMPORTS[group]
 
 
+# ── Engines (ADR-0008 decision 13) ────────────────────────────────────────────
+
+
+def test_probe_reports_a_required_engine_found_on_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_entry_points(monkeypatch, [_descriptor("ocr-tesseract", required_engine="tesseract")])
+    looked_up = _patch_which(monkeypatch, {"tesseract"})
+
+    environment = probe_environment()
+
+    assert environment.engines == frozenset({"tesseract"})
+    assert looked_up == ["tesseract"]
+
+
+def test_probe_honours_an_engine_declaration_without_probing_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A declaration is honoured verbatim (decision 2), so PATH never decides it."""
+    _patch_entry_points(monkeypatch, [_descriptor("ocr-tesseract", required_engine="tesseract")])
+    looked_up = _patch_which(monkeypatch, set())
+    monkeypatch.setenv("PARSECRAFT_TESSERACT", "/opt/tesseract/bin/tesseract")
+
+    environment = probe_environment()
+
+    assert environment.engines == frozenset({"tesseract"})
+    assert looked_up == []
+
+
+def test_probe_omits_a_required_engine_the_host_lacks(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_entry_points(monkeypatch, [_descriptor("ocr-tesseract", required_engine="tesseract")])
+    _patch_which(monkeypatch, set())
+    monkeypatch.delenv("PARSECRAFT_TESSERACT", raising=False)
+
+    assert probe_environment().engines == frozenset()
+
+
+def test_probe_asks_about_no_engine_when_no_backend_requires_one(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The fact is probed on demand only: nothing declares one, nothing is looked up."""
+    _patch_entry_points(monkeypatch, [_descriptor("native-text"), _descriptor("native-pdf", "pdf-lite")])
+    looked_up = _patch_which(monkeypatch, {"tesseract", "anything"})
+
+    assert probe_environment().engines == frozenset()
+    assert looked_up == []
+
+
+def test_probe_probes_the_engine_not_the_backend_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Generic by construction: any backend declaring an engine is probed for it."""
+    _patch_entry_points(monkeypatch, [_descriptor("some-future-thing", required_engine="tesseract")])
+    looked_up = _patch_which(monkeypatch, {"tesseract"})
+
+    assert probe_environment().engines == frozenset({"tesseract"})
+    assert looked_up == ["tesseract"]
+
+
+def test_probe_reports_each_required_engine_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_entry_points(
+        monkeypatch,
+        [_descriptor("ocr-one", required_engine="tesseract"), _descriptor("ocr-two", required_engine="tesseract")],
+    )
+    _patch_which(monkeypatch, {"tesseract"})
+
+    assert probe_environment().engines == frozenset({"tesseract"})
+
+
 def test_every_declared_extra_is_detectable_or_explicitly_meta() -> None:
     """The extras contract, in both directions and against pyproject itself.
 
@@ -321,11 +382,23 @@ def test_probe_is_deterministic_for_identical_inputs(monkeypatch: pytest.MonkeyP
     assert probe_environment() == probe_environment()
 
 
-def _descriptor(name: str, group: str | None = None) -> BackendDescriptor:
+def _descriptor(name: str, group: str | None = None, required_engine: str | None = None) -> BackendDescriptor:
     return BackendDescriptor(
         name=name,
-        capabilities=BackendCapabilities(optional_dependency_group=group),
+        capabilities=BackendCapabilities(optional_dependency_group=group, required_engine=required_engine),
     )
+
+
+def _patch_which(monkeypatch: pytest.MonkeyPatch, found: set[str]) -> list[str]:
+    """Fake ``shutil.which``; returns the engine names that were looked up."""
+    looked_up: list[str] = []
+
+    def _fake_which(name: str) -> str | None:
+        looked_up.append(name)
+        return f"/usr/bin/{name}" if name in found else None
+
+    monkeypatch.setattr(probe_module.shutil, "which", _fake_which)
+    return looked_up
 
 
 def _patch_entry_points(monkeypatch: pytest.MonkeyPatch, descriptors: list[BackendDescriptor]) -> list[str]:
@@ -383,6 +456,7 @@ def test_constraints_fill_every_field_from_detected_facts() -> None:
     assert constraints.allow_ocr is True  # derived: an OCR extra is detected
     assert constraints.formats == set()
     assert constraints.max_passes == 1
+    assert constraints.engines == frozenset({"tesseract"})
 
 
 def test_constraints_pass_plan_inputs_through() -> None:
@@ -425,6 +499,7 @@ def _environment(**overrides: object) -> EnvironmentInfo:
         "installed_extras": frozenset({"ocr-ovis", "pdf-lite"}),
         "vram_budget_gb": 8.0,
         "offline": True,
+        "engines": frozenset({"tesseract"}),
     }
     base.update(overrides)
     return EnvironmentInfo.model_validate(base)

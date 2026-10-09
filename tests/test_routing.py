@@ -159,6 +159,36 @@ def test_hard_gpu_backend_needs_a_usable_runtime() -> None:
     assert is_hard_eligible(optional, full_constraints(gpu_usable=False)) is True
 
 
+def test_required_engine_gates_eligibility() -> None:
+    """A declared engine is a precondition, exactly like a hard GPU requirement.
+
+    Admitting a backend whose binary is absent would route pages into a pass
+    that can only fail, so the host fact drops it up front. The rule compares
+    the declared engine against the probed set — never a backend name.
+    """
+    tesseract = make_desc("ocr-tesseract", required_engine="tesseract")
+
+    assert is_hard_eligible(tesseract, full_constraints(engines=frozenset({"tesseract"}))) is True
+    assert is_hard_eligible(tesseract, full_constraints(engines=frozenset())) is False
+    # Another engine's presence says nothing about this one's:
+    assert is_hard_eligible(tesseract, full_constraints(engines=frozenset({"pandoc"}))) is False
+
+
+def test_backend_without_a_required_engine_ignores_the_engine_set() -> None:
+    """The default is "needs no engine", so the fact cannot exclude anything."""
+    native = make_desc("native-text")
+
+    assert is_hard_eligible(native, full_constraints(engines=frozenset())) is True
+
+
+def test_engine_gate_reads_the_declaration_not_the_backend_name() -> None:
+    """Generic by construction: an oddly named backend is treated the same."""
+    odd = make_desc("some-future-thing", required_engine="tesseract")
+
+    assert is_hard_eligible(odd, full_constraints(engines=frozenset({"tesseract"}))) is True
+    assert is_hard_eligible(odd, full_constraints(engines=frozenset())) is False
+
+
 def test_format_coverage_rules() -> None:
     pdf_backend = make_desc("native-pdf", ("application/pdf",))
     assert is_hard_eligible(pdf_backend, full_constraints(formats={"application/pdf"})) is True
@@ -859,6 +889,7 @@ def make_desc(
     vram: float | None = None,
     group: str | None = None,
     with_asset: bool = False,
+    required_engine: str | None = None,
 ) -> BackendDescriptor:
     asset = (
         ModelAssetDescriptor(
@@ -879,6 +910,7 @@ def make_desc(
             estimated_vram_gb=vram,
             optional_dependency_group=group,
             model_asset=asset,
+            required_engine=required_engine,
         ),
     )
 

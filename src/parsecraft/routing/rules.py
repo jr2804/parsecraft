@@ -111,7 +111,13 @@ def is_hard_eligible(descriptor: BackendDescriptor, constraints: RoutingConstrai
     # A language request only narrows backends that DECLARE languages:
     # language-agnostic candidates (native included) are never excluded.
     language_ok = constraints.language is None or not declared_languages or constraints.language in declared_languages
-    return ocr_allowed and extra_installed and gpu_ok and formats_covered and offline_ok and language_ok
+    # A declared engine is a precondition, exactly like a hard GPU requirement:
+    # a backend that needs a binary the host does not have cannot answer, and
+    # admitting it would route pages into a pass that can only fail. The name is
+    # compared against the host's probed engines and nothing else — no backend
+    # name is special-cased (ADR-0008 decision 13).
+    engine_ok = capabilities.required_engine is None or capabilities.required_engine in constraints.engines
+    return ocr_allowed and extra_installed and gpu_ok and formats_covered and offline_ok and language_ok and engine_ok
 
 
 def in_intent_family(intent: Intent, descriptor: BackendDescriptor) -> bool:
