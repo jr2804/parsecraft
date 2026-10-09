@@ -7,7 +7,7 @@ Pinned revisions and licenses verified against the HF API 2026-09-27
 
 from __future__ import annotations
 
-from parsecraft.backends.protocol import GPU_REQUIRED, AssetFilePin, BackendCapabilities, ModelAssetDescriptor
+from parsecraft.backends.protocol import GPU_NOT_NEEDED, GPU_REQUIRED, AssetFilePin, BackendCapabilities, ModelAssetDescriptor
 
 #: Shared backend version for the whole OCR family (adapter code, not model).
 OCR_BACKEND_VERSION = "0.1.0"
@@ -185,12 +185,14 @@ QIANFAN_ASSET = ModelAssetDescriptor(
 
 def ocr_capabilities(
     *,
-    asset: ModelAssetDescriptor,
-    optional_dependency_group: str,
+    asset: ModelAssetDescriptor | None,
+    optional_dependency_group: str | None,
     gpu_requirement: float = GPU_REQUIRED,
     supports_multi_page: bool,
-    estimated_vram_gb: float,
+    estimated_vram_gb: float | None,
     languages: tuple[str, ...] = (),
+    supported_formats: tuple[str, ...] = OCR_FORMATS,
+    required_engine: str | None = None,
 ) -> BackendCapabilities:
     """Build the capability record shared by a factory descriptor and its backend.
 
@@ -202,9 +204,14 @@ def ocr_capabilities(
     language-agnostic on purpose — an empty tuple is never excluded by a
     language request, which is the fail-safe direction for set-membership
     eligibility.
+
+    ``asset``/``optional_dependency_group``/``estimated_vram_gb`` are optional
+    because a **base** backend declares none of them: it lives in the default
+    install, so it has no extra to gate on and no weights to place on a GPU.
+    ``required_engine`` is the ADR-0008 decision 13 seam for an external binary.
     """
     return BackendCapabilities(
-        supported_formats=list(OCR_FORMATS),
+        supported_formats=list(supported_formats),
         supports_page_ranges=True,
         supports_multi_page=supports_multi_page,
         gpu_requirement=gpu_requirement,
@@ -212,6 +219,7 @@ def ocr_capabilities(
         optional_dependency_group=optional_dependency_group,
         model_asset=asset,
         languages=languages,
+        required_engine=required_engine,
     )
 
 
@@ -243,4 +251,40 @@ QIANFAN_CAPABILITIES = ocr_capabilities(
     optional_dependency_group=QIANFAN_EXTRA,
     supports_multi_page=False,
     estimated_vram_gb=QIANFAN_VRAM_GB,
+)
+
+# ── tesseract: the base-install OCR backend (ADR-0008) ──────────────────────
+
+TESSERACT_NAME = "ocr-tesseract"
+#: The OS package this backend drives. It is a binary, not a wheel, so no
+#: interpreter cell can fail on it (ADR-0008 decision 1) and no extra is
+#: declared — the backend is in the default install.
+TESSERACT_ENGINE = "tesseract"
+#: Env override honoured verbatim by discovery, and the same variable the
+#: environment probe treats as a declaration (ADR-0008 decision 2).
+TESSERACT_ENV = "PARSECRAFT_TESSERACT"
+#: Traineddata languages this backend asks the engine for. ``equ`` (formula) is
+#: shipped with the pulled set but NOT requested by default: its recognition is
+#: weak enough that stating it here would promise an accuracy we do not have
+#: (decision 7). ``deu`` is declared alongside ``eng`` because a German corpus is
+#: a first-class case, not a nice-to-have.
+TESSERACT_LANGUAGES: tuple[str, ...] = ("eng", "deu")
+#: Tesseract reads TIFF natively (Leptonica), so this backend declares it; the
+#: VLM backends do not, and a declared format stays a per-backend claim.
+TESSERACT_FORMATS: tuple[str, ...] = (*OCR_FORMATS, "image/tiff")
+
+TESSERACT_CAPABILITIES = ocr_capabilities(
+    # No asset and no extra yet: the tessdata ``model_asset`` lands with the
+    # asset work that follows, so this descriptor states only what the code can
+    # do today. ``gpu_requirement`` is NOT_NEEDED — a CPU subprocess engine with
+    # no weights on the GPU, eligible on a CPU-only host through the existing
+    # ``is_hard_eligible`` path with no new routing primitive.
+    asset=None,
+    optional_dependency_group=None,
+    gpu_requirement=GPU_NOT_NEEDED,
+    supports_multi_page=True,
+    estimated_vram_gb=None,
+    languages=TESSERACT_LANGUAGES,
+    supported_formats=TESSERACT_FORMATS,
+    required_engine=TESSERACT_ENGINE,
 )

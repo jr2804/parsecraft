@@ -107,6 +107,9 @@ ocr-ovis = "parsecraft.backends.ocr.ovis:factory"
 ocr-tele = "parsecraft.backends.ocr.tele:factory"
 ocr-unlimited = "parsecraft.backends.ocr.unlimited:factory"
 ocr-qianfan = "parsecraft.backends.ocr.qianfan:factory"
+# Base-install OCR (ADR-0008): a binary engine, so no extra is declared and the
+# backend is in the default install. Eligible only where the engine is present.
+ocr-tesseract = "parsecraft.backends.ocr.tesseract:factory"
 
 [dependency-groups]
 dev = [

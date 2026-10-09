@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tomllib
+from collections.abc import Callable
 from pathlib import Path
 from subprocess import TimeoutExpired
 
@@ -269,31 +270,36 @@ def test_extra_imports_map_covers_the_declared_ocr_and_pdf_groups() -> None:
 # ── Engines (ADR-0008 decision 13) ────────────────────────────────────────────
 
 
-def test_probe_reports_a_required_engine_found_on_path(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_probe_delegates_to_the_engine_own_discovery(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The probe asks the engine's own discovery, never a private reimplementation.
+
+    Delegation is what keeps routing eligibility and the executable a backend
+    actually runs from disagreeing — see ``ENGINE_DISCOVERY``.
+    """
     _patch_entry_points(monkeypatch, [_descriptor("ocr-tesseract", required_engine="tesseract")])
-    looked_up = _patch_which(monkeypatch, {"tesseract"})
+    asked = _patch_engine_discovery(monkeypatch, {"tesseract"}, found="/opt/tess/bin/tesseract")
 
     environment = probe_environment()
 
     assert environment.engines == frozenset({"tesseract"})
-    assert looked_up == ["tesseract"]
+    assert asked == ["tesseract"]
 
 
 def test_probe_honours_an_engine_declaration_without_probing_it(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A declaration is honoured verbatim (decision 2), so PATH never decides it."""
+    """A declaration is honoured verbatim (decision 2), so discovery never decides it."""
     _patch_entry_points(monkeypatch, [_descriptor("ocr-tesseract", required_engine="tesseract")])
-    looked_up = _patch_which(monkeypatch, set())
+    asked = _patch_engine_discovery(monkeypatch, {"tesseract"}, found=None)
     monkeypatch.setenv("PARSECRAFT_TESSERACT", "/opt/tesseract/bin/tesseract")
 
     environment = probe_environment()
 
     assert environment.engines == frozenset({"tesseract"})
-    assert looked_up == []
+    assert asked == []
 
 
 def test_probe_omits_a_required_engine_the_host_lacks(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_entry_points(monkeypatch, [_descriptor("ocr-tesseract", required_engine="tesseract")])
-    _patch_which(monkeypatch, set())
+    _patch_engine_discovery(monkeypatch, {"tesseract"}, found=None)
     monkeypatch.delenv("PARSECRAFT_TESSERACT", raising=False)
 
     assert probe_environment().engines == frozenset()
@@ -302,19 +308,28 @@ def test_probe_omits_a_required_engine_the_host_lacks(monkeypatch: pytest.Monkey
 def test_probe_asks_about_no_engine_when_no_backend_requires_one(monkeypatch: pytest.MonkeyPatch) -> None:
     """The fact is probed on demand only: nothing declares one, nothing is looked up."""
     _patch_entry_points(monkeypatch, [_descriptor("native-text"), _descriptor("native-pdf", "pdf-lite")])
-    looked_up = _patch_which(monkeypatch, {"tesseract", "anything"})
+    asked = _patch_engine_discovery(monkeypatch, {"tesseract"}, found="/usr/bin/tesseract")
 
     assert probe_environment().engines == frozenset()
-    assert looked_up == []
+    assert asked == []
 
 
 def test_probe_probes_the_engine_not_the_backend_name(monkeypatch: pytest.MonkeyPatch) -> None:
     """Generic by construction: any backend declaring an engine is probed for it."""
     _patch_entry_points(monkeypatch, [_descriptor("some-future-thing", required_engine="tesseract")])
-    looked_up = _patch_which(monkeypatch, {"tesseract"})
+    asked = _patch_engine_discovery(monkeypatch, {"tesseract"}, found="/usr/bin/tesseract")
 
     assert probe_environment().engines == frozenset({"tesseract"})
-    assert looked_up == ["tesseract"]
+    assert asked == ["tesseract"]
+
+
+def test_probe_falls_back_to_path_for_an_engine_without_its_own_discovery(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An engine nobody wrote discovery for still gets the generic PATH answer."""
+    _patch_entry_points(monkeypatch, [_descriptor("future-backend", required_engine="ghost-engine")])
+    looked_up = _patch_which(monkeypatch, {"ghost-engine"})
+
+    assert probe_environment().engines == frozenset({"ghost-engine"})
+    assert looked_up == ["ghost-engine"]
 
 
 def test_probe_reports_each_required_engine_once(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -322,9 +337,10 @@ def test_probe_reports_each_required_engine_once(monkeypatch: pytest.MonkeyPatch
         monkeypatch,
         [_descriptor("ocr-one", required_engine="tesseract"), _descriptor("ocr-two", required_engine="tesseract")],
     )
-    _patch_which(monkeypatch, {"tesseract"})
+    asked = _patch_engine_discovery(monkeypatch, {"tesseract"}, found="/usr/bin/tesseract")
 
     assert probe_environment().engines == frozenset({"tesseract"})
+    assert asked == ["tesseract"]
 
 
 def test_every_declared_extra_is_detectable_or_explicitly_meta() -> None:
@@ -400,6 +416,28 @@ def _patch_which(monkeypatch: pytest.MonkeyPatch, found: set[str]) -> list[str]:
 
     monkeypatch.setattr(probe_module.shutil, "which", _fake_which)
     return looked_up
+
+
+def _patch_engine_discovery(monkeypatch: pytest.MonkeyPatch, engines: set[str], *, found: str | None) -> list[str]:
+    """Fake per-engine discovery; returns the engine names it was asked about.
+
+    The probe's contract is the DELEGATION order, so that is what these tests
+    pin. Whether a given engine is found on a given host is the engine module's
+    own business and is tested there — the two are deliberately separate,
+    because a PATH stub cannot exercise tesseract's Windows install-root scan
+    and a Windows host never reaches its PATH branch (memory #1127).
+    """
+    asked: list[str] = []
+
+    def _discover_for(engine: str) -> Callable[[], str | None]:
+        def _discover() -> str | None:
+            asked.append(engine)
+            return found
+
+        return _discover
+
+    monkeypatch.setattr(probe_module, "ENGINE_DISCOVERY", {engine: _discover_for(engine) for engine in engines})
+    return asked
 
 
 def _patch_entry_points(monkeypatch: pytest.MonkeyPatch, descriptors: list[BackendDescriptor]) -> list[str]:

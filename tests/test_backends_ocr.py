@@ -16,6 +16,7 @@ import hashlib
 import importlib
 import json
 import re
+import struct
 import sys
 import time
 import tomllib
@@ -75,6 +76,19 @@ _PINNED_ASSETS = (
     (_models.TELE_ASSET, "tele"),
     (_models.UNLIMITED_ASSET, "unlimited"),
     (_models.QIANFAN_ASSET, "qianfan"),
+)
+
+
+#: Minimal 1x1, 8-bit grayscale, uncompressed TIFF tags: (tag, type, count, value).
+_TIFF_TAGS: tuple[tuple[int, int, int, int], ...] = (
+    (256, 3, 1, 1),  # ImageWidth
+    (257, 3, 1, 1),  # ImageLength
+    (258, 3, 1, 8),  # BitsPerSample
+    (259, 3, 1, 1),  # Compression = none
+    (262, 3, 1, 1),  # PhotometricInterpretation = BlackIsZero
+    (273, 4, 1, 0),  # StripOffsets — patched to the pixel offset below
+    (277, 3, 1, 1),  # SamplesPerPixel
+    (279, 4, 1, 1),  # StripByteCounts
 )
 
 
@@ -698,8 +712,52 @@ def test_count_pages_is_one_for_images_and_counts_pdf_pages(pdfium: _Pypdfium2St
 
 
 def test_count_pages_rejects_unsupported_payload() -> None:
-    with pytest.raises(BackendError, match="expected a PDF or a PNG/JPEG image"):
+    with pytest.raises(BackendError, match="expected a PDF or a PNG/JPEG/TIFF image"):
         _common.count_pages(SourceDocument(uri="file:///doc.txt", content=b"plain text"))
+
+
+@pytest.mark.parametrize("big_endian", [False, True], ids=["little-endian", "big-endian"])
+def test_a_real_tiff_is_one_page_and_reaches_the_engine_unchanged(big_endian: bool) -> None:
+    r"""TIFF is accepted in BOTH byte orders, as a real image rather than a sniff.
+
+    ``II*\0`` and ``MM\0*`` are the two marks; only checking one would leave the
+    other half of the declared ``image/tiff`` capability unverified.
+    """
+    data = _tiff_bytes(big_endian=big_endian)
+
+    with Image.open(BytesIO(data)) as image:  # proves the bytes really are a TIFF
+        image.load()
+        assert image.size == (1, 1)
+
+    source = SourceDocument(uri="file:///scan.tif", media_type="image/tiff", content=data)
+
+    assert _common.count_pages(source) == 1
+    # Passed through byte-for-byte: no rasterization, so the engine decodes the
+    # original TIFF itself (Tesseract reads TIFF natively via Leptonica).
+    assert _common.rasterize_page(source, 1) == data
+
+
+def _tiff_bytes(*, big_endian: bool) -> bytes:
+    r"""A REAL single-pixel TIFF in the requested byte order.
+
+    Built by hand rather than with Pillow (which only ever writes ``II`` and
+    ignores ``byteorder=``) so that BOTH marks can be produced — and each is a
+    decodable image, which the test asserts, rather than bytes that merely begin
+    like a TIFF.
+    """
+    endian = ">" if big_endian else "<"
+    ifd_offset = 8
+    pixel_offset = ifd_offset + 2 + len(_TIFF_TAGS) * 12 + 4
+    out = bytearray((b"MM\x00\x2a" if big_endian else b"II\x2a\x00") + struct.pack(f"{endian}I", ifd_offset))
+    out += struct.pack(f"{endian}H", len(_TIFF_TAGS))
+    for tag, kind, count, raw_value in _TIFF_TAGS:
+        value = pixel_offset if tag == 273 else raw_value
+        # An inline SHORT fills the FIRST two bytes of the value field: the high
+        # bytes when big-endian, the low ones when little-endian.
+        payload = (value << 16) if (kind == 3 and count == 1 and big_endian) else value
+        out += struct.pack(f"{endian}HHI", tag, kind, count) + struct.pack(f"{endian}I", payload)
+    out += struct.pack(f"{endian}I", 0) + b"\x00"  # no next IFD; one black pixel
+    return bytes(out)
 
 
 def test_declared_formats_match_the_page_access_layer() -> None:
@@ -906,7 +964,7 @@ def test_convert_turns_unsupported_sources_into_typed_failures() -> None:
     result = _convert(source, _request(source), lambda _number, _req: "x")
     assert result.pages == []
     assert result.failures[0].code is FailureCode.INVALID_INPUT
-    assert "expected a PDF or a PNG/JPEG image" in result.failures[0].detail
+    assert "expected a PDF or a PNG/JPEG/TIFF image" in result.failures[0].detail
 
 
 def test_convert_stops_on_cancellation(pdfium: _Pypdfium2Stub) -> None:

@@ -12,11 +12,13 @@ from __future__ import annotations
 import os
 import re
 import shutil
-from collections.abc import Collection
+from collections.abc import Callable, Collection
 from importlib.util import find_spec
 from pathlib import Path
 from subprocess import TimeoutExpired, run
 
+from parsecraft.backends.ocr._models import TESSERACT_ENGINE, TESSERACT_ENV
+from parsecraft.backends.ocr.tesseract import find_tesseract_cmd
 from parsecraft.backends.registry import BackendRegistry
 from parsecraft.environment.models import EnvironmentInfo
 
@@ -57,7 +59,17 @@ META_EXTRAS: frozenset[str] = frozenset({"auto"})
 #: backend name, so no backend is special-cased (decision 13). Pandoc and the
 #: docling LibreOffice path are the obvious future members; they are
 #: deliberately not wired here.
-ENGINE_DECLARATIONS: dict[str, str] = {"tesseract": "PARSECRAFT_TESSERACT"}
+ENGINE_DECLARATIONS: dict[str, str] = {TESSERACT_ENGINE: TESSERACT_ENV}
+
+#: Engine name -> that engine's own host discovery. The probe DELEGATES rather
+#: than reimplementing, because eligibility and the executable a backend actually
+#: runs must never disagree. This matters concretely: tesseract's discovery
+#: includes a Windows install-root scan, and its installer lets a user decline
+#: adding itself to PATH — a probe that knew only PATH would report a working
+#: install as absent and silently exclude the backend on exactly the hosts
+#: ADR-0008 targets. Absent entry = the generic PATH rule in
+#: :func:`_engine_available`.
+ENGINE_DISCOVERY: dict[str, Callable[[], str | None]] = {TESSERACT_ENGINE: find_tesseract_cmd}
 
 _OFFLINE_ENV = "PARSECRAFT_OFFLINE"
 _OFFLINE_TRUE_VALUES = frozenset({"1", "true", "yes"})
@@ -146,12 +158,25 @@ def _detect_engines(required: Collection[str]) -> frozenset[str]:
     """Which of the *required* engines this host can actually use.
 
     Only engines some registered backend declares are probed, so the cost is
-    paid only for facts somebody asked for. Presence is the engine's
-    declaration when set (ADR-0008 decision 2 — honoured verbatim, never
-    probed), else a PATH lookup, which is a generic question needing no
-    per-engine knowledge.
+    paid only for facts somebody asked for. Presence is the engine's own
+    discovery — see :func:`_engine_available`.
     """
-    return frozenset(name for name in required if os.environ.get(ENGINE_DECLARATIONS.get(name, ""), "").strip() or shutil.which(name) is not None)
+    return frozenset(name for name in required if _engine_available(name))
+
+
+def _engine_available(name: str) -> bool:
+    """Whether one required engine is usable on this host.
+
+    Declaration first and never probed (ADR-0008 decision 2), then the engine's
+    own discovery when it declares one, else a PATH lookup — a generic question
+    that needs no per-engine knowledge.
+    """
+    if os.environ.get(ENGINE_DECLARATIONS.get(name, ""), "").strip():
+        return True
+    discovery = ENGINE_DISCOVERY.get(name)
+    if discovery is not None:
+        return discovery() is not None
+    return shutil.which(name) is not None
 
 
 def _detect_vram_gb() -> float:

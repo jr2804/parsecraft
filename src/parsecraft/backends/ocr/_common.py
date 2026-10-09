@@ -114,7 +114,12 @@ MAX_RASTER_PIXELS = 40_000_000
 _DEFAULT_RUNTIME = "transformers"
 _PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 _JPEG_MAGIC = b"\xff\xd8\xff"
+#: TIFF has two byte-order marks: ``II*\0`` (little-endian) and ``MM\0*`` (big).
+_TIFF_MAGIC = (b"II\x2a\x00", b"MM\x00\x2a")
 _PDF_MAGIC = b"%PDF-"
+
+#: Source payloads that are already images and need no rasterization.
+_IMAGE_MAGIC: tuple[bytes, ...] = (_PNG_MAGIC, _JPEG_MAGIC, *_TIFF_MAGIC)
 
 
 @runtime_checkable
@@ -285,7 +290,7 @@ def ensure_assets(descriptor: ModelAssetDescriptor, config: BackendConfig) -> st
 def rasterize_page(source: SourceDocument, page_number: int) -> bytes:
     """Raster for one page: PNG bytes (images pass through unchanged)."""
     payload = source_bytes(source)
-    if payload.startswith(_PNG_MAGIC) or payload.startswith(_JPEG_MAGIC):
+    if is_image_payload(payload):
         return payload
     return _raster_pdf_page(payload, page_number)
 
@@ -321,7 +326,7 @@ def convert_pages(
     *,
     backend_name: str,
     backend_version: str,
-    asset: ModelAssetDescriptor,
+    asset: ModelAssetDescriptor | None,
     source: SourceDocument,
     request: ConversionRequest,
     infer_page: Callable[[int, ConversionRequest], str],
@@ -335,13 +340,18 @@ def convert_pages(
     conversion has started. ``max_context_tokens`` is handed through to
     ``infer_page`` as the per-page generation budget (stateless OCR has no
     cross-page context).
+
+    ``asset`` is ``None`` for a backend that ships no weights: an engine-driven
+    backend has no model to attribute a page to, and its provenance is the engine
+    alone. Recording a placeholder model id would put a name in the trace that
+    identifies nothing.
     """
     started = time.monotonic()
     reference = BackendRef(
         name=backend_name,
         version=backend_version,
-        model_id=asset.model_id,
-        model_revision=asset.model_revision,
+        model_id=asset.model_id if asset is not None else None,
+        model_revision=asset.model_revision if asset is not None else None,
     )
     budget_s = request.timeout_s if request.timeout_s is not None else 0.0
 
@@ -458,12 +468,23 @@ def convert_pages(
 def count_pages(source: SourceDocument) -> int:
     """Page count without running the model: images are one page, PDFs defer to the raster engine."""
     payload = source_bytes(source)
-    if payload.startswith(_PNG_MAGIC) or payload.startswith(_JPEG_MAGIC):
+    if is_image_payload(payload):
         return 1
     if not payload.startswith(_PDF_MAGIC):
-        msg = f"unsupported source {source.uri!r}: expected a PDF or a PNG/JPEG image"
+        msg = f"unsupported source {source.uri!r}: expected a PDF or a PNG/JPEG/TIFF image"
         raise BackendError(msg)
     return _pdf_page_count(payload)
+
+
+def is_image_payload(payload: bytes) -> bool:
+    """Whether a source is an image the OCR family can read without decoding.
+
+    TIFF is included because it is an image the *engine* reads natively (and
+    Pillow reads it too), so it belongs to the family surface — while
+    ``supported_formats`` still names it per backend, since a declared format is
+    a capability claim, not a family-wide truth.
+    """
+    return payload.startswith(_IMAGE_MAGIC)
 
 
 def source_bytes(source: SourceDocument) -> bytes:
