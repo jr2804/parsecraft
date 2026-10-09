@@ -614,6 +614,12 @@ def _asset_descriptor() -> BackendDescriptor:
     )
 
 
+def test_the_probe_downloader_never_fetches() -> None:
+    """The probe's structural downloader fails loudly if verification ever fetches."""
+    with pytest.raises(AssertionError, match="never downloads"):
+        probe_module._NoFetch.download("acme/model", "abc123", "weights.bin", "somewhere")
+
+
 def test_probe_skips_assets_without_an_integrity_manifest(monkeypatch: pytest.MonkeyPatch) -> None:
     """No file_pins -> nothing to verify -> absent (fail-safe), never a validation error."""
     descriptor = BackendDescriptor(

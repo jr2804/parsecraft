@@ -220,6 +220,12 @@ def test_has_all_files(tmp_path: Path) -> None:
     assert manager.has_all_files(make_pin()) is True
 
 
+def test_is_verified_counts_a_missing_marker_as_absent(tmp_path: Path) -> None:
+    """pc-m0k fail-safe: no verification marker at all -> the asset counts as absent."""
+    manager = AssetManager(cache_dir=tmp_path, downloader=FakeDownloader())
+    assert manager.is_verified(make_pin()) is False
+
+
 def test_ensure_offline_missing_raises(tmp_path: Path) -> None:
     manager = AssetManager(cache_dir=tmp_path, downloader=FakeDownloader(), offline=True)
     with pytest.raises(OfflineModeError):
