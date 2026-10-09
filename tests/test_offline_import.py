@@ -7,6 +7,30 @@ import sys
 import textwrap
 from pathlib import Path
 
+#: Runtime roots that must never enter a parsecraft import or a test module's
+#: collection. Base dependencies (pypdfium2, promoted by ADR-0008 d10/d14) are
+#: deliberately ABSENT — they import at module level by decision; optional
+#: extras are PRESENT. The offline gate asserts none of these entered
+#: ``sys.modules`` while the core imports; the collection sweep blocks importing
+#: them outright.
+_HEAVY_RUNTIME_ROOTS: frozenset[str] = frozenset({
+    "docling",
+    "huggingface_hub",
+    "liteparse",
+    "marker",
+    "mineru",
+    "pypandoc",
+    "pdf_inspector",
+    "pymupdf",
+    "rapidocr",
+    "trafilatura",
+    "torch",
+    "torchvision",
+    "transformers",
+    "typesafe_sdk",
+    "vllm",
+})
+
 _SCRIPT = textwrap.dedent(
     """
     import socket
@@ -19,7 +43,10 @@ _SCRIPT = textwrap.dedent(
     socket.getaddrinfo = _blocked
 
     import importlib.metadata
+    import importlib.metadata
     import sys
+
+    HEAVY = __HEAVY_ROOTS__
 
     # Non-backend core: explicit, so the offline / no-heavy-runtime / no-network
     # contract cannot silently shrink. Backend modules are NOT listed here —
@@ -73,22 +100,7 @@ _SCRIPT = textwrap.dedent(
     for name in core + ordered:
         __import__(name)
 
-    heavy = [
-        m
-        for m in (
-            "torch",
-            "transformers",
-            "vllm",
-            "docling",
-            "pdf_inspector",
-            "typesafe_sdk",
-            "huggingface_hub",
-            "marker",
-            "mineru",
-            "trafilatura",
-        )
-        if m in sys.modules
-    ]
+    heavy = [m for m in HEAVY if m in sys.modules]
     assert not heavy, f"heavy runtimes imported at package import: {heavy}"
     heavy_impls = [m for m in sys.modules if m.startswith("parsecraft.backends") and m.endswith("_impl")]
     assert not heavy_impls, f"heavy impl modules imported at package import: {heavy_impls}"
@@ -96,6 +108,7 @@ _SCRIPT = textwrap.dedent(
     assert "parsecraft.backends.pdf_inspector._impl" not in sys.modules
     print(f"IMPORTS_OK core={len(core)} backends={len(ordered)}")
     """,
+).replace("__HEAVY_ROOTS__", repr(sorted(_HEAVY_RUNTIME_ROOTS)))
 )
 
 
