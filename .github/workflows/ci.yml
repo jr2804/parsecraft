@@ -54,6 +54,70 @@ jobs:
     - name: Assert every extra resolves jointly
       run: uv sync -U --all-extras --all-groups --all-packages --dry-run
 
+  # Root AGENTS.md rule 10, REPORTED NOT GATED. The `extras` job above verifies
+  # joint resolution on 3.13 (GIL) only; this job covers the cells it misses
+  # (3.14 and 3.14t) so a dependency that cannot resolve there is visible
+  # instead of shipping green. It never gates: a gating --all-extras job on
+  # 3.14t fails on mineru today. Promotion path: when onnxruntime publishes
+  # free-threaded macOS/Windows wheels, drop continue-on-error and it becomes
+  # the gate rule 10 always claimed to have.
+  extras-availability:
+    name: extras availability (${{ matrix.os }} / ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.14", "3.14t"]
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        fetch-tags: true
+
+    - name: Setup Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Setup uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        enable-cache: true
+        cache-dependency-glob: pyproject.toml
+
+    - name: Assert every extra resolves jointly
+      run: uv sync -U --all-extras --all-groups --all-packages --dry-run
+
+    # Alert-fatigue mitigation: a red cell must be read, not tuned out. Every
+    # cell carries the known cause and the re-entry condition; a failing cell
+    # additionally raises a notice annotation.
+    - name: Explain this cell
+      if: always()
+      run: |
+        cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+        ### extras availability - ${{ matrix.os }} / ${{ matrix.python-version }}
+
+        **Known cause of expected failures:** onnxruntime (pulled by the
+        mineru extra) publishes **no free-threaded macOS/Windows wheels** and
+        has no sdist, so uv sync --all-extras cannot resolve on those cells.
+        PEP 508 has no free-threaded marker, so it cannot be gated out.
+
+        **Re-entry condition:** when onnxruntime publishes free-threaded
+        macOS/Windows wheels, drop continue-on-error from this job and it
+        becomes the gate root AGENTS.md rule 10 always claimed to have.
+
+        See docs/development/ci-cd.md.
+        EOF
+
+    - name: Annotate expected failure
+      if: failure()
+      run: |
+        echo "::notice title=extras availability::expected: onnxruntime ships no free-threaded macOS/Windows wheels; see the step summary for the re-entry condition"
+
   quality:
     runs-on: ubuntu-latest
 
@@ -101,19 +165,19 @@ jobs:
     strategy:
       matrix:
         os:
-        - ubuntu-latest
-        - macos-latest
-        - windows-latest
-      python-version:
-        - "3.13"
-        - "3.14"
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+        python-version:
+          - "3.13"
+          - "3.14"
         # 3.14t (free-threaded) cells are SUSPENDED (ADR-0001 amendment
         # 2026-10-09): onnxruntime publishes no free-threaded macOS/Windows
         # wheels and has no sdist, so a heavy extra cannot resolve there.
         # Re-enable the three include entries unchanged when those wheels exist.
         include:
-        - os: ubuntu-latest
-          python-version: "3.15-dev"
+          - os: ubuntu-latest
+            python-version: "3.15-dev"
 
     runs-on: ${{ matrix.os }}
     continue-on-error: ${{ matrix.python-version == '3.15-dev' }}

@@ -5,13 +5,30 @@ title: CI and CD
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on pushes to `main` and on pull requests to
-`main`. Three jobs fan out from a `quality` gate:
+`main`. The `quality` job gates `tests` and `docs`; the two extras-resolution
+jobs run in parallel:
 
 | Job | Runner | Runs |
 | --- | ------ | ---- |
+| `extras` | ubuntu, windows | `uv sync -U --all-extras --all-groups --all-packages --dry-run` on 3.13 (root `AGENTS.md` rule 10) |
+| `extras-availability` | ubuntu, macos, windows | the same assertion on 3.14 and 3.14t; **reporting only** (`continue-on-error`) |
 | `quality` | ubuntu | `mise lint` + `mise spell` + `mise format-check` |
 | `tests` | ubuntu, macos, windows | `mise test` (100% coverage gate) |
 | `docs` | ubuntu | `mise docs` |
+
+`extras` verifies rule 10 (every optional extra must resolve jointly) on
+CPython 3.13 alone. `extras-availability` extends the same assertion to the
+3.14 and 3.14t (free-threaded) cells on all three OSes, keeping `--dry-run`
+so no cell installs. It is **reporting, never gating**: job-level
+`continue-on-error`, because a gating all-extras job on 3.14t fails on
+`mineru` today — `onnxruntime` publishes no free-threaded macOS/Windows
+wheels and has no sdist. Every cell writes a step summary naming that known
+cause and the re-entry condition, and failing cells raise a notice annotation,
+so a red check is read rather than tuned out.
+
+**Promotion trigger:** when `onnxruntime` publishes free-threaded
+macOS/Windows wheels, drop `continue-on-error` from `extras-availability` and
+it becomes the gate root `AGENTS.md` rule 10 always claimed to have.
 
 The `quality` job's `format-check` is the CI half of the local `mise all`
 gate: it verifies that the committed tree is already canonical (`pyreorder
