@@ -18,6 +18,24 @@ today from what is planned. Each third-party tool keeps its own licence.
     Installing one is your own licence decision; see
     [ADR-0003](../adr/0003-optional-agpl-pymupdf.md).
 
+!!! warning "MinerU is a conditional-licence opt-in"
+    `parsecraft[mineru]` carries a **conditional** licence surface, not a
+    copyleft one — the distinction matters, so it gets its own statement
+    (ADR-0007). Installing the extra is your consent to these terms:
+
+    - **Code:** `LicenseRef-MinerU-Open-Source-License` — Apache-2.0 **plus**
+      commercial thresholds (>100M MAU or >USD 20M revenue), an online-service
+      attribution duty, and termination-without-notice.
+    - **VLM checkpoint and torch pipeline kit:** Apache-2.0
+      (`MinerU2.5-Pro-2605-1.2B`, `MinerU-4_models_torch`).
+    - **Default Windows/CPU GGUF engine and the ONNX kit:** **no licence
+      declared** (`jinzhenj/MinerU2.5-Pro-2605-1.2B-GGUF`,
+      `MinerU-4_models_onnx`). Unknown terms are stated, not assumed — the
+      GGUF engine is what a default Windows install downloads, so this is not
+      an exotic path.
+
+    See [ADR-0007](../adr/0007-mineru-conditional-licence-optin.md).
+
 ## Native (in-package)
 
 | Backend | Extra | Formats | Upstream / licence | Strengths | Weaknesses | Availability |
@@ -31,6 +49,20 @@ The native backends are registered through
 `[project.entry-points."parsecraft.backends"]` and appear in
 `parsecraft backends`.
 
+### Two distinct optional-dependency shapes
+
+`marker` and `mineru` are the two **different** ways an optional dependency can
+be offered, and the difference is the point (ADR-0006 vs ADR-0007):
+
+- **marker — backend + entry point, no extra.** The consumer owns the
+  dependency; parsecraft's lock never resolves it. Deferred (ADR-0006).
+- **mineru — the extra IS the opt-in, and parsecraft owns the pin.**
+  `parsecraft[mineru]` resolves the whole 55-package stack and states the
+  licence terms at the point of installation.
+
+The two must not read identically: a no-extra shape hides the dependency from
+the installer, while an extra shape makes the terms a condition of installing.
+
 ## External converters
 
 | Backend | Extra | Formats | Upstream / licence | Strengths | Weaknesses | Availability |
@@ -39,6 +71,7 @@ The native backends are registered through
 | `liteparse` | `parsecraft[liteparse]` (`liteparse` 2.14.7, Apache-2.0) | `application/pdf`, `image/jpeg`, `image/png`, `image/tiff` | [`run-llama/liteparse`](https://github.com/run-llama/liteparse) — Apache-2.0 | Broad and permissive; no copyleft gate | Office/ODF formats require a system LibreOffice; `.html` is not supported; larger extra dependency surface | Available |
 | `docling` | `parsecraft[docling]` (`docling` 2.130.0, MIT) | `application/pdf`, `text/html`, `text/markdown`, `text/plain` | [`docling`](https://pypi.org/project/docling/) — MIT | Layout, tables, and reading order | Heavy dependency graph; office/image formats are registered upstream but undeclared pending conversion verification; the motivating incident ran >1 h on a 113-page PDF | Available |
 | `pdf-inspector` | `parsecraft[pdf-inspector]` (`pdf-inspector` 1.25.2, MIT) | `application/pdf` | [`firecrawl/pdf-inspector`](https://github.com/firecrawl/pdf-inspector) — MIT | Fastest verified text-PDF path: Rust/PyO3 extraction straight to Markdown, no ML models and no OCR runtime loaded; classifies text-based vs scanned PDFs before extraction | PDF only (no docx/pptx/xlsx path exists upstream); no OCR, so scanned pages need an OCR backend; ships as a prebuilt Rust extension wheel only for `cp38-abi3` — Linux x86_64/aarch64, macOS Intel/ARM, Windows x64 (other platforms build from source and need a Rust toolchain); not yet benchmarked in this repo | Available |
+| `mineru` | `parsecraft[mineru]` (`mineru` 4.0.11, Apache-2.0 + conditional terms) | `application/pdf` | [`opendatalab/MinerU`](https://github.com/opendatalab/MinerU) — Apache-2.0 code; weights conditional (see the warning above) | VLM layout, tables, equations, and reading order; **text PDFs run weight-free** at flash effort (no checkpoint download, no VRAM) | Heavy 55-package web stack; page-range input base is delegated downstream and post-filtered; not yet benchmarked against siblings; conditional licence | Available |
 
 ## OCR / document-VLM (GPU)
 
@@ -120,6 +153,7 @@ it never excludes a language-agnostic backend (see
 | `ocr-tele` | `zh`, `en` |
 | `ocr-ovis`, `ocr-unlimited`, `ocr-qianfan` | agnostic (multilingual) |
 | `pandoc`, `docling`, `pdf-inspector` | agnostic (no claim) |
+| `mineru` | agnostic (no claim) |
 
 ## Hosts: suffixes
 
@@ -157,6 +191,7 @@ re-implementing it.
 | Formulas and equations | `ocr-ovis` | Formula-aware extraction |
 | Broad office formats (docx, pptx, xlsx) | `pandoc` | Convert to a readable format first |
 | Layout-heavy, reading order matters | `docling` | Layout, tables, and reading order |
+| Layout-heavy PDF, VLM reading order | `mineru` | VLM layout/tables/equations; text PDFs run weight-free at flash effort |
 
 Native extraction runs before OCR. OCR is selective and expensive: it is used
 per page range, under a time budget, only where analysis shows native text is

@@ -35,6 +35,12 @@ liteparse = ["liteparse>=2.14"]
 # user's licence decision (ADR-0005); never installed by `mise dev`/CI.
 pandoc = ["pypandoc>=1.15"]
 docling = ["docling>=2.130"]
+# MinerU 4.x: layout-aware PDF parsing with its OWN weight downloads (see
+# ADR-0007 and the docs statement — mixed licences, incl. undeclared weights on
+# the Windows-default engine). The 2.x line cannot install on Python 3.14.
+mineru = [
+    "mineru>=4.0.11,<5",
+]
 # PDF-only Rust/PyO3 extractor: prebuilt abi3 wheels, no Python deps, no OCR runtime.
 pdf-inspector = ["pdf-inspector>=1.25.2"]
 # The vLLM path is Linux/WSL2-only (runtime AND install): the marker keeps
@@ -89,6 +95,7 @@ native-pdf = "parsecraft.backends.native.pdf:factory"
 liteparse = "parsecraft.backends.liteparse.liteparse:factory"
 pandoc = "parsecraft.backends.pandoc.pandoc:factory"
 docling = "parsecraft.backends.docling.docling:factory"
+mineru = "parsecraft.backends.mineru.mineru:factory"
 pdf-inspector = "parsecraft.backends.pdf_inspector.pdf_inspector:factory"
 ocr-ovis = "parsecraft.backends.ocr.ovis:factory"
 ocr-tele = "parsecraft.backends.ocr.tele:factory"

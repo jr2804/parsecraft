@@ -70,6 +70,21 @@ you need PDF extraction. Judge credentials come from the environment
 [Steer the auto-backend selector](../guides/auto-backend-selector.md) for the
 flags themselves.
 
+### Conditional-licence extras
+
+Two extras carry licence terms you are consenting to by installing them —
+neither is a core or dev dependency, and both are opt-in:
+
+- `parsecraft[pdf]` — PyMuPDF, **AGPL-3.0-or-commercial** (ADR-0003).
+- `parsecraft[mineru]` — MinerU's **conditional** terms: Apache-2.0 code plus
+  commercial thresholds (>100M MAU or >USD 20M revenue), an online-service
+  attribution duty, and termination-without-notice; the VLM checkpoint and torch
+  kit are Apache-2.0; the default Windows/CPU GGUF engine and the ONNX kit
+  declare **no licence** (ADR-0007).
+
+Read the full statement on the [Backends](../reference/backends.md) page before
+installing either.
+
 ## From source
 
 Use a checkout when contributing or testing unreleased changes. Clone and sync:

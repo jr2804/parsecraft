@@ -93,5 +93,6 @@ distribution, entry point declared in its own `pyproject.toml`).
 - `docling/AGENTS.md` — `docling` extra: light/heavy split, structured table rows
 - `pandoc/AGENTS.md` — `pandoc` extra: system binary, single logical page
 - `pdf_inspector/AGENTS.md` — `pdf-inspector` extra: PDF-only, page-index mapping
+- `mineru/AGENTS.md` — `mineru` extra: conditional-licence opt-in, VLM parsing, spawn guard
 
 The `liteparse` and `ocr` families stay under this parent's contract.

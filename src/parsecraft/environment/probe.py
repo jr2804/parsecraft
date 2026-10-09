@@ -26,6 +26,7 @@ EXTRA_IMPORTS: dict[str, tuple[str, ...]] = {
     "docling": ("docling",),
     "download": ("huggingface_hub",),
     "liteparse": ("liteparse",),
+    "mineru": ("mineru",),
     "ocr-ovis": ("transformers",),
     "ocr-qianfan": ("transformers",),
     "ocr-tele": ("transformers",),
