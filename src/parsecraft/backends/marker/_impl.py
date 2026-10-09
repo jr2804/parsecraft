@@ -13,6 +13,13 @@ decision 3:
   (``create_model_dict``) is deferred to ``_converter()``; if it fails
   the backend records a typed ``DEPENDENCY_MISSING`` pass-failure instead of
   crashing or mutating site-packages behind the operator's back.
+- **Offline declared → refuse, pre-attempt** (pc-eoa): ``config.options["offline"]``
+  is read at construction, and a declared-offline conversion returns a typed
+  ``DEPENDENCY_MISSING`` record *before* ``_converter()`` is touched — marker's
+  weight and font fetch is network work, so an offline-declared run never lets
+  it start. Marker declares ``model_asset=None`` (the weights are marker-pdf's
+  own concern), which is exactly why the refusal must live in this code path
+  instead of the routing-level offline exclusion.
 
 Conversion reads the source bytes, runs ``PdfConverter``, and maps
 ``text_from_rendered`` output into per-page ``PageResult`` IR. Pagination
@@ -75,6 +82,7 @@ class MarkerBackend:
 
     def __init__(self, config: BackendConfig) -> None:
         self._config = config
+        self._offline = _offline_option(config)
 
     def convert(self, request: ConversionRequest) -> BackendResult:
         """Convert a PDF into typed IR pages.
@@ -88,7 +96,7 @@ class MarkerBackend:
         started = monotonic()
         reference = BackendRef(name=self.name, version=MARKER_BACKEND_VERSION)
 
-        preflight = _preflight_failure(request, started)
+        preflight = _preflight_failure(request, started, offline=self._offline)
         if preflight is not None:
             return _result(reference, [], [preflight], started)
 
@@ -182,6 +190,21 @@ def create(config: BackendConfig) -> DocumentBackend:
     return MarkerBackend(config)
 
 
+def _offline_option(config: BackendConfig) -> bool:
+    """The host's declared offline state from ``config.options``.
+
+    Read once at construction so a bad value fails at ``create`` (the executor's
+    typed ``BackendError`` path) and ``convert()`` stays records-only. Same read
+    as the OCR family's ``ocr._common.ensure_assets``, which is where the e38
+    convention for ``options["offline"]`` lives.
+    """
+    offline = config.options.get("offline", False)
+    if not isinstance(offline, bool):
+        msg = f"offline option must be a boolean, got {type(offline).__name__}"
+        raise BackendError(msg)
+    return offline
+
+
 def _converter() -> PdfConverter:
     """Lazily build the process-wide ``PdfConverter``.
 
@@ -249,18 +272,33 @@ def _page_result(page_number: int, content: str) -> PageResult:
     )
 
 
-def _preflight_failure(request: ConversionRequest, started: float) -> PassFailure | None:
-    """Format and cancellation checks that run before any heavy work.
+def _preflight_failure(request: ConversionRequest, started: float, *, offline: bool) -> PassFailure | None:
+    """Format, cancellation and offline checks that run before any heavy work.
 
     An unsupported media type is a typed ``INVALID_INPUT`` record — the family's
     shape — and unreachable through the planner, which only routes formats the
-    descriptor declares.
+    descriptor declares. Cancellation is the operator's own veto.
+
+    ``offline`` is pc-eoa's refusal: marker fetches its weights and a 14 MB font
+    on first use, and marker owns that cache path, so "already cached" is not
+    knowable here without side effects — a declared-offline run therefore never
+    starts the attempt (the check sits ahead of ``_converter()``). The typed
+    ``DEPENDENCY_MISSING`` record rather than a raise keeps convert()'s
+    records-only contract and lets the plan's fallback chain move to another
+    candidate.
     """
     media_type = request.source.media_type or ""
     if media_type not in MARKER_FORMATS:
         return _failure(request, started, FailureCode.INVALID_INPUT, f"marker ingests {', '.join(MARKER_FORMATS)}; got {media_type!r}")
     if request.cancellation is not None and request.cancellation():
         return _failure(request, started, FailureCode.CANCELLED, "cancelled before conversion")
+    if offline:
+        return _failure(
+            request,
+            started,
+            FailureCode.DEPENDENCY_MISSING,
+            "offline declared (PARSECRAFT_OFFLINE): refusing marker's first-use weight fetch",
+        )
     return None
 
 

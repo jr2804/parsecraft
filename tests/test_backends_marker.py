@@ -75,6 +75,29 @@ _HTML_SOURCE = SourceDocument(
 )
 
 
+# ── Helper functions (unit tests) ──
+
+
+class _MarkerImpl(Protocol):
+    """The slice of the heavy impl module these tests reach for.
+
+    Declared rather than imported: ``_impl`` carries module-level ``marker``
+    imports, so importing it at module scope needs marker-pdf at COLLECTION time
+    — which the canonical env does not have (the bring-your-own dependency is
+    absent by design). An inline import would be hoisted to the top by pyreorder,
+    which is exactly how a function-local import broke ``registry.py``, so the
+    accessor goes through ``importlib`` at call time instead.
+    """
+
+    def source_bytes(self, source: SourceDocument) -> bytes:
+        """Raw payload of a source document."""
+        ...
+
+    def _split_pages(self, markdown: str, page_count: int) -> list[str]:
+        """Split marker's paginated markdown into per-page text."""
+        ...
+
+
 # ── Descriptor & factory ──
 
 
@@ -263,6 +286,98 @@ def test_convert_multi_page_all_pages(stub_marker_paginated: type, reset_convert
     assert result.pages[2].blocks[0].content == "page three"
 
 
+def test_convert_no_markdown_split_returns_single_page(stub_marker: type, reset_converter: None) -> None:
+    """When the stubbed markdown has no page markers, one page is produced."""
+    backend = factory(_CONFIG)
+    result = backend.convert(ConversionRequest(source=_PDF_SOURCE))
+    assert len(result.pages) == 1
+    assert result.pages[0].page_number == 1
+
+
+def test_split_pages_single_page_no_markers(stub_marker: type) -> None:
+    """Single page when page_count is 1 (no splitting needed)."""
+    assert _impl_split_pages("hello world", page_count=1) == ["hello world"]
+
+
+def test_split_pages_multiple_with_markers(stub_marker: type) -> None:
+    """Pages are split at marker fences (braced, 0-based)."""
+    md = "\n\n{0}\n" + _PAGE_SEP + "\n\npage1\n\n{1}\n" + _PAGE_SEP + "\n\npage2"
+    assert _impl_split_pages(md, page_count=2) == ["page1", "page2"]
+
+
+def test_split_pages_pads_short(stub_marker: type) -> None:
+    """Fewer pages than page_count → padded with empty strings."""
+    md = "\n\n{0}\n" + _PAGE_SEP + "\n\npage1"
+    assert _impl_split_pages(md, page_count=3) == ["page1", "", ""]
+
+
+def test_split_pages_without_markers_keeps_one_page_at_multiple_pages(monkeypatch: pytest.MonkeyPatch) -> None:
+    """page_count > 1 with no fences: one unsplit page (the early return)."""
+    _install_marker_modules(monkeypatch, markdown="hello world", page_count=3)
+    assert _impl_split_pages("hello world", page_count=3) == ["hello world"]
+
+
+def _impl_split_pages(markdown: str, page_count: int) -> list[str]:
+    """``_impl._split_pages`` from the stub-imported heavy module.
+
+    Callers must have a stub fixture active (``stub_marker``), which puts the fake
+    ``marker.*`` tree in ``sys.modules`` so the heavy impl imports cleanly here.
+    """
+    module = cast("_MarkerImpl", importlib.import_module(_IMPL_MODULE))
+    return module._split_pages(markdown, page_count)
+
+
+# ── Edge paths: every branch of convert()/source_bytes() stays covered ────────
+
+
+def test_convert_page_range_past_every_page_returns_one_empty_page(
+    stub_marker_paginated: type,
+    reset_converter: None,
+) -> None:
+    """A range that matches no produced page still yields one empty page.
+
+    The executor's page-count contract holds: ``pages`` is never empty.
+    """
+    backend = factory(_CONFIG)
+    result = backend.convert(ConversionRequest(source=_PDF_SOURCE, page_range=PageRange(start=9, end=9)))
+    assert len(result.pages) == 1
+    assert result.pages[0].page_number == 9
+    assert result.pages[0].blocks == []
+    assert result.failures == []
+
+
+def test_convert_cancellation_between_pages_is_typed(stub_marker_paginated: type, reset_converter: None) -> None:
+    """Cancelling after the preflight check fails the page loop, not the call."""
+    calls = 0
+
+    def cancel_after_preflight() -> bool:
+        nonlocal calls
+        calls += 1
+        return calls > 1  # preflight passes, the page loop cancels
+
+    backend = factory(_CONFIG)
+    result = backend.convert(ConversionRequest(source=_PDF_SOURCE, cancellation=cancel_after_preflight))
+    assert result.failures[0].code is FailureCode.CANCELLED
+    assert "at page 1" in result.failures[0].detail  # the page-loop guard, not the preflight
+
+
+def test_convert_timeout_mid_page_loop_is_typed(stub_marker_paginated: type, reset_converter: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A deadline that expires during the page loop fails with the loop's detail."""
+    calls = 0
+
+    def fake_monotonic() -> float:
+        nonlocal calls
+        calls += 1
+        return {1: 0.0, 2: 0.5}.get(calls, 1.5)  # started=0, pre-conversion check ok, loop past the 1.0 deadline
+
+    impl = importlib.import_module(_IMPL_MODULE)
+    monkeypatch.setattr(impl, "monotonic", fake_monotonic)
+    backend = factory(_CONFIG)
+    result = backend.convert(ConversionRequest(source=_PDF_SOURCE, timeout_s=1.0))
+    assert result.failures[0].code is FailureCode.TIMEOUT
+    assert "at page 1" in result.failures[0].detail  # not the "before conversion" detail
+
+
 @pytest.fixture
 def stub_marker_paginated(monkeypatch: pytest.MonkeyPatch) -> type:
     """Three-page stub with real pagination fences."""
@@ -279,12 +394,68 @@ def _paginated_markdown(pages: list[str]) -> str:
     return "".join(f"\n\n{{{i}}}\n{_PAGE_SEP}\n\n{t}" for i, t in enumerate(pages))
 
 
-def test_convert_no_markdown_split_returns_single_page(stub_marker: type, reset_converter: None) -> None:
-    """When the stubbed markdown has no page markers, one page is produced."""
-    backend = factory(_CONFIG)
+def test_source_bytes_rejects_a_remote_uri_without_content() -> None:
+    """A non-file URI with no in-memory payload is a typed BackendError."""
+    remote = SourceDocument(uri="https://example.com/doc.pdf", media_type="application/pdf", content=None)
+    with pytest.raises(BackendError, match="must carry in-memory content"):
+        _impl_source_bytes(remote)
+
+
+def test_source_bytes_reads_a_file_uri(tmp_path: Path) -> None:
+    """A file:// URI reads from disk when the payload is absent."""
+    path = tmp_path / "doc.pdf"
+    path.write_bytes(b"%PDF-from-disk")
+    assert _impl_source_bytes(SourceDocument(uri=path.as_uri(), media_type="application/pdf", content=None)) == b"%PDF-from-disk"
+
+
+def test_source_bytes_wraps_a_missing_file(tmp_path: Path) -> None:
+    """An unreadable file:// path is reported as a typed BackendError."""
+    missing = (tmp_path / "absent.pdf").as_uri()
+    with pytest.raises(BackendError, match="cannot read source"):
+        _impl_source_bytes(SourceDocument(uri=missing, media_type="application/pdf", content=None))
+
+
+def _impl_source_bytes(source: SourceDocument) -> bytes:
+    """``_impl.source_bytes`` from the stub-imported heavy module (see above)."""
+    module = cast("_MarkerImpl", importlib.import_module(_IMPL_MODULE))
+    return module.source_bytes(source)
+
+
+# ── Offline refusal (pc-eoa): no network attempt on a declared-offline run ─────
+
+
+def test_offline_declares_refusal_before_any_model_work(
+    stub_marker: type,
+    reset_converter: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An offline-declared conversion must never reach the weight fetch.
+
+    The bomb in place of ``_converter()`` is the pin: if convert() touches it,
+    the test fails, so a future refactor cannot quietly reintroduce the attempt.
+    """
+    impl = importlib.import_module(_IMPL_MODULE)
+
+    def _forbidden() -> object:
+        raise AssertionError("offline conversion attempted marker's first-use weight fetch")
+
+    monkeypatch.setattr(impl, "_converter", _forbidden)
+    backend = factory(BackendConfig(name="marker", options={"offline": True}))
     result = backend.convert(ConversionRequest(source=_PDF_SOURCE))
-    assert len(result.pages) == 1
-    assert result.pages[0].page_number == 1
+
+    assert result.pages == []
+    assert len(result.failures) == 1
+    failure = result.failures[0]
+    assert failure.code is FailureCode.DEPENDENCY_MISSING
+    assert "offline declared" in failure.detail
+
+
+def test_offline_defaults_to_attempting(stub_marker: type, reset_converter: None) -> None:
+    """Without the option the flag is False and the converter is reached."""
+    backend = factory(BackendConfig(name="marker", options={"offline": False}))
+    result = backend.convert(ConversionRequest(source=_PDF_SOURCE))
+    assert len(result.pages) == 1  # no refusal: the stubbed converter ran
+    assert result.failures == []
 
 
 @pytest.fixture
@@ -383,138 +554,10 @@ def reset_converter(monkeypatch: pytest.MonkeyPatch) -> None:
         pass  # marker not installed yet — _impl can't be imported
 
 
-# ── Helper functions (unit tests) ──
-
-
-class _MarkerImpl(Protocol):
-    """The slice of the heavy impl module these tests reach for.
-
-    Declared rather than imported: ``_impl`` carries module-level ``marker``
-    imports, so importing it at module scope needs marker-pdf at COLLECTION time
-    — which the canonical env does not have (the bring-your-own dependency is
-    absent by design). An inline import would be hoisted to the top by pyreorder,
-    which is exactly how a function-local import broke ``registry.py``, so the
-    accessor goes through ``importlib`` at call time instead.
-    """
-
-    def _split_pages(self, markdown: str, page_count: int) -> list[str]:
-        """Split marker's paginated markdown into per-page text."""
-        ...
-
-    def source_bytes(self, source: SourceDocument) -> bytes:
-        """Raw payload of a source document."""
-        ...
-
-
-def _impl_split_pages(markdown: str, page_count: int) -> list[str]:
-    """``_impl._split_pages`` from the stub-imported heavy module.
-
-    Callers must have a stub fixture active (``stub_marker``), which puts the fake
-    ``marker.*`` tree in ``sys.modules`` so the heavy impl imports cleanly here.
-    """
-    module = cast("_MarkerImpl", importlib.import_module(_IMPL_MODULE))
-    return module._split_pages(markdown, page_count)
-
-
-def _impl_source_bytes(source: SourceDocument) -> bytes:
-    """``_impl.source_bytes`` from the stub-imported heavy module (see above)."""
-    module = cast("_MarkerImpl", importlib.import_module(_IMPL_MODULE))
-    return module.source_bytes(source)
-
-
-def test_split_pages_single_page_no_markers(stub_marker: type) -> None:
-    """Single page when page_count is 1 (no splitting needed)."""
-    assert _impl_split_pages("hello world", page_count=1) == ["hello world"]
-
-
-def test_split_pages_multiple_with_markers(stub_marker: type) -> None:
-    """Pages are split at marker fences (braced, 0-based)."""
-    md = "\n\n{0}\n" + _PAGE_SEP + "\n\npage1\n\n{1}\n" + _PAGE_SEP + "\n\npage2"
-    assert _impl_split_pages(md, page_count=2) == ["page1", "page2"]
-
-
-def test_split_pages_pads_short(stub_marker: type) -> None:
-    """Fewer pages than page_count → padded with empty strings."""
-    md = "\n\n{0}\n" + _PAGE_SEP + "\n\npage1"
-    assert _impl_split_pages(md, page_count=3) == ["page1", "", ""]
-
-
-def test_split_pages_without_markers_keeps_one_page_at_multiple_pages(monkeypatch: pytest.MonkeyPatch) -> None:
-    """page_count > 1 with no fences: one unsplit page (the early return)."""
-    _install_marker_modules(monkeypatch, markdown="hello world", page_count=3)
-    assert _impl_split_pages("hello world", page_count=3) == ["hello world"]
-
-
-# ── Edge paths: every branch of convert()/source_bytes() stays covered ────────
-
-
-def test_convert_page_range_past_every_page_returns_one_empty_page(
-    stub_marker_paginated: type,
-    reset_converter: None,
-) -> None:
-    """A range that matches no produced page still yields one empty page.
-
-    The executor's page-count contract holds: ``pages`` is never empty.
-    """
-    backend = factory(_CONFIG)
-    result = backend.convert(ConversionRequest(source=_PDF_SOURCE, page_range=PageRange(start=9, end=9)))
-    assert len(result.pages) == 1
-    assert result.pages[0].page_number == 9
-    assert result.pages[0].blocks == []
-    assert result.failures == []
-
-
-def test_convert_cancellation_between_pages_is_typed(stub_marker_paginated: type, reset_converter: None) -> None:
-    """Cancelling after the preflight check fails the page loop, not the call."""
-    calls = 0
-
-    def cancel_after_preflight() -> bool:
-        nonlocal calls
-        calls += 1
-        return calls > 1  # preflight passes, the page loop cancels
-
-    backend = factory(_CONFIG)
-    result = backend.convert(ConversionRequest(source=_PDF_SOURCE, cancellation=cancel_after_preflight))
-    assert result.failures[0].code is FailureCode.CANCELLED
-    assert "at page 1" in result.failures[0].detail  # the page-loop guard, not the preflight
-
-
-def test_convert_timeout_mid_page_loop_is_typed(stub_marker_paginated: type, reset_converter: None, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A deadline that expires during the page loop fails with the loop's detail."""
-    calls = 0
-
-    def fake_monotonic() -> float:
-        nonlocal calls
-        calls += 1
-        return {1: 0.0, 2: 0.5}.get(calls, 1.5)  # started=0, pre-conversion check ok, loop past the 1.0 deadline
-
-    impl = importlib.import_module(_IMPL_MODULE)
-    monkeypatch.setattr(impl, "monotonic", fake_monotonic)
-    backend = factory(_CONFIG)
-    result = backend.convert(ConversionRequest(source=_PDF_SOURCE, timeout_s=1.0))
-    assert result.failures[0].code is FailureCode.TIMEOUT
-    assert "at page 1" in result.failures[0].detail  # not the "before conversion" detail
-
-
-def test_source_bytes_rejects_a_remote_uri_without_content() -> None:
-    """A non-file URI with no in-memory payload is a typed BackendError."""
-    remote = SourceDocument(uri="https://example.com/doc.pdf", media_type="application/pdf", content=None)
-    with pytest.raises(BackendError, match="must carry in-memory content"):
-        _impl_source_bytes(remote)
-
-
-def test_source_bytes_reads_a_file_uri(tmp_path: Path) -> None:
-    """A file:// URI reads from disk when the payload is absent."""
-    path = tmp_path / "doc.pdf"
-    path.write_bytes(b"%PDF-from-disk")
-    assert _impl_source_bytes(SourceDocument(uri=path.as_uri(), media_type="application/pdf", content=None)) == b"%PDF-from-disk"
-
-
-def test_source_bytes_wraps_a_missing_file(tmp_path: Path) -> None:
-    """An unreadable file:// path is reported as a typed BackendError."""
-    missing = (tmp_path / "absent.pdf").as_uri()
-    with pytest.raises(BackendError, match="cannot read source"):
-        _impl_source_bytes(SourceDocument(uri=missing, media_type="application/pdf", content=None))
+def test_offline_option_must_be_boolean() -> None:
+    """A bad option fails at create (the executor's typed BackendError path)."""
+    with pytest.raises(BackendError, match="offline option must be a boolean"):
+        factory(BackendConfig(name="marker", options={"offline": "yes"}))
 
 
 # ── Offline import contract ──
