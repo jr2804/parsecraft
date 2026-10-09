@@ -82,10 +82,10 @@ it enters any profile).
 
 - `requires-python = ">=3.13"` — aligns with the Copier template, which enforces
   `python_version >= 3.13` as a validator (its default answer is `3.13`).
-- **CI matrix: 3.13 (GIL) + 3.14 (GIL) + 3.14t (free-threaded) + 3.15-dev
-  (allowed to fail).**
+- **CI matrix: 3.13 (GIL) + 3.14 (GIL) + 3.15-dev (allowed to fail).**
 - **Free-threaded policy:** 3.13 free-threaded (`3.13t`) is **not** supported;
-  3.14+ free-threaded (`3.14t` and successors) **is** supported and CI-tested.
+  3.14+ free-threaded (`3.14t` and successors) is intended to be supported, and
+  its CI cells are **SUSPENDED** — see the amendment below.
   `requires-python` cannot express a build-variant exclusion, so this is enforced
   by the CI matrix and documented here, not by package metadata.
 - **3.14 status: supported, not aspirational** — the full core stack (pydantic
@@ -281,3 +281,29 @@ standard evaporates at the distribution boundary.
 
 No model adapters, no asset manager, no hardware profiler, no scaffold or
 directory creation until the user signs off on the name.
+
+## Amendment (2026-10-09): free-threaded CI cells suspended
+
+The user decision (relayed while selecting the base OCR engine): the `3.14t`
+matrix cells are **skipped on all platforms for now**, and re-enabled when the
+free-threaded macOS/Windows wheels the ecosystem still lacks become available.
+
+Why it matters, concretely: any heavy runtime whose wheels are published for
+GIL builds only makes an extra unresolvable on a free-threaded host —
+`onnxruntime` (needed by the `mineru` extra) ships `cp314t` wheels for **Linux
+only** and has no sdist, so `uv sync --all-extras` fails outright on 3.14t
+macOS/Windows (proved by a live dry-run, bead `pc-utm`). Keeping the cells
+therefore asserted support the dependency ecosystem cannot honour, and rule 10
+("every extra resolves jointly") can only be verified on interpreters that have
+wheels — which CI's `extras` job checks on 3.13 alone (bead `pc-45p`).
+
+Consequences, recorded rather than implied:
+
+- Free-threaded builds are **suspended**, not supported and not tested:
+  3.13/3.14 (GIL) and the `3.15-dev` cell (allowed to fail) are the tested
+  tiers. Nothing in package metadata claims a build-variant guarantee.
+- Re-entry condition: `onnxruntime` (or whatever pulls it) publishing
+  free-threaded macOS/Windows wheels, at which point the three `include` cells
+  return unchanged.
+- Rule 10 stays as written but is verified on the tiers that have wheels;
+  `pc-45p` records the per-extra availability and the scope wording.

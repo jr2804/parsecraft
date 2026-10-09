@@ -26,11 +26,16 @@ The test matrix:
 | ------ | -- | ----- |
 | 3.13 | ubuntu, macos, windows | GIL-enabled builds |
 | 3.14 | ubuntu, macos, windows | |
-| 3.14t | ubuntu, macos, windows | Free-threaded build |
 | 3.15-dev | ubuntu | `continue-on-error` — allowed to fail |
 
-The `tests` job sets `MISE_AUTO_INSTALL=0`. Part of the dev toolset has no
-free-threaded wheels, and the job only needs uv plus the selected interpreter.
+Free-threaded (`3.14t`) cells are **suspended** (ADR-0001 amendment, 2026-10-09):
+heavy runtimes such as `onnxruntime` ship no free-threaded macOS/Windows wheels
+and no sdist, so an extra cannot resolve there. They return unchanged once those
+wheels exist.
+
+The `tests` job sets `MISE_AUTO_INSTALL=0`. The dev toolset is not needed by that
+job (only uv plus the selected interpreter, and some tools lack wheels on the
+newest interpreters).
 The free-threaded runtime floor and CI matrix are recorded in
 [ADR-0001](../adr/0001-phase-0-decisions.md).
 

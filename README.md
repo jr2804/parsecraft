@@ -24,7 +24,9 @@ is a projection of that same IR, never parsed back into state.
 ## Requirements
 
 - Python 3.13 (GIL only — the free-threaded `3.13t` build is not supported)
-- Python 3.14 or newer, including free-threaded builds (`3.14t`)
+- Python 3.14 or newer (free-threaded `3.14t` builds are **suspended**, not
+  tested, until the heavy runtimes we use ship free-threaded macOS/Windows
+  wheels — see the ADR-0001 amendment)
 - [uv](https://docs.astral.sh/uv/) (recommended) or pip to install the package
 
 ## Install and Quick Start
