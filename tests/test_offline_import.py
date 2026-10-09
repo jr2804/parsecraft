@@ -13,23 +13,25 @@ from pathlib import Path
 #: extras are PRESENT. The offline gate asserts none of these entered
 #: ``sys.modules`` while the core imports; the collection sweep blocks importing
 #: them outright.
-_HEAVY_RUNTIME_ROOTS: frozenset[str] = frozenset({
-    "docling",
-    "huggingface_hub",
-    "liteparse",
-    "marker",
-    "mineru",
-    "pypandoc",
-    "pdf_inspector",
-    "pymupdf",
-    "rapidocr",
-    "trafilatura",
-    "torch",
-    "torchvision",
-    "transformers",
-    "typesafe_sdk",
-    "vllm",
-})
+_HEAVY_RUNTIME_ROOTS: frozenset[str] = frozenset(
+    {
+        "docling",
+        "huggingface_hub",
+        "liteparse",
+        "marker",
+        "mineru",
+        "pypandoc",
+        "pdf_inspector",
+        "pymupdf",
+        "rapidocr",
+        "trafilatura",
+        "torch",
+        "torchvision",
+        "transformers",
+        "typesafe_sdk",
+        "vllm",
+    }
+)
 
 _SCRIPT = textwrap.dedent(
     """
