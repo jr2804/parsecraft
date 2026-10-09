@@ -121,6 +121,14 @@ _Always-injected_ — keep minimal. Everything else → `.agents/` files.
     `uv sync -U --all-extras --all-groups --all-packages` must succeed; never
     declare extras mutually exclusive. If a dependency cannot coexist, do not
     add it — port the wrapper ourselves.
+    **Honest scope:** the gate verifies joint resolution on the CI `extras`
+    cells only — CPython 3.13 (GIL) on Linux and Windows. An extra may be
+    unavailable on other cells: PEP 508 has no free-threaded marker, so a
+    dependency lacking `cp314t` wheels for macOS/Windows cannot be gated out
+    and would fail a free-threaded user's `--all-extras` install while CI
+    stays green. Per-extra availability is recorded in
+    `docs/reference/backends.md`; a matrix-blocked engine uses a bring-your-own
+    dependency group (ADR-0006) instead of a declared extra.
 
 ## Child DOX Index
 

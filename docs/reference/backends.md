@@ -70,7 +70,7 @@ the installer, while an extra shape makes the terms a condition of installing.
 | `docling` | `parsecraft[docling]` (`docling` 2.130.0, MIT) | `application/pdf`, `text/html`, `text/markdown`, `text/plain` | [`docling`](https://pypi.org/project/docling/) — MIT | Layout, tables, and reading order | Heavy dependency graph; office/image formats are registered upstream but undeclared pending conversion verification; the motivating incident ran >1 h on a 113-page PDF | Available |
 | `pdf-inspector` | `parsecraft[pdf-inspector]` (`pdf-inspector` 1.25.2, MIT) | `application/pdf` | [`firecrawl/pdf-inspector`](https://github.com/firecrawl/pdf-inspector) — MIT | Fastest verified text-PDF path: Rust/PyO3 extraction straight to Markdown, no ML models and no OCR runtime loaded; classifies text-based vs scanned PDFs before extraction | PDF only (no docx/pptx/xlsx path exists upstream); no OCR, so scanned pages need an OCR backend; ships as a prebuilt Rust extension wheel only for `cp38-abi3` — Linux x86_64/aarch64, macOS Intel/ARM, Windows x64 (other platforms build from source and need a Rust toolchain); not yet benchmarked in this repo | Available |
 | `marker` | none — `marker-pdf` 2.0.0 is a **bring-your-own dependency** (ADR-0006) | `application/pdf` | [`datalab-to/marker`](https://github.com/datalab-to/marker) — Apache-2.0; model weights under OpenRAIL-M (restricted use) | High-fidelity PDF→Markdown: figures, tables, math, reading order; page-aware pagination | PDF only — DOCX/XLSX/PPTX/HTML/EPUB route through weasyprint, which needs GTK/Pango system libraries and is unverified on Windows; model weights are fetched at converter creation (network I/O, see ADR-0006); no extra is declared, so the consumer's own dependency graph installs `marker-pdf` | Bring-your-own dependency (ADR-0006) |
-| `mineru` | `parsecraft[mineru]` (`mineru` 4.0.11, Apache-2.0 + conditional terms) | `application/pdf` | [`opendatalab/MinerU`](https://github.com/opendatalab/MinerU) — Apache-2.0 code; weights conditional (see the warning above) | VLM layout, tables, equations, and reading order; **text PDFs run weight-free** at flash effort (no checkpoint download, no VRAM) | Heavy 55-package web stack; page-range input base is delegated downstream and post-filtered; not yet benchmarked against siblings; conditional licence | Available |
+| `mineru` | `parsecraft[mineru]` (`mineru` 4.0.11, Apache-2.0 + conditional terms) | `application/pdf` | [`opendatalab/MinerU`](https://github.com/opendatalab/MinerU) — Apache-2.0 code; weights conditional (see the warning above) | VLM layout, tables, equations, and reading order; **text PDFs run weight-free** at flash effort (no checkpoint download, no VRAM) | Heavy 55-package web stack; page-range input base is delegated downstream and post-filtered; not yet benchmarked against siblings; conditional licence | **GIL builds only** — see [Interpreter / platform availability](#interpreter--platform-availability) |
 
 MinerU fetches its own weights, so its cache placement matters: `MINERU_HOME` is
 a revision directory of the managed model cache
@@ -143,6 +143,26 @@ source's media type. The OCR backends declare `application/pdf`,
 | `ocr-qianfan` | `ocr-qianfan` | images | [`baidu/Qianfan-OCR`](https://huggingface.co/baidu/Qianfan-OCR) — Apache-2.0 (`Layout-as-Thought`) | Strong element, box, and reading-order control | 4 B; quantization required under an 8 GB budget; not yet benchmarked | Available (adapter implemented; not yet benchmarked — GPU/weights pending) |
 
 Model licences apply to the weights; the ParseCraft adapter code is MIT.
+
+## Interpreter / platform availability
+
+Root `AGENTS.md` rule 10 requires `uv sync -U --all-extras --all-groups
+--all-packages` to succeed. The CI `extras` job verifies that on **CPython 3.13
+(GIL) on Linux and Windows only** — so an extra that cannot resolve on another
+interpreter/platform cell is a *latent* rule-10 violation: CI stays green and
+the failure reaches the user. PEP 508 has no free-threaded marker, so such a
+dependency cannot be gated out of `--all-extras`.
+
+| Extra | Availability |
+| ----- | ------------ |
+| `mineru` | **GIL builds only.** `mineru` → `onnxruntime` (unconditional); onnxruntime 1.31.0 publishes `cp314t` wheels for **manylinux only** — no free-threaded macOS/Windows wheel and no sdist, so `uv sync --all-extras` fails there. |
+| any extra pulling `onnxruntime` | **Free-threaded Linux only** — same mechanism. |
+| `vllm` | Linux/WSL2 only — gated by a `sys_platform != 'win32'` marker, the existing in-repo pattern for a platform-restricted extra. |
+
+A matrix-blocked engine that must stay installable uses a **bring-your-own
+dependency group** (ADR-0006) instead of a declared extra — no
+`[project.optional-dependencies]` entry, so `--all-extras` never sees it. See
+[Two distinct optional-dependency shapes](#two-distinct-optional-dependency-shapes).
 
 ## Languages
 

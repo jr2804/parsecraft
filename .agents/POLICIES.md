@@ -27,6 +27,7 @@ Always applicable. Boundaries, priorities, verification, checklist.
 - Minimal, surgical edits. Preserve existing style.
 - No new dependencies without explicit instruction.
 - No unrelated refactoring while fixing a bug.
+- Optional extras / joint-resolution scope — see rule 10 in root `AGENTS.md`.
 
 ## Code quality
 

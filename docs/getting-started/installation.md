@@ -85,6 +85,10 @@ neither is a core or dev dependency, and both are opt-in:
 Read the full statement on the [Backends](../reference/backends.md) page before
 installing either.
 
+`parsecraft[mineru]` is additionally **GIL-builds-only** at install time — it
+pulls `onnxruntime`, which has no free-threaded macOS/Windows wheel. See
+[Interpreter / platform availability](../reference/backends.md#interpreter--platform-availability).
+
 ## From source
 
 Use a checkout when contributing or testing unreleased changes. Clone and sync:
