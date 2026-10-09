@@ -18,42 +18,60 @@ _SCRIPT = textwrap.dedent(
     socket.create_connection = _blocked
     socket.getaddrinfo = _blocked
 
+    import importlib.metadata
     import sys
 
-    import parsecraft
-    import parsecraft.adapters
-    import parsecraft.adapters.markdown
-    import parsecraft.assets
-    import parsecraft.assets.downloader
-    import parsecraft.backends
-    import parsecraft.backends.ocr
-    import parsecraft.backends.ocr._common
-    import parsecraft.backends.ocr._models
-    import parsecraft.backends.ocr.ovis
-    import parsecraft.backends.ocr.qianfan
-    import parsecraft.backends.ocr.tele
-    import parsecraft.backends.ocr.unlimited
-    import parsecraft.backends.liteparse
-    import parsecraft.backends.liteparse.liteparse
-    import parsecraft.backends.marker
-    import parsecraft.backends.marker.marker
-    import parsecraft.backends.pdf_inspector
-    import parsecraft.backends.pdf_inspector.pdf_inspector
-    import parsecraft.backends.registry
-    import parsecraft.config
-    import parsecraft.ir
-    import parsecraft.ir.markdown
-    import parsecraft.cli.app
-    import parsecraft.environment
-    import parsecraft.environment.constraints
-    import parsecraft.environment.probe
-    import parsecraft.providers
-    import parsecraft.providers._jev
-    import parsecraft.providers.ollama
-    import parsecraft.providers.pdfinspector
-    import parsecraft.providers.typesafe_ai
-    import parsecraft.providers.zen
-    import parsecraft.routing.classifier
+    # Non-backend core: explicit, so the offline / no-heavy-runtime / no-network
+    # contract cannot silently shrink. Backend modules are NOT listed here —
+    # they are derived below from the registry entry points.
+    core = [
+        "parsecraft",
+        "parsecraft.adapters",
+        "parsecraft.adapters.markdown",
+        "parsecraft.assets",
+        "parsecraft.assets.downloader",
+        "parsecraft.backends",
+        "parsecraft.backends.ocr._common",
+        "parsecraft.backends.ocr._models",
+        "parsecraft.backends.registry",
+        "parsecraft.config",
+        "parsecraft.ir",
+        "parsecraft.ir.markdown",
+        "parsecraft.cli.app",
+        "parsecraft.environment",
+        "parsecraft.environment.constraints",
+        "parsecraft.environment.probe",
+        "parsecraft.providers",
+        "parsecraft.providers._jev",
+        "parsecraft.providers.ollama",
+        "parsecraft.providers.pdfinspector",
+        "parsecraft.providers.typesafe_ai",
+        "parsecraft.providers.zen",
+        "parsecraft.routing.classifier",
+    ]
+
+    # Backends are DERIVED from the registry entry points (pc-khk): every
+    # registered factory module plus its package. The hand-maintained list had
+    # drifted — trafilatura, mineru, docling, pandoc and the native-* backends
+    # were absent, so their import contract was unenforced.
+    entry_points = importlib.metadata.entry_points(group="parsecraft.backends")
+    factory_modules = set()
+    parent_packages = set()
+    for ep in entry_points:
+        module_path = ep.value.split(":", 1)[0]
+        factory_modules.add(module_path)
+        parent, _, _ = module_path.rpartition(".")
+        if parent:
+            parent_packages.add(parent)
+    ordered = sorted(factory_modules | parent_packages)
+    assert len(entry_points) >= 14, f"backend registry collapsed: {len(entry_points)} entry points"
+    assert len(factory_modules) == len(entry_points), (
+        f"entry points must map 1:1 to factory modules: {len(entry_points)} entry points -> {len(factory_modules)} modules"
+    )
+    assert len(ordered) > len(factory_modules), "every backend's package must be part of the import surface too"
+
+    for name in core + ordered:
+        __import__(name)
 
     heavy = [
         m
@@ -66,6 +84,8 @@ _SCRIPT = textwrap.dedent(
             "typesafe_sdk",
             "huggingface_hub",
             "marker",
+            "mineru",
+            "trafilatura",
         )
         if m in sys.modules
     ]
@@ -74,7 +94,7 @@ _SCRIPT = textwrap.dedent(
     assert not heavy_impls, f"heavy impl modules imported at package import: {heavy_impls}"
     assert "parsecraft.backends.liteparse._impl" not in sys.modules
     assert "parsecraft.backends.pdf_inspector._impl" not in sys.modules
-    print("IMPORTS_OK")
+    print(f"IMPORTS_OK core={len(core)} backends={len(ordered)}")
     """,
 )
 
