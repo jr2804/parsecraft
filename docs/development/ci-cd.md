@@ -50,6 +50,13 @@ heavy runtimes such as `onnxruntime` ship no free-threaded macOS/Windows wheels
 and no sdist, so an extra cannot resolve there. They return unchanged once those
 wheels exist.
 
+Workflow hardening (enforced by `mise actionlint`, config in
+`.github/jactionlint.yaml`): every `uses:` is pinned to a full-length commit SHA
+(bumped deliberately, never by hand-edited tag), every job carries a
+`timeout-minutes` bound, workflow permissions are minimal (`contents: read` in
+ci.yml, per-job elevation in release.yml only where a job publishes), and
+checkouts set `persist-credentials: false` unless the job pushes via git.
+
 The `tests` job sets `MISE_AUTO_INSTALL=0`. The dev toolset is not needed by that
 job (only uv plus the selected interpreter, and some tools lack wheels on the
 newest interpreters).

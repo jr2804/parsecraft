@@ -3,6 +3,10 @@ name: release
 # Gated on CI: a commit is only tagged/released/published/deployed when its
 # `ci` workflow run succeeded — no releases from a red or infra-failed commit.
 on:
+  # jactionlint-ignore[dangerous-triggers] — the fork-pwn vector this rule
+  # warns about is closed in the release job's `if`: only PUSH-triggered ci
+  # runs on branch main can release (workflow_run.event == 'push'), so a
+  # fork's pull_request run can never satisfy it, whatever its branch name.
   workflow_run:
     workflows: [ci]
     types: [completed]
@@ -34,32 +38,37 @@ jobs:
     # by CI but never tagged, published or deployed.
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
+      (github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.head_branch == 'main' &&
        !contains(github.event.workflow_run.head_commit.message, '[skip release]'))
     runs-on: ubuntu-latest
+    # Observed ~4 min end to end (version+tag+build+notes); 20 min bounds a hang.
+    timeout-minutes: 20
     permissions:
       contents: write
-    outputs:
-      version: ${{ steps.version.outputs.version }}
     steps:
+    # The ONLY checkout in this workflow that keeps git credentials: the
+    # "Create and push tag" step below pushes via git, which authenticates
+    # with them. Every other checkout sets persist-credentials: false.
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       with:
         ref: ${{ github.event.workflow_run.head_sha || github.sha }}
         fetch-depth: 0
         fetch-tags: true
 
     - name: Setup Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
       with:
         python-version: "3.13"
 
     - name: Setup uv
-      uses: astral-sh/setup-uv@v5
+      uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
       with:
-        enable-cache: true
-        cache-dependency-glob: pyproject.toml
+        # No cache in the release job: the built artifacts are published
+        # (cache-poisoning), and one build per release gains nothing from it.
+        enable-cache: false
 
     - name: Compute next calendar version
       id: version
@@ -110,7 +119,7 @@ jobs:
       run: uv build
 
     - name: Create GitHub release
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2
       with:
         tag_name: ${{ steps.version.outputs.version }}
         name: ${{ steps.version.outputs.version }}
@@ -180,7 +189,7 @@ jobs:
         rm -f commits.txt prompt.txt ai-notes.md release-body.md
 
     - name: Upload distributions
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
       with:
         name: dist
         path: dist/
@@ -189,6 +198,7 @@ jobs:
     needs:
     - release
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment:
       name: pypi
       url: https://pypi.org/project/parsecraft/
@@ -196,13 +206,13 @@ jobs:
       id-token: write
     steps:
     - name: Download distributions
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
       with:
         name: dist
         path: dist/
 
     - name: Publish to PyPI
-      uses: pypa/gh-action-pypi-publish@release/v1
+      uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # release/v1 (branch head)
       with:
         skip-existing: true
 
@@ -210,6 +220,8 @@ jobs:
     needs:
     - release
     runs-on: ubuntu-latest
+    # Observed 3-5 min (mise dev + docs build + pages deploy); 20 min bounds a hang.
+    timeout-minutes: 20
     permissions:
       contents: read
       pages: write
@@ -219,27 +231,33 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       with:
         ref: ${{ github.event.workflow_run.head_sha || github.sha }}
         fetch-depth: 0
         fetch-tags: true
+        persist-credentials: false
 
     - name: Setup Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
       with:
         python-version: "3.13"
 
     - name: Setup uv
-      uses: astral-sh/setup-uv@v5
+      uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
       with:
-        enable-cache: true
-        cache-dependency-glob: pyproject.toml
+        # No cache in a publishing job (cache-poisoning): what this job deploys
+        # must not be restorable from a cache an untrusted run could write.
+        enable-cache: false
 
     - name: Setup mise
-      uses: jdx/mise-action@v2
+      uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac  # v2
       with:
         install: true
+        # Publishing job: what it deploys must not be restorable from a cache
+        # an untrusted run could write (same cache-poisoning reasoning as the
+        # uv cache above).
+        cache: false
 
     - name: Install dependencies
       run: mise dev
@@ -248,12 +266,12 @@ jobs:
       run: mise docs
 
     - name: Setup Pages
-      uses: actions/configure-pages@v5
+      uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b  # v5
 
     - name: Upload artifact
-      uses: actions/upload-pages-artifact@v3
+      uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa  # v3
       with:
         path: site/
 
     - id: deployment
-      uses: actions/deploy-pages@v4
+      uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e  # v4

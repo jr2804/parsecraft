@@ -16,6 +16,11 @@ defaults:
   run:
     shell: bash
 
+# Minimal token: no ci job needs more than read access to the repository
+# (the release workflow has its own, deliberately elevated per-job blocks).
+permissions:
+  contents: read
+
 env:
   LANG: en_US.utf-8
   LC_ALL: en_US.utf-8
@@ -27,6 +32,7 @@ jobs:
   extras:
     name: extras resolve (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -34,18 +40,19 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       with:
         fetch-depth: 0
         fetch-tags: true
+        persist-credentials: false
 
     - name: Setup Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
       with:
         python-version: "3.13"
 
     - name: Setup uv
-      uses: astral-sh/setup-uv@v5
+      uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
       with:
         enable-cache: true
         cache-dependency-glob: pyproject.toml
@@ -64,6 +71,7 @@ jobs:
   extras-availability:
     name: extras availability (${{ matrix.os }} / ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     continue-on-error: true
     strategy:
       fail-fast: false
@@ -73,18 +81,19 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       with:
         fetch-depth: 0
         fetch-tags: true
+        persist-credentials: false
 
     - name: Setup Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
       with:
         python-version: ${{ matrix.python-version }}
 
     - name: Setup uv
-      uses: astral-sh/setup-uv@v5
+      uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
       with:
         enable-cache: true
         cache-dependency-glob: pyproject.toml
@@ -120,27 +129,30 @@ jobs:
 
   quality:
     runs-on: ubuntu-latest
+    # Observed ~2 min; 10 min catches a hang without burning the runner.
+    timeout-minutes: 10
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       with:
         fetch-depth: 0
         fetch-tags: true
+        persist-credentials: false
 
     - name: Setup Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
       with:
         python-version: "3.13"
 
     - name: Setup uv
-      uses: astral-sh/setup-uv@v5
+      uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
       with:
         enable-cache: true
         cache-dependency-glob: pyproject.toml
 
     - name: Setup mise
-      uses: jdx/mise-action@v2
+      uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac  # v2
       with:
         install: true
 
@@ -168,6 +180,8 @@ jobs:
   tests:
     needs:
     - quality
+    # Observed 8-12 min across the matrix; 30 min bounds a hung cell.
+    timeout-minutes: 30
     strategy:
       matrix:
         os:
@@ -197,26 +211,27 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       with:
         fetch-depth: 0
         fetch-tags: true
+        persist-credentials: false
 
     - name: Setup Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
       with:
 
         python-version: ${{ matrix.python-version }}
         allow-prereleases: true
 
     - name: Setup uv
-      uses: astral-sh/setup-uv@v5
+      uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
       with:
         enable-cache: true
         cache-dependency-glob: pyproject.toml
 
     - name: Setup mise
-      uses: jdx/mise-action@v2
+      uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac  # v2
       with:
         install: false
 
@@ -231,28 +246,31 @@ jobs:
     needs:
     - quality
     runs-on: ubuntu-latest
+    # Observed 3-5 min (mise dev + zensical build); 15 min bounds a hang.
+    timeout-minutes: 15
 
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       with:
         fetch-depth: 0
         fetch-tags: true
+        persist-credentials: false
 
     - name: Setup Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
       with:
         python-version: "3.13"
 
     - name: Setup uv
-      uses: astral-sh/setup-uv@v5
+      uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
       with:
         enable-cache: true
         cache-dependency-glob: pyproject.toml
 
     - name: Setup mise
-      uses: jdx/mise-action@v2
+      uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac  # v2
       with:
         install: true
 
