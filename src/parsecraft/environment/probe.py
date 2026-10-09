@@ -26,6 +26,8 @@ EXTRA_IMPORTS: dict[str, tuple[str, ...]] = {
     "docling": ("docling",),
     "download": ("huggingface_hub",),
     "liteparse": ("liteparse",),
+    "liteparse": ("liteparse",),
+    "marker": ("marker",),  # bring-your-own dependency (ADR-0006): no declared extra
     "mineru": ("mineru",),
     "ocr-ovis": ("transformers",),
     "ocr-qianfan": ("transformers",),

@@ -16,6 +16,7 @@ from parsecraft.backends.protocol import (
     BackendDescriptor,
     DocumentBackend,
 )
+from parsecraft.backends.registry import default_registry
 from parsecraft.environment import probe as probe_module
 from parsecraft.environment.constraints import constraints_from_environment
 from parsecraft.environment.models import EnvironmentInfo
@@ -268,13 +269,24 @@ def test_every_declared_extra_is_detectable_or_explicitly_meta() -> None:
     """The extras contract, in both directions and against pyproject itself.
 
     A declared extra in neither map is undetectable — the planner would never
-    see it installed — and a stale ``META_EXTRAS`` name would hide that.
+    see it installed — and a stale ``META_EXTRAS`` name would hide that. The
+    converse is intentionally softer: an ``EXTRA_IMPORTS`` key outside
+    ``pyproject`` is a *bring-your-own dependency group* (pc-u4g: ``marker``),
+    declared by a backend descriptor instead of an installable extra, and must
+    name a group some registered descriptor actually declares.
     """
     declared = set(_declared_extras())
     assert declared, "pyproject declares no extras — the reader is wrong"
-    assert declared == set(EXTRA_IMPORTS) | META_EXTRAS
+    assert declared <= set(EXTRA_IMPORTS) | META_EXTRAS
     assert not set(EXTRA_IMPORTS) & META_EXTRAS  # a meta extra imports nothing
     assert all(EXTRA_IMPORTS[group] for group in EXTRA_IMPORTS)  # every map entry is useful
+    undeclared = set(EXTRA_IMPORTS) - declared
+    descriptor_groups = {
+        descriptor.capabilities.optional_dependency_group
+        for descriptor in default_registry.list_backends()
+        if descriptor.capabilities.optional_dependency_group is not None
+    }
+    assert undeclared <= descriptor_groups, f"unattributed import maps: {sorted(undeclared - descriptor_groups)}"
 
 
 def _declared_extras() -> tuple[str, ...]:

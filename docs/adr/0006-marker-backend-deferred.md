@@ -1,6 +1,10 @@
 # ADR-0006: Marker backend deferred — dependency pins and restricted model weights
 
-- **Status:** Accepted
+- **Status:** Accepted — **2026-10-09 update:** the backend *code* now ships on
+  the bring-your-own-dependency basis (entry point registered, **no**
+  `parsecraft[marker]` extra: the consumer's dependency graph installs
+  `marker-pdf`, so rule 10 is untouched). The extra returns at upstream
+  re-entry.
 - **Date:** 2026-10-01
 - **Deciders:** pc-1
 - **Related:** gh-1, ADR-0003 (optional AGPL extra), ADR-0005 (GPL system binary),

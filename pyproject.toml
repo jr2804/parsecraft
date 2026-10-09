@@ -97,6 +97,10 @@ pandoc = "parsecraft.backends.pandoc.pandoc:factory"
 docling = "parsecraft.backends.docling.docling:factory"
 mineru = "parsecraft.backends.mineru.mineru:factory"
 pdf-inspector = "parsecraft.backends.pdf_inspector.pdf_inspector:factory"
+# Bring-your-own dependency (ADR-0006): registered so the backend is listed and
+# routable wherever `marker` imports; parsecraft declares NO `marker` extra -
+# the consumer's dependency graph installs marker-pdf (rule 10 untouched).
+marker = "parsecraft.backends.marker.marker:factory"
 ocr-ovis = "parsecraft.backends.ocr.ovis:factory"
 ocr-tele = "parsecraft.backends.ocr.tele:factory"
 ocr-unlimited = "parsecraft.backends.ocr.unlimited:factory"
