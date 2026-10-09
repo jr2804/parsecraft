@@ -107,7 +107,7 @@ def execute(
     trace: list[TraceEntry] = []
     groups: list[PageGroup] = []
     for group_routes in _group_pages(plan.pages, registry):
-        group_pages, group_trace, group = _execute_group(group_routes, registry, source, analysis)
+        group_pages, group_trace, group = _execute_group(group_routes, registry, source, analysis, constraints.offline)
         pages.extend(group_pages)
         trace.extend(group_trace)
         groups.append(group)
@@ -280,6 +280,7 @@ def _execute_group(
     registry: BackendRegistry,
     source: SourceDocument,
     analysis: AnalysisResult,
+    offline: bool = False,
 ) -> tuple[list[PageResult], list[TraceEntry], PageGroup]:
     page_numbers = [route.page_number for route in routes]
     intent = routes[0].intent
@@ -300,7 +301,7 @@ def _execute_group(
         # the instance per attempt instead of an instance pool with eviction;
         # upgrade path: a residency-budgeted pool once concurrent models fit.
         try:
-            backend = registry.create(name, BackendConfig(name=name))
+            backend = registry.create(name, BackendConfig(name=name, options={"offline": offline}))
         except BackendError as exc:
             failure, elapsed = _exception_failure(name, version, pass_kind, exc, started)
             attempts.append(PassAttempt(backend=name, status=PassStatus.FAILED, failure=failure))

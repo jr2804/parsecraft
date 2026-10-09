@@ -17,6 +17,7 @@ from pathlib import Path
 
 import typer
 
+from parsecraft.assets.errors import AssetError
 from parsecraft.backends import default_registry
 from parsecraft.backends.errors import BackendError, DependencyUnavailableError, UnsupportedDependencyVersionError
 from parsecraft.backends.protocol import BackendDescriptor, SourceDocument
@@ -148,11 +149,16 @@ def convert_source(
             media_type=media_type,
             installed_extras=environment.installed_extras,
             classifier=resolved_classifier,
+            offline=environment.offline,
         )
     except DependencyUnavailableError as exc:
         raise ConvertError(f"optional dependency missing: {exc}") from exc  # exit 1
     except UnsupportedDependencyVersionError as exc:
         raise ConvertError(f"unsupported dependency version: {exc}") from exc  # exit 1
+    except AssetError as exc:
+        # A backend that must acquire a model refuses an uncached download while
+        # offline; the asset error already names the model (pc-e38).
+        raise ConvertError(f"model assets unavailable: {exc}") from exc  # exit 1
     except BackendError as exc:
         raise ConvertError(f"analysis with {analyzer.name!r} failed: {exc}") from exc
     constraints = build_constraints(media_type, max_passes=max_passes, allow_ocr=allow_ocr, environment=environment, preference=preference)
@@ -161,6 +167,8 @@ def convert_source(
         pipeline = execute(analysis, registry, constraints, source, resolved_judge, cache=cache)
     except JudgeViolationError as exc:
         raise ConvertError(f"backend {backend!r} is not eligible for this source: {exc}", exit_code=_USAGE_EXIT_CODE) from exc
+    except AssetError as exc:
+        raise ConvertError(f"model assets unavailable: {exc}") from exc  # exit 1, same mapping as the analyzer path
     except (NoEligibleBackendError, RoutingError) as exc:
         raise ConvertError(f"routing failed: {exc}") from exc
     failure = pipeline_failure(pipeline.document)

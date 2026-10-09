@@ -12,6 +12,7 @@ import pytest
 from typer.testing import CliRunner, Result
 
 import parsecraft.cli.convert as convert_module
+from parsecraft.assets import AssetManager, AssetPin
 from parsecraft.backends import BackendRegistry
 from parsecraft.backends.errors import BackendError, DependencyUnavailableError, UnsupportedDependencyVersionError
 from parsecraft.backends.protocol import (
@@ -23,6 +24,7 @@ from parsecraft.backends.protocol import (
     BackendResult,
     ConversionRequest,
     DocumentBackend,
+    ModelAssetDescriptor,
     SourceDocument,
 )
 from parsecraft.cli.app import app
@@ -408,6 +410,57 @@ def test_convert_image_prefers_installed_claimer(tmp_path: Path, monkeypatch: py
     assert result.exit_code == 0
     assert "installed claimer" in result.output
     assert "missing extra" not in result.output
+
+
+def test_convert_offline_image_never_downloads(registry: BackendRegistry, tmp_path: Path) -> None:
+    """offline reaches create(): an image convert fails typed, naming the model, with zero downloader calls (pc-e38).
+
+    The ``registry`` fixture declares an offline host, so the analyzer's factory
+    must see ``options["offline"]`` and refuse the uncached download — the
+    asset error names the model id and the downloader is never invoked.
+    """
+    calls: list[str] = []
+
+    def downloader(url: str, target: Path, **kwargs: object) -> Path:
+        calls.append(url)
+        return target
+
+    descriptor = _descriptor("ocr-image", ("image/png",))
+
+    class _AssetFactory:
+        """Factory that must acquire a model asset before it can convert."""
+
+        def __init__(self, descriptor: BackendDescriptor) -> None:
+            self.descriptor = descriptor
+
+        def __call__(self, config: BackendConfig) -> DocumentBackend:
+            manager = AssetManager(
+                cache_dir=tmp_path / "cache",
+                downloader=downloader,
+                offline=config.options.get("offline", False),
+            )
+            manager.ensure(
+                AssetPin(
+                    descriptor=ModelAssetDescriptor(
+                        model_id="ocr-model-x",
+                        model_revision="v1",
+                        model_license="MIT",
+                        code_license="MIT",
+                        asset_license="MIT",
+                    ),
+                    filenames=["weights.bin"],
+                    expected_sha256={"weights.bin": "0" * 64},
+                )
+            )
+            return _StubBackend(self.descriptor.name, self.descriptor.capabilities, "ocr content")
+
+    registry.register("ocr-image", _AssetFactory(descriptor))
+    path = tmp_path / "scan.png"
+    path.write_bytes(b"\x89PNG\r\n\x1a\n")
+    result = runner.invoke(app, ["convert", str(path)])
+    assert result.exit_code == 1
+    assert "ocr-model-x" in _text(result)
+    assert calls == []
 
 
 def test_convert_unsupported_dependency_version_is_classified(tmp_path: Path, registry: BackendRegistry) -> None:

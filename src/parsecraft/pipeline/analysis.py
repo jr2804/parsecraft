@@ -103,6 +103,7 @@ def analyze_source(
     media_type: str,
     installed_extras: Collection[str] | None = None,
     classifier: PageOcrClassifier | None = None,
+    offline: bool = False,
 ) -> AnalysisResult:
     """Analyze ``source`` with the canonical analyzer for ``media_type``.
 
@@ -110,12 +111,17 @@ def analyze_source(
     :class:`BackendError` — the CLI maps them onto its exit codes.
     ``installed_extras`` threads through to :func:`choose_analyzer`.
 
+    ``offline`` (default ``False``) is the host's declared offline state, passed
+    to the analyzer's factory as ``options["offline"]``: an analyzer that must
+    acquire a model refuses the uncached download instead of fetching it
+    (pc-e38). It is a plain fact from the probe, never a second declaration.
+
     ``classifier`` (default ``None`` = exactly today's behaviour) folds
     per-page OCR-need facts into the analysis; a seam :class:`ClassifierError`
     falls back to the unmodified analysis (ADR-0004 A3).
     """
     descriptor = choose_analyzer(registry.list_backends(), media_type, installed_extras=installed_extras)
-    backend = registry.create(descriptor.name, BackendConfig(name=descriptor.name))
+    backend = registry.create(descriptor.name, BackendConfig(name=descriptor.name, options={"offline": offline}))
     try:
         analysis = backend.analyze(source)
     finally:

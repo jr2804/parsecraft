@@ -93,7 +93,7 @@ def _benchmark_document(
         return [], BenchmarkSkip(document=document, reason=f"no eligible backend for {media_type}")
 
     try:
-        analysis = _analyze(source, eligible, registry)
+        analysis = _analyze(source, eligible, registry, constraints.offline)
     except Exception as exc:  # analyzer failure is reported as a per-document skip
         return [], BenchmarkSkip(document=document, reason=f"analysis failed ({type(exc).__name__})")
 
@@ -106,15 +106,16 @@ def _benchmark_document(
             analysis,
             registry,
             selected=None if selected is None else selected == descriptor.name,
+            offline=constraints.offline,
         )
         for descriptor in eligible
     ]
     return results, None
 
 
-def _analyze(source: SourceDocument, eligible: list[BackendDescriptor], registry: BackendRegistry) -> AnalysisResult:
+def _analyze(source: SourceDocument, eligible: list[BackendDescriptor], registry: BackendRegistry, offline: bool = False) -> AnalysisResult:
     descriptor = choose_analyzer(eligible, source.media_type or "")
-    backend = registry.create(descriptor.name, BackendConfig(name=descriptor.name))
+    backend = registry.create(descriptor.name, BackendConfig(name=descriptor.name, options={"offline": offline}))
     try:
         return backend.analyze(source)
     finally:
@@ -141,6 +142,7 @@ def _measure(
     registry: BackendRegistry,
     *,
     selected: bool | None,
+    offline: bool = False,
 ) -> BenchmarkMetrics:
     page_range = PageRange(start=1, end=analysis.page_count) if analysis.page_count > 1 else None
     failures: list[BenchmarkFailure] = []
@@ -153,7 +155,7 @@ def _measure(
     try:
         result: BackendResult | None = None
         try:
-            backend = registry.create(descriptor.name, BackendConfig(name=descriptor.name))
+            backend = registry.create(descriptor.name, BackendConfig(name=descriptor.name, options={"offline": offline}))
         except BackendError as exc:
             failures.append(_failure_from_exception(exc, descriptor.name))
         else:
