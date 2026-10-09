@@ -706,6 +706,24 @@ def test_short_native_text_page_degrades_instead_of_erroring() -> None:
     assert "text_chars=34" in page.reason
 
 
+def test_a_blank_page_does_not_claim_native_text_was_present() -> None:
+    """A blank page has no native text, so the reason must not assert any.
+
+    Observed on a real textless PDF before this was fixed: the message read
+    "degraded to native (native text present, text_chars=0)" — two claims, both
+    false, in the one message whose purpose is to say honestly why a page was not
+    OCR'd.
+    """
+    analysis = make_analysis([make_signal(1, text_chars=0, native=False, blank=True)], 1)
+
+    plan = plan_route(analysis, [make_desc("native-text")], full_constraints(formats={"text/plain"}, installed_extras=set()))
+    reason = plan.pages[0].reason
+
+    assert "blank page: no text to lose" in reason
+    assert "native text present" not in reason
+    assert "text_chars=0" not in reason
+
+
 def test_a_missing_engine_is_named_in_the_degradation_reason() -> None:
     """Decision 5: a host-configuration problem must not read like a routing failure.
 

@@ -163,10 +163,16 @@ def _ocr_unavailable_cause(backends: Sequence[BackendDescriptor], constraints: R
 
 
 def _degraded_reason(signal: PageSignal, chosen: str, cause: str) -> str:
-    """Recorded when an OCR-intent page falls back to native (no OCR family)."""
-    return (
-        f"page {signal.page_number}: OCR unavailable ({cause}); degraded to native (native text present, text_chars={signal.text_chars}); first pass {chosen}"
-    )
+    """Recorded when an OCR-intent page falls back to native (no OCR family).
+
+    The parenthetical says WHY native could stand in, and a blank page is not
+    the same case as a thin-text one: there is no native text to speak of, so
+    claiming "native text present" alongside ``text_chars=0`` would be a second
+    false statement in the one message whose whole purpose is to be honest about
+    why a page was not OCR'd.
+    """
+    stood_in = "blank page: no text to lose" if signal.blank else f"native text present, text_chars={signal.text_chars}"
+    return f"page {signal.page_number}: OCR unavailable ({cause}); degraded to native ({stood_in}); first pass {chosen}"
 
 
 def _reason(intent: Intent, chosen: str, signal: PageSignal) -> str:
