@@ -4,6 +4,10 @@ Fully offline: the heavy ``transformers``/``vllm``/``PIL`` surfaces are stubbed
 through ``sys.modules`` before the impl modules are imported; the base
 ``pypdfium2`` raster engine (ADR-0008 d14) is patched onto ``_common.pdfium``.
 Nothing here may touch the network or download a model.
+
+Two exceptions are deliberate, both pure computation on in-memory documents: the
+resolution pin renders one page with the REAL pypdfium2 and Pillow, because the
+point of that test is the true rendered pixel size, which a stub cannot assert.
 """
 
 from __future__ import annotations
@@ -17,11 +21,14 @@ import time
 import tomllib
 from collections.abc import Callable, Iterator
 from io import BytesIO
+from math import sqrt
 from pathlib import Path
 from types import ModuleType
 from typing import Protocol, cast
 
+import pypdfium2 as pdfium_module
 import pytest
+from PIL import Image
 from pydantic import ValidationError
 
 from parsecraft.assets.errors import OfflineModeError
@@ -120,11 +127,16 @@ class _PdfiumPage:
         self._index = index
         self._stub = stub
 
-    def render(self, **_options: object) -> _PdfiumBitmap:
+    def get_size(self) -> tuple[float, float]:
+        return self._stub.page_size
+
+    def render(self, **options: object) -> _PdfiumBitmap:
         if self._stub.fail_render:
             msg = "pdfium cannot render this page"
             raise RuntimeError(msg)
         self._stub.renders.append(self._index)
+        scale = options.get("scale")
+        self._stub.scales.append(scale if isinstance(scale, int | float) else None)
         return _PdfiumBitmap(self._index, self._stub)
 
 
@@ -155,8 +167,11 @@ class _Pypdfium2Stub:
     def __init__(self) -> None:
         self.page_count = 3
         self.raster = b"\x89PNG\r\n\x1a\npdfium-raster"
+        #: A4 in PDF points — the size the resolution contract is stated against.
+        self.page_size = (595.276, 841.89)
         self.open_calls: list[bytes] = []
         self.renders: list[int] = []
+        self.scales: list[float | None] = []
         self.documents: list[_PdfiumDocument] = []
         self.fail_open = False
         self.fail_render = False
@@ -701,6 +716,70 @@ def test_rasterize_page_passes_images_through_and_maps_pdf_indices(pdfium: _Pypd
     assert raster == pdfium.raster
     assert pdfium.renders == [2]  # page 3 → zero-based index 2
     assert pdfium.documents[0].closed is True
+
+
+def test_raster_asks_the_engine_for_the_declared_resolution(pdfium: _Pypdfium2Stub) -> None:
+    """The scale reaching the engine is the resolution contract, not a default."""
+    _common.rasterize_page(_PDF_SOURCE, 1)
+
+    assert pdfium.scales == [pytest.approx(_common.RASTER_DPI / 72)]
+
+
+def test_raster_reduces_the_scale_proportionally_for_an_oversized_page(pdfium: _Pypdfium2Stub) -> None:
+    """Past the pixel cap the page is shrunk, never rejected — and by area, not width.
+
+    Rendered area scales with the square of the factor, so an A0 page is reduced
+    by sqrt(cap / requested). The point of the test is the *relationship*: a page
+    twice as wide at the same height must get the same reduction.
+    """
+    pdfium.page_size = (2384.0, 3370.0)  # A0: 139 Mpx at 300 dpi
+    _common.rasterize_page(_PDF_SOURCE, 1)
+
+    requested = 2384.0 * 3370.0 * (_common.RASTER_DPI / 72) ** 2
+    expected = (_common.RASTER_DPI / 72) * sqrt(_common.MAX_RASTER_PIXELS / requested)
+    assert pdfium.scales == [pytest.approx(expected)]
+    scale = pdfium.scales[0]
+    assert scale is not None
+    # ...and the result lands exactly on the cap, still above the ~150 dpi floor.
+    assert 2384.0 * 3370.0 * scale**2 == pytest.approx(_common.MAX_RASTER_PIXELS, rel=1e-9)
+    assert scale * 72 > 150
+
+
+def test_raster_leaves_office_page_sizes_at_full_resolution(pdfium: _Pypdfium2Stub) -> None:
+    """The cap must not touch the sizes the contract is stated against (A4..A2)."""
+    for name, size in {"A4": (595.276, 841.89), "A3": (841.89, 1190.55), "A2": (1190.55, 1683.78)}.items():
+        pdfium.page_size = size
+        pdfium.scales.clear()
+        _common.rasterize_page(_PDF_SOURCE, 1)
+        assert pdfium.scales == [pytest.approx(_common.RASTER_DPI / 72)], name
+
+
+def test_raster_scale_survives_a_degenerate_page_size() -> None:
+    """A zero-sized page cannot be divided by; it keeps the full scale."""
+    assert _common._raster_scale(0, 0) == pytest.approx(_common.RASTER_DPI / 72)
+    assert _common._raster_scale(595.276, 0) == pytest.approx(_common.RASTER_DPI / 72)
+
+
+def test_raster_resolution_is_pinned_for_a_known_page_size() -> None:
+    """End-to-end pixels, against the REAL engine — so an engine swap cannot slip through.
+
+    A4 (595.276 x 841.89 pt) at 300 dpi is 2481x3508 px. This runs the actual
+    pypdfium2 rather than the stub: pypdfium2 is a base dependency and pure
+    computation (no network, no I/O beyond an in-memory document), so pinning the
+    true rendered size is what makes the resolution contract enforceable. A future
+    engine swap that silently changed resolution fails here instead of quietly
+    degrading every OCR result.
+    """
+    document = pdfium_module.PdfDocument.new()
+    try:
+        document.new_page(595.276, 841.89)
+        buffer = BytesIO()
+        document.save(buffer)
+    finally:
+        document.close()
+
+    with Image.open(BytesIO(_common._raster_pdf_page(buffer.getvalue(), 1))) as image:
+        assert image.size == (2481, 3508)
 
 
 def test_raster_page_is_a_typed_failure_when_pypdfium2_cannot_open(pdfium: _Pypdfium2Stub) -> None:

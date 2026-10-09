@@ -4,6 +4,23 @@ No heavy imports live here. Model stacks belong in the ``_<name>_impl`` modules
 (loaded only via :func:`load_impl`); optional tooling (vLLM) is imported on
 demand through :func:`optional_module`. The base pypdfium2 raster engine is a
 base dependency (ADR-0008 d10) and imports at module level.
+
+**Raster resolution contract.** Pages are rasterized at :data:`RASTER_DPI` (300),
+which is Tesseract's own stated minimum and where accuracy stops degrading
+sharply (below ~150 it falls off). The value used to be inherited from
+PyMuPDF's ``get_pixmap()`` default of 72 dpi — an accident, not a decision, and a
+real accuracy defect on exactly the scanned-page path OCR exists for.
+
+That resolution is bounded by :data:`MAX_RASTER_PIXELS`. Measured page areas at
+300 dpi: A4 8.7 Mpx, A3 17.4, A2 34.8 — so ordinary and large-format office
+pages raster at full resolution — while A1 reaches 70 Mpx and A0 139 Mpx
+(209/418 MB as RGB), enough to turn one page into an out-of-memory kill or a
+multi-minute OCR run. Over the cap the scale is reduced *proportionally* rather
+than the page being rejected: A1 lands at 227 dpi and A0 at 161 dpi, both still
+above the ~150 dpi threshold. The cap is a memory guard, not a routing decision,
+so it emits no diagnostic: there is no existing convert-time per-page channel for
+a success-path fact (``PassFailure.detail`` is for failures), and inventing one
+for this would be a new channel the guard does not need.
 """
 
 from __future__ import annotations
@@ -14,6 +31,7 @@ import time
 from collections.abc import Callable
 from importlib.metadata import version as _package_version
 from io import BytesIO
+from math import sqrt
 from pathlib import Path
 from types import ModuleType
 from typing import Protocol, cast, runtime_checkable
@@ -83,6 +101,16 @@ DEFAULT_PAGE_MAX_NEW_TOKENS = 2048
 #: One page transcription: raster bytes + generation cap → page text.
 type Transcriber = Callable[[bytes, int | None], str]
 
+#: Raster resolution for OCR input, in dots per inch. Tesseract's documented
+#: minimum is ~300, and accuracy degrades sharply below ~150.
+RASTER_DPI = 300
+#: PDF user space is 72 units to the inch, so this is the multiplier that turns
+#: :data:`RASTER_DPI` into pypdfium2's ``scale``.
+_POINTS_PER_INCH = 72
+#: Hard ceiling on one rasterized page, in pixels (~120 MB as RGB). Justified by
+#: the measured areas in the module docstring.
+MAX_RASTER_PIXELS = 40_000_000
+
 _DEFAULT_RUNTIME = "transformers"
 _PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 _JPEG_MAGIC = b"\xff\xd8\xff"
@@ -113,9 +141,17 @@ class Pypdfium2Bitmap(Protocol):
 class Pypdfium2Page(Protocol):
     """One page of the base pypdfium2 engine."""
 
-    def render(self, **options: object) -> Pypdfium2Bitmap:
-        """Rasterize the page (default scale = 72 dpi)."""
+    def get_size(self) -> tuple[float, float]:
+        """Page size in PDF points (72 per inch) — width, then height."""
         ...
+
+    def render(self, **options: object) -> Pypdfium2Bitmap:
+        """Rasterize the page. Callers MUST pass ``scale`` from :func:`_raster_scale`.
+
+        pypdfium2's own default is ``scale=1`` (72 dpi) — that default is exactly
+        the resolution defect :data:`RASTER_DPI` exists to replace, so it is never
+        relied on here.
+        """
 
 
 class Pypdfium2Document(Protocol):
@@ -672,7 +708,9 @@ def _raster_pdf_page(payload: bytes, page_number: int) -> bytes:
     """PNG for one PDF page: the base pypdfium2 engine (ADR-0008 d10/d14)."""
     document = _open_pdfium(payload)
     try:
-        bitmap = document[page_number - 1].render()
+        page = document[page_number - 1]
+        width, height = page.get_size()
+        bitmap = page.render(scale=_raster_scale(width, height))
         try:
             image = bitmap.to_pil()
         finally:
@@ -682,6 +720,21 @@ def _raster_pdf_page(payload: bytes, page_number: int) -> bytes:
     buffer = BytesIO()
     image.save(buffer, "PNG")
     return buffer.getvalue()
+
+
+def _raster_scale(width_points: float, height_points: float) -> float:
+    """Render scale for :data:`RASTER_DPI`, reduced proportionally past the cap.
+
+    Rendered area scales with the square of the factor, so the reduction is
+    ``sqrt(cap / requested)``: a page twice as wide as another at the same
+    height needs the same reduction, and the result lands exactly on the cap.
+    A degenerate zero-sized page cannot be divided by, so it keeps full scale.
+    """
+    scale = RASTER_DPI / _POINTS_PER_INCH
+    requested = width_points * height_points * scale * scale
+    if width_points <= 0 or height_points <= 0 or requested <= MAX_RASTER_PIXELS:
+        return scale
+    return scale * sqrt(MAX_RASTER_PIXELS / requested)
 
 
 def _open_pdfium(payload: bytes) -> Pypdfium2Document:

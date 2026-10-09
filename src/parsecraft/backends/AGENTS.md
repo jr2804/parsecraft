@@ -63,6 +63,19 @@ registration + Python entry points) without editing this package.
   undocumented implementation detail and 256 of them truncates a dense page.
   One number for both runtimes so a page cannot get a different budget per
   runtime.
+- **OCR page rasterization is one shared surface at a declared resolution.**
+  `backends/ocr/_common.rasterize_page` / `count_pages` use the base `pypdfium2`
+  engine (ADR-0008 d10) — the only raster engine, since ruling B removed the
+  PyMuPDF fallback. Two numbers are the contract and live in `_common.py`:
+  `RASTER_DPI = 300` (Tesseract's stated minimum; accuracy degrades sharply below
+  ~150) and `MAX_RASTER_PIXELS = 40_000_000`. Over the cap the scale is reduced
+  proportionally by area (`_raster_scale`) rather than the page being rejected:
+  A4-A2 raster at full resolution, A1 lands at ~227 dpi and A0 at ~161 dpi. The
+  cap is a memory guard, not a routing decision, and deliberately emits **no**
+  diagnostic — there is no existing convert-time per-page channel for a
+  success-path fact. `tests/test_backends_ocr.py` pins the true rendered pixel
+  size against the real engine, so an engine swap cannot silently change the
+  resolution the OCR path gets.
 - **Tokenizer/processor loads of VLM backends go through
   `backends/ocr/_common.tokenizer_load_kwargs()`** (pc-scr): it carries the
   corrections every tokenizer needs, currently `fix_mistral_regex=True` — several
