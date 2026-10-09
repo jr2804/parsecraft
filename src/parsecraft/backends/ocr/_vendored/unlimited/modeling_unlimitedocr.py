@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt  # ty: ignore[unresolved-import]
 import numpy as np  # ty: ignore[unresolved-import]
 import torch  # ty: ignore[unresolved-import] — heavy extras absent in the light dev/CI env; GPU tier validates
 from addict import Dict  # ty: ignore[unresolved-import]
-from PIL import Image, ImageDraw, ImageFont, ImageOps  # ty: ignore[unresolved-import]
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 from torch import nn  # ty: ignore[unresolved-import] — heavy extras absent in the light dev/CI env; GPU tier validates
 from torch.nn import CrossEntropyLoss  # ty: ignore[unresolved-import] — heavy extras absent in the light dev/CI env; GPU tier validates
 from torchvision import transforms  # ty: ignore[unresolved-import] — heavy extras absent in the light dev/CI env; GPU tier validates

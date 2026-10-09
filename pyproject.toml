@@ -18,9 +18,11 @@ classifiers = [
 dependencies = [
     "charset-normalizer>=3.4",
     "markdown-it-py>=4.2",
+    "pillow>=10.4",
     "pydantic>=2.13",
     "pydantic-settings>=2.15",
     "platformdirs>=4.3",
+    "pypdfium2>=5.14",
     "tomlkit>=0.13",
     "typer>=0.12.0",
 ]

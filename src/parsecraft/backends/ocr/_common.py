@@ -1,9 +1,9 @@
 """Shared light machinery for the OCR family: bounds, failures, page access.
 
 No heavy imports live here. Model stacks belong in the ``_<name>_impl`` modules
-(loaded only via :func:`load_impl`); optional tooling (PDF rasterization, vLLM)
-is imported on demand through :func:`optional_module`, which is ``importlib``
--call based and therefore safe from ``pyreorder``'s inline-import hoisting.
+(loaded only via :func:`load_impl`); optional tooling (vLLM) is imported on
+demand through :func:`optional_module`. The base pypdfium2 raster engine is a
+base dependency (ADR-0008 d10) and imports at module level.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Protocol, cast, runtime_checkable
 
+import pypdfium2 as pdfium
 from packaging.specifiers import SpecifierSet
 
 from parsecraft.assets.manager import AssetManager
@@ -96,33 +97,47 @@ class ImplModule(Protocol):
         ...
 
 
-class PdfPixmap(Protocol):
-    """Raster surface of PyMuPDF (extra ``pdf`` — AGPL, explicit opt-in, ADR-0003)."""
+class Pypdfium2Bitmap(Protocol):
+    """Bitmap surface of the base pypdfium2 engine (``page.render()``)."""
 
-    def tobytes(self, output_format: str) -> bytes:
-        """Encode the pixmap as PNG bytes."""
+    def to_pil(self) -> PilImage:
+        """Hand the rendered page to Pillow (the base-dep image bridge)."""
+        ...
+
+    def close(self) -> None:
+        """Release the native bitmap."""
         ...
 
 
-class PdfPage(Protocol):
-    """One page of the optional PDF engine."""
+class Pypdfium2Page(Protocol):
+    """One page of the base pypdfium2 engine."""
 
-    def get_pixmap(self) -> PdfPixmap:
-        """Render the page to a pixmap."""
+    def render(self, **options: object) -> Pypdfium2Bitmap:
+        """Rasterize the page (default scale = 72 dpi)."""
         ...
 
 
-class PdfDocument(Protocol):
-    """Document surface of the optional PDF engine."""
+class Pypdfium2Document(Protocol):
+    """Document surface of the base pypdfium2 engine."""
 
-    page_count: int
+    def __len__(self) -> int:
+        """Page count."""
+        ...
 
-    def load_page(self, page_number: int) -> PdfPage:
-        """Load one zero-based page."""
+    def __getitem__(self, index: int) -> Pypdfium2Page:
+        """One zero-based page."""
         ...
 
     def close(self) -> None:
         """Release the document handle."""
+        ...
+
+
+class PilImage(Protocol):
+    """Pillow image surface: the ``to_pil()`` result, saved to PNG bytes."""
+
+    def save(self, buffer: BytesIO, format: str) -> None:
+        """Encode the image into ``buffer`` in ``format``."""
         ...
 
 
@@ -235,12 +250,7 @@ def rasterize_page(source: SourceDocument, page_number: int) -> bytes:
     payload = source_bytes(source)
     if payload.startswith(_PNG_MAGIC) or payload.startswith(_JPEG_MAGIC):
         return payload
-    document = _open_pdf(payload)
-    try:
-        page = document.load_page(page_number - 1)
-        return page.get_pixmap().tobytes("png")
-    finally:
-        document.close()
+    return _raster_pdf_page(payload, page_number)
 
 
 def analyze_source(source: SourceDocument) -> AnalysisResult:
@@ -409,18 +419,14 @@ def convert_pages(
 
 
 def count_pages(source: SourceDocument) -> int:
-    """Page count without running the model: images are one page, PDFs defer to the PDF engine."""
+    """Page count without running the model: images are one page, PDFs defer to the raster engine."""
     payload = source_bytes(source)
     if payload.startswith(_PNG_MAGIC) or payload.startswith(_JPEG_MAGIC):
         return 1
     if not payload.startswith(_PDF_MAGIC):
         msg = f"unsupported source {source.uri!r}: expected a PDF or a PNG/JPEG image"
         raise BackendError(msg)
-    document = _open_pdf(payload)
-    try:
-        return int(document.page_count)
-    finally:
-        document.close()
+    return _pdf_page_count(payload)
 
 
 def source_bytes(source: SourceDocument) -> bytes:
@@ -652,17 +658,44 @@ def extract_generated(result: object) -> str:
     raise RuntimeError(msg)
 
 
-def _open_pdf(payload: bytes) -> PdfDocument:
-    """Open an in-memory PDF with PyMuPDF (extra ``pdf`` — AGPL, explicit opt-in)."""
+def _pdf_page_count(payload: bytes) -> int:
+    """Page count: the base pypdfium2 engine (ADR-0008 d10); an undecodable PDF is a typed failure."""
+    document = _open_pdfium(payload)
     try:
-        pymupdf = importlib.import_module("pymupdf")
-    except ImportError as exc:
-        msg = (
-            "PDF input needs PyMuPDF — pip install 'parsecraft[pdf]' alongside your 'ocr-*' extra "
-            "(PyMuPDF is AGPL and is deliberately not pulled in by the OCR extras, ADR-0003)"
-        )
+        return len(document)
+    finally:
+        document.close()
+
+
+def _raster_pdf_page(payload: bytes, page_number: int) -> bytes:
+    """PNG for one PDF page: the base pypdfium2 engine (ADR-0008 d10/d14)."""
+    document = _open_pdfium(payload)
+    try:
+        bitmap = document[page_number - 1].render()
+        try:
+            image = bitmap.to_pil()
+        finally:
+            bitmap.close()
+    finally:
+        document.close()
+    buffer = BytesIO()
+    image.save(buffer, "PNG")
+    return buffer.getvalue()
+
+
+def _open_pdfium(payload: bytes) -> Pypdfium2Document:
+    """Open an in-memory PDF with the base pypdfium2 engine.
+
+    pypdfium2 is a base dependency (ADR-0008 d10), so no engine is ever
+    missing: a document the engine cannot decode is the caller's content
+    problem, surfaced as a typed source failure rather than an install hint.
+    """
+    try:
+        document = pdfium.PdfDocument(payload)
+    except pdfium.PdfiumError as exc:
+        msg = f"could not open the PDF: {exc}"
         raise BackendError(msg) from exc
-    return cast("PdfDocument", pymupdf.open(stream=payload, filetype="pdf"))
+    return cast("Pypdfium2Document", document)
 
 
 def optional_module(module_name: str, *, extra: str) -> ModuleType:

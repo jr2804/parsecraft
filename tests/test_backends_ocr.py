@@ -1,8 +1,9 @@
 """OCR/VLM backend adapters: descriptors, light/heavy boundary, bounds, failures.
 
-Fully offline: the heavy ``transformers``/``vllm``/``PIL``/``pymupdf`` surfaces
-are stubbed through ``sys.modules`` before the impl modules are imported, and
-nothing here may touch the network or download a model.
+Fully offline: the heavy ``transformers``/``vllm``/``PIL`` surfaces are stubbed
+through ``sys.modules`` before the impl modules are imported; the base
+``pypdfium2`` raster engine (ADR-0008 d14) is patched onto ``_common.pdfium``.
+Nothing here may touch the network or download a model.
 """
 
 from __future__ import annotations
@@ -87,50 +88,85 @@ class FactoryModule(Protocol):
 # ── Stubs: heavy surfaces faked through sys.modules ─────────────────────────────
 
 
-class _PixmapStub:
-    def __init__(self, payload: bytes) -> None:
-        self._payload = payload
+class _PdfiumImage:
+    """Stand-in for the PIL image ``to_pil()`` returns; ``save`` writes the PNG."""
 
-    def tobytes(self, output_format: str) -> bytes:
-        assert output_format == "png"
-        return self._payload
-
-
-class _PdfPageStub:
-    def __init__(self, payload: bytes) -> None:
-        self._payload = payload
-
-    def get_pixmap(self) -> _PixmapStub:
-        return _PixmapStub(self._payload)
-
-
-class _PdfDocumentStub:
-    def __init__(self, page_count: int, raster: bytes) -> None:
-        self.page_count = page_count
+    def __init__(self, raster: bytes) -> None:
         self._raster = raster
-        self.loaded: list[int] = []
+
+    def save(self, buffer: BytesIO, _format: str) -> None:
+        buffer.write(self._raster)
+
+
+class _PdfiumBitmap:
+    """Bitmap surface of the pypdfium2 stub (``page.render()``)."""
+
+    def __init__(self, index: int, stub: _Pypdfium2Stub) -> None:
+        self._index = index
+        self._stub = stub
         self.closed = False
 
-    def load_page(self, page_number: int) -> _PdfPageStub:
-        self.loaded.append(page_number)
-        return _PdfPageStub(self._raster)
+    def to_pil(self) -> _PdfiumImage:
+        return _PdfiumImage(self._stub.raster)
 
     def close(self) -> None:
         self.closed = True
 
 
-class _PymupdfStub:
-    """Offline stand-in for PyMuPDF (extra ``pdf``)."""
+class _PdfiumPage:
+    """One page of the pypdfium2 stub."""
+
+    def __init__(self, index: int, stub: _Pypdfium2Stub) -> None:
+        self._index = index
+        self._stub = stub
+
+    def render(self, **_options: object) -> _PdfiumBitmap:
+        if self._stub.fail_render:
+            msg = "pdfium cannot render this page"
+            raise RuntimeError(msg)
+        self._stub.renders.append(self._index)
+        return _PdfiumBitmap(self._index, self._stub)
+
+
+class _PdfiumDocument:
+    """Document surface of the pypdfium2 stub (``PdfDocument(bytes)``)."""
+
+    def __init__(self, stub: _Pypdfium2Stub) -> None:
+        self._stub = stub
+        self.closed = False
+
+    def __len__(self) -> int:
+        return self._stub.page_count
+
+    def __getitem__(self, index: int) -> _PdfiumPage:
+        return _PdfiumPage(index, self._stub)
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class _PdfiumError(Exception):
+    """Stand-in for ``pypdfium2.PdfiumError`` — a decode/open failure of the base engine."""
+
+
+class _Pypdfium2Stub:
+    """Offline stand-in for the base pypdfium2 engine (ADR-0008 d10/d14)."""
 
     def __init__(self) -> None:
         self.page_count = 3
-        self.raster = b"\x89PNG\r\n\x1a\nraster-png"
-        self.open_calls: list[tuple[bytes, str]] = []
-        self.documents: list[_PdfDocumentStub] = []
+        self.raster = b"\x89PNG\r\n\x1a\npdfium-raster"
+        self.open_calls: list[bytes] = []
+        self.renders: list[int] = []
+        self.documents: list[_PdfiumDocument] = []
+        self.fail_open = False
+        self.fail_render = False
+        self.PdfiumError = _PdfiumError
 
-    def open(self, *, stream: bytes, filetype: str) -> _PdfDocumentStub:
-        self.open_calls.append((stream, filetype))
-        document = _PdfDocumentStub(self.page_count, self.raster)
+    def PdfDocument(self, data: bytes) -> _PdfiumDocument:
+        self.open_calls.append(data)
+        if self.fail_open:
+            raise self.PdfiumError("pdfium cannot decode this document")
+        document = _PdfiumDocument(self)
         self.documents.append(document)
         return document
 
@@ -635,12 +671,12 @@ def test_source_bytes_reports_missing_file(tmp_path: Path) -> None:
         _common.source_bytes(SourceDocument(uri=f"file://{tmp_path / 'gone.png'}"))
 
 
-def test_count_pages_is_one_for_images_and_uses_the_pdf_engine(pdf_engine: _PymupdfStub) -> None:
+def test_count_pages_is_one_for_images_and_counts_pdf_pages(pdfium: _Pypdfium2Stub) -> None:
     assert _common.count_pages(_image_source()) == 1
-    pdf_engine.page_count = 5
+    pdfium.page_count = 5
     assert _common.count_pages(_PDF_SOURCE) == 5
-    assert pdf_engine.documents[0].closed is True
-    assert pdf_engine.open_calls[0][1] == "pdf"
+    assert pdfium.open_calls[0] == _PDF_SOURCE.content
+    assert pdfium.documents[0].closed is True
 
 
 def test_count_pages_rejects_unsupported_payload() -> None:
@@ -656,12 +692,26 @@ def test_declared_formats_match_the_page_access_layer() -> None:
     assert _common.rasterize_page(jpeg, 1) == jpeg.content
 
 
-def test_rasterize_page_passes_images_through_and_maps_pdf_indices(pdf_engine: _PymupdfStub) -> None:
+def test_rasterize_page_passes_images_through_and_maps_pdf_indices(pdfium: _Pypdfium2Stub) -> None:
     assert _common.rasterize_page(_image_source(), 1) == _PNG
     raster = _common.rasterize_page(_PDF_SOURCE, 3)
-    assert raster == pdf_engine.raster
-    assert pdf_engine.documents[0].loaded == [2]  # page 3 → zero-based index 2
-    assert pdf_engine.documents[0].closed is True
+    assert raster == pdfium.raster
+    assert pdfium.renders == [2]  # page 3 → zero-based index 2
+    assert pdfium.documents[0].closed is True
+
+
+def test_raster_page_is_a_typed_failure_when_pypdfium2_cannot_open(pdfium: _Pypdfium2Stub) -> None:
+    """The base engine is pypdfium2-only (decision 14): a decode failure is a typed
+    BackendError that must NOT point users at the AGPL pdf extra or PyMuPDF.
+    """
+    pdfium.fail_open = True
+    with pytest.raises(BackendError, match="could not open the PDF") as excinfo:
+        _common.count_pages(_PDF_SOURCE)
+    message = str(excinfo.value)
+    assert "parsecraft[pdf]" not in message
+    assert "pymupdf" not in message.lower()
+    with pytest.raises(BackendError, match="could not open the PDF"):
+        _common.rasterize_page(_PDF_SOURCE, 1)
 
 
 def test_analyze_is_deterministic_for_images() -> None:
@@ -684,15 +734,15 @@ def _image_source(payload: bytes = _PNG) -> SourceDocument:
     return SourceDocument(uri="file:///page.png", content=payload)
 
 
-def test_analyze_covers_every_pdf_page(pdf_engine: _PymupdfStub) -> None:
-    pdf_engine.page_count = 4
+def test_analyze_covers_every_pdf_page(pdfium: _Pypdfium2Stub) -> None:
+    pdfium.page_count = 4
     analysis = _common.analyze_source(_PDF_SOURCE)
     assert analysis.page_count == 4
     assert [signal.page_number for signal in analysis.signals] == [1, 2, 3, 4]
 
 
-def test_analyze_reads_pdf_from_disk(tmp_path: Path, pdf_engine: _PymupdfStub) -> None:
-    pdf_engine.page_count = 2
+def test_analyze_reads_pdf_from_disk(tmp_path: Path, pdfium: _Pypdfium2Stub) -> None:
+    pdfium.page_count = 2
     file_path = tmp_path / "doc.pdf"
     file_path.write_bytes(_PDF_MAGIC)
     analysis = _common.analyze_source(SourceDocument(uri=f"file://{file_path}"))
@@ -702,8 +752,8 @@ def test_analyze_reads_pdf_from_disk(tmp_path: Path, pdf_engine: _PymupdfStub) -
 # ── _common: conversion bounds ──────────────────────────────────────────────────
 
 
-def test_convert_covers_all_pages_by_default(pdf_engine: _PymupdfStub) -> None:
-    pdf_engine.page_count = 3
+def test_convert_covers_all_pages_by_default(pdfium: _Pypdfium2Stub) -> None:
+    pdfium.page_count = 3
     seen: list[int] = []
     result = _convert(
         _PDF_SOURCE,
@@ -721,8 +771,8 @@ def test_convert_covers_all_pages_by_default(pdf_engine: _PymupdfStub) -> None:
     assert result.elapsed_s >= 0.0
 
 
-def test_convert_honors_page_range(pdf_engine: _PymupdfStub) -> None:
-    pdf_engine.page_count = 5
+def test_convert_honors_page_range(pdfium: _Pypdfium2Stub) -> None:
+    pdfium.page_count = 5
     seen: list[int] = []
     result = _convert(
         _PDF_SOURCE,
@@ -734,8 +784,8 @@ def test_convert_honors_page_range(pdf_engine: _PymupdfStub) -> None:
     assert result.failures == []
 
 
-def test_convert_clamps_a_partially_overlapping_range(pdf_engine: _PymupdfStub) -> None:
-    pdf_engine.page_count = 4
+def test_convert_clamps_a_partially_overlapping_range(pdfium: _Pypdfium2Stub) -> None:
+    pdfium.page_count = 4
     seen: list[int] = []
     result = _convert(
         _PDF_SOURCE,
@@ -746,8 +796,8 @@ def test_convert_clamps_a_partially_overlapping_range(pdf_engine: _PymupdfStub) 
     assert [page.page_number for page in result.pages] == [3, 4]
 
 
-def test_convert_rejects_a_range_outside_the_document(pdf_engine: _PymupdfStub) -> None:
-    pdf_engine.page_count = 2
+def test_convert_rejects_a_range_outside_the_document(pdfium: _Pypdfium2Stub) -> None:
+    pdfium.page_count = 2
     result = _convert(
         _PDF_SOURCE,
         _request(_PDF_SOURCE, page_range=(7, 9)),
@@ -761,8 +811,8 @@ def test_convert_rejects_a_range_outside_the_document(pdf_engine: _PymupdfStub) 
     assert "outside the document" in failure.detail
 
 
-def test_convert_reports_empty_documents_as_invalid(pdf_engine: _PymupdfStub) -> None:
-    pdf_engine.page_count = 0
+def test_convert_reports_empty_documents_as_invalid(pdfium: _Pypdfium2Stub) -> None:
+    pdfium.page_count = 0
     result = _convert(_PDF_SOURCE, _request(_PDF_SOURCE), lambda _number, _req: "x")
     assert result.pages == []
     assert result.failures[0].code is FailureCode.INVALID_INPUT
@@ -777,8 +827,8 @@ def test_convert_turns_unsupported_sources_into_typed_failures() -> None:
     assert "expected a PDF or a PNG/JPEG image" in result.failures[0].detail
 
 
-def test_convert_stops_on_cancellation(pdf_engine: _PymupdfStub) -> None:
-    pdf_engine.page_count = 5
+def test_convert_stops_on_cancellation(pdfium: _Pypdfium2Stub) -> None:
+    pdfium.page_count = 5
     calls = {"n": 0}
 
     def _infer(number: int, _req: ConversionRequest) -> str:
@@ -797,8 +847,8 @@ def test_convert_stops_on_cancellation(pdf_engine: _PymupdfStub) -> None:
     assert failure.backend == "ocr-test"
 
 
-def test_convert_times_out_on_an_exhausted_budget(pdf_engine: _PymupdfStub) -> None:
-    pdf_engine.page_count = 3
+def test_convert_times_out_on_an_exhausted_budget(pdfium: _Pypdfium2Stub) -> None:
+    pdfium.page_count = 3
 
     def _slow_infer(_number: int, _req: ConversionRequest) -> str:
         time.sleep(0.05)  # overshoot the 10 ms budget so page 2 sees a spent deadline
@@ -816,8 +866,8 @@ def test_convert_times_out_on_an_exhausted_budget(pdf_engine: _PymupdfStub) -> N
     assert failure.detail.startswith("time budget")
 
 
-def test_convert_enforces_the_output_budget(pdf_engine: _PymupdfStub) -> None:
-    pdf_engine.page_count = 5
+def test_convert_enforces_the_output_budget(pdfium: _Pypdfium2Stub) -> None:
+    pdfium.page_count = 5
     result = _convert(
         _PDF_SOURCE,
         _request(_PDF_SOURCE, max_output_chars=15),
@@ -829,8 +879,8 @@ def test_convert_enforces_the_output_budget(pdf_engine: _PymupdfStub) -> None:
     assert "15 chars" in failure.detail
 
 
-def test_convert_records_per_page_errors_and_continues(pdf_engine: _PymupdfStub) -> None:
-    pdf_engine.page_count = 3
+def test_convert_records_per_page_errors_and_continues(pdfium: _Pypdfium2Stub) -> None:
+    pdfium.page_count = 3
 
     def _infer(number: int, _req: ConversionRequest) -> str:
         if number == 2:
@@ -848,31 +898,28 @@ def test_convert_records_per_page_errors_and_continues(pdf_engine: _PymupdfStub)
     assert failure.occurred_at.tzinfo is not None
 
 
-def test_missing_pdf_engine_names_the_pdf_extra(monkeypatch: pytest.MonkeyPatch) -> None:
-    """PyMuPDF stays an explicit AGPL opt-in: the error must name parsecraft[pdf] (ADR-0003)."""
-    real_import = importlib.import_module
-
-    def _fake_import(module_name: str, *_args: object, **_kwargs: object) -> ModuleType:
-        if module_name == "pymupdf":
-            msg = "No module named 'pymupdf'"
-            raise ModuleNotFoundError(msg, name="pymupdf")
-        return real_import(module_name)
-
-    monkeypatch.setattr(importlib, "import_module", _fake_import)
-    with pytest.raises(BackendError, match=re.escape("pip install 'parsecraft[pdf]'")) as excinfo:
+def test_missing_raster_engine_does_not_name_the_agpl_pdf_extra(
+    pdfium: _Pypdfium2Stub,
+) -> None:
+    """pypdfium2 is a base dep (ADR-0008 d14): a decode failure is a typed
+    BackendError and must NOT steer users to the AGPL pdf extra or PyMuPDF.
+    """
+    pdfium.fail_open = True
+    with pytest.raises(BackendError, match="could not open the PDF") as excinfo:
         _common.count_pages(_PDF_SOURCE)
     message = str(excinfo.value)
-    assert "alongside your 'ocr-*' extra" in message
-    assert "ADR-0003" in message
-    # The same typed failure surfaces through convert() instead of raising:
+    assert "parsecraft[pdf]" not in message
+    assert "pymupdf" not in message.lower()
+    # The same typed failure surfaces through convert() as a recorded, not raised, failure:
     result = _convert(_PDF_SOURCE, _request(_PDF_SOURCE), lambda _number, _req: "x")
     assert result.pages == []
     assert result.failures[0].code is FailureCode.INVALID_INPUT
-    assert "parsecraft[pdf]" in result.failures[0].detail
+    assert "could not open the PDF" in result.failures[0].detail
+    assert "parsecraft[pdf]" not in result.failures[0].detail
 
 
-def test_convert_passes_the_context_budget_to_inference(pdf_engine: _PymupdfStub) -> None:
-    pdf_engine.page_count = 1
+def test_convert_passes_the_context_budget_to_inference(pdfium: _Pypdfium2Stub) -> None:
+    pdfium.page_count = 1
     received: list[int | None] = []
 
     def _infer(_number: int, req: ConversionRequest) -> str:
@@ -1217,7 +1264,7 @@ def test_extract_generated_rejects_garbage(result: object) -> None:
 def test_pipeline_backends_convert_under_the_stub(
     module: FactoryModule,
     impl_loader: Callable[[str, _TransformersStub], ModuleType],
-    pdf_engine: _PymupdfStub,
+    pdfium: _Pypdfium2Stub,
     pil: _PilImageStub,
     *,
     impl_module: str,
@@ -1226,7 +1273,7 @@ def test_pipeline_backends_convert_under_the_stub(
     thinking: bool | None,
     trust_remote_code: bool,
 ) -> None:
-    pdf_engine.page_count = 3
+    pdfium.page_count = 3
     state = _TransformersStub()
     state.pipeline_outputs = [
         [{"generated_text": "one"}],
@@ -1300,13 +1347,13 @@ def test_pipeline_backends_convert_under_the_stub(
 )
 def test_pipeline_backends_support_the_vllm_runtime(
     impl_loader: Callable[[str, _TransformersStub], ModuleType],
-    pdf_engine: _PymupdfStub,
+    pdfium: _Pypdfium2Stub,
     pil: _PilImageStub,
     vllm_stub: _VllmStub,
     *,
     impl_module: str,
 ) -> None:
-    pdf_engine.page_count = 1
+    pdfium.page_count = 1
     impl = impl_loader(impl_module, _TransformersStub())
     config = BackendConfig(name="ocr-ovis", options={"runtime": "vllm"})
     backend = impl.create(config)
@@ -1343,10 +1390,10 @@ def test_pipeline_runtime_error_surfaces_as_typed_error(
 
 def test_per_page_pipeline_failure_becomes_a_typed_failure(
     impl_loader: Callable[[str, _TransformersStub], ModuleType],
-    pdf_engine: _PymupdfStub,
+    pdfium: _Pypdfium2Stub,
     pil: _PilImageStub,
 ) -> None:
-    pdf_engine.page_count = 2
+    pdfium.page_count = 2
     state = _TransformersStub()
     impl = impl_loader("parsecraft.backends.ocr._ovis_impl", state)
     backend = impl.create(BackendConfig(name="ocr-ovis"))
@@ -1361,9 +1408,9 @@ def test_per_page_pipeline_failure_becomes_a_typed_failure(
 
 def test_unlimited_batches_pages_through_infer_multi(
     impl_loader: Callable[[str, _TransformersStub], ModuleType],
-    pdf_engine: _PymupdfStub,
+    pdfium: _Pypdfium2Stub,
 ) -> None:
-    pdf_engine.page_count = 6
+    pdfium.page_count = 6
     state = _TransformersStub()
     impl = impl_loader("parsecraft.backends.ocr._unlimited_impl", state)
     backend = impl.create(BackendConfig(name="ocr-unlimited"))
@@ -1382,9 +1429,9 @@ def test_unlimited_batches_pages_through_infer_multi(
 
 def test_unlimited_respects_the_batch_size_option(
     impl_loader: Callable[[str, _TransformersStub], ModuleType],
-    pdf_engine: _PymupdfStub,
+    pdfium: _Pypdfium2Stub,
 ) -> None:
-    pdf_engine.page_count = 3
+    pdfium.page_count = 3
     state = _TransformersStub()
     impl = impl_loader("parsecraft.backends.ocr._unlimited_impl", state)
     backend = impl.create(BackendConfig(name="ocr-unlimited", options={"max_pages_per_call": 1}))
@@ -1395,9 +1442,9 @@ def test_unlimited_respects_the_batch_size_option(
 
 def test_unlimited_rejects_an_invalid_batch_size(
     impl_loader: Callable[[str, _TransformersStub], ModuleType],
-    pdf_engine: _PymupdfStub,
+    pdfium: _Pypdfium2Stub,
 ) -> None:
-    pdf_engine.page_count = 3
+    pdfium.page_count = 3
     state = _TransformersStub()
     impl = impl_loader("parsecraft.backends.ocr._unlimited_impl", state)
     backend = impl.create(BackendConfig(name="ocr-unlimited", options={"max_pages_per_call": 0}))
@@ -1427,9 +1474,9 @@ def test_unlimited_reports_model_load_errors(
 
 def test_unlimited_result_count_mismatch_is_a_typed_failure(
     impl_loader: Callable[[str, _TransformersStub], ModuleType],
-    pdf_engine: _PymupdfStub,
+    pdfium: _Pypdfium2Stub,
 ) -> None:
-    pdf_engine.page_count = 3
+    pdfium.page_count = 3
     state = _TransformersStub()
     impl = impl_loader("parsecraft.backends.ocr._unlimited_impl", state)
     backend = impl.create(BackendConfig(name="ocr-unlimited"))
@@ -1468,9 +1515,9 @@ def test_unlimited_loads_vendored_classes_without_remote_code(
 
 def test_unlimited_single_page_without_separator_is_accepted(
     impl_loader: Callable[[str, _TransformersStub], ModuleType],
-    pdf_engine: _PymupdfStub,
+    pdfium: _Pypdfium2Stub,
 ) -> None:
-    pdf_engine.page_count = 1
+    pdfium.page_count = 1
     state = _TransformersStub()
     impl = impl_loader("parsecraft.backends.ocr._unlimited_impl", state)
     backend = impl.create(BackendConfig(name="ocr-unlimited", options={"max_pages_per_call": 1}))
@@ -1483,9 +1530,9 @@ def test_unlimited_single_page_without_separator_is_accepted(
 
 def test_unlimited_missing_separators_fail_typed_per_batch(
     impl_loader: Callable[[str, _TransformersStub], ModuleType],
-    pdf_engine: _PymupdfStub,
+    pdfium: _Pypdfium2Stub,
 ) -> None:
-    pdf_engine.page_count = 3
+    pdfium.page_count = 3
     state = _TransformersStub()
     impl = impl_loader("parsecraft.backends.ocr._unlimited_impl", state)
     backend = impl.create(BackendConfig(name="ocr-unlimited"))
@@ -1500,9 +1547,9 @@ def test_unlimited_missing_separators_fail_typed_per_batch(
 
 def test_unlimited_non_string_output_is_a_typed_failure(
     impl_loader: Callable[[str, _TransformersStub], ModuleType],
-    pdf_engine: _PymupdfStub,
+    pdfium: _Pypdfium2Stub,
 ) -> None:
-    pdf_engine.page_count = 3
+    pdfium.page_count = 3
     state = _TransformersStub()
     impl = impl_loader("parsecraft.backends.ocr._unlimited_impl", state)
     backend = impl.create(BackendConfig(name="ocr-unlimited"))
@@ -1526,11 +1573,17 @@ def pil(monkeypatch: pytest.MonkeyPatch) -> _PilImageStub:
 
 
 @pytest.fixture
-def pdf_engine(monkeypatch: pytest.MonkeyPatch) -> _PymupdfStub:
-    """Install the PDF-engine stub so ``count_pages``/``rasterize_page`` work offline."""
-    engine = _PymupdfStub()
-    monkeypatch.setitem(sys.modules, "pymupdf", engine)
-    return engine
+def pdfium(monkeypatch: pytest.MonkeyPatch) -> _Pypdfium2Stub:
+    """Patch ``_common.pdfium`` with the pypdfium2 stub so the base raster engine works offline.
+
+    ``_common`` binds pypdfium2 at module level (a base dep, ADR-0008 d14), so patching
+    ``sys.modules`` is inert — the fixture must replace the bound name itself.
+    """
+    stub = _Pypdfium2Stub()
+    module = ModuleType("pypdfium2")
+    module.__dict__.update({"PdfDocument": stub.PdfDocument, "PdfiumError": stub.PdfiumError})
+    monkeypatch.setattr(_common, "pdfium", module)
+    return stub
 
 
 def _request(

@@ -90,6 +90,8 @@ _COLLECTION_SCRIPT = textwrap.dedent(
     # Import names of the optional extras the canonical light env does NOT
     # install (download / web / pdf-lite ARE installed, so huggingface_hub and
     # pypdf stay importable), plus the runtime leaves those extras pull in.
+    # pypdfium2 and pillow moved to base deps (ADR-0008 d10/d14) — always
+    # installed, so a test module importing them at collection is safe.
     # A test module may reach these at call time only — never at collection:
     # pyreorder's hoist_inline_imports promotes an inline import to module
     # scope before the gate runs, so "inline" is not a safe haven.
@@ -105,8 +107,8 @@ _COLLECTION_SCRIPT = textwrap.dedent(
         "torch",
         "torchvision",
         "vllm",
-        "pypdfium2",
         "rapidocr",
+        "trafilatura",
         "typesafe_sdk",
     }
 

@@ -39,7 +39,7 @@ from pathlib import Path
 from time import monotonic
 from typing import Any
 
-import pypdfium2 as pdfium  # ty: ignore[unresolved-import] — docvortex dependency; heavy by contract
+import pypdfium2 as pdfium  # base dependency (ADR-0008 d10), not an extra
 from mineru.backend.analyze import doc_analyze  # ty: ignore[unresolved-import] — extra not installed in dev/CI
 from mineru.render import render_content_list  # ty: ignore[unresolved-import] — extra not installed in dev/CI
 

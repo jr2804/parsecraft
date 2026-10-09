@@ -23,7 +23,7 @@ from io import BytesIO
 from pathlib import Path
 from time import monotonic
 
-import pypdfium2 as pdfium  # ty: ignore[unresolved-import] — extra not installed in dev/CI; heavy by contract
+import pypdfium2 as pdfium  # base dependency (ADR-0008 d10), not an extra
 from docling.datamodel.document import ConversionResult  # ty: ignore[unresolved-import]
 from docling.document_converter import DocumentConverter  # ty: ignore[unresolved-import]
 from docling_core.types.doc.document import DoclingDocument, TableItem, TextItem  # ty: ignore[unresolved-import]
