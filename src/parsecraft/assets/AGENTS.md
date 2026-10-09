@@ -16,8 +16,9 @@ duplicated; integrity data (per-file SHA-256) lives in `AssetPin`.
   disk-space and offline checks, checksum verification, the first-use
   download notice), `slug`, `sha256_of`.
 - `downloader.py` — `Downloader` protocol + `HuggingFaceDownloader` adapter.
-- `models.py` — `AssetPin`, `LicenseAcceptance`, cache report records, and
-  `human_bytes` (the one size formatter, reused by `cli.models`).
+- `models.py` — `AssetPin`, `LicenseAcceptance`, cache report records,
+  `VerificationMarker`/`VerifiedFile`, and `human_bytes` (the one size
+  formatter, reused by `cli.models`).
 - `errors.py` — typed `AssetError` hierarchy.
 
 ## Local Contracts
@@ -38,6 +39,16 @@ duplicated; integrity data (per-file SHA-256) lives in `AssetPin`.
   first file request (model + size + destination, no prompt, no flag). The CLI
   routes that channel to stderr (`cli.output.ensure_asset_info_logging`); the
   logger is never in `cli.verbosity.QUIET_LOGGERS` — it is our own message.
+- Warm-cache verification is marker-based: after a full checksum pass the
+  manager records each verified file's digest + size + `st_mtime_ns` in
+  `.parsecraft-verification.json` inside the revision dir, and `ensure` skips
+  re-hashing only when that recorded digest still equals the pin's expected
+  digest AND the file's size and mtime are unchanged. The marker is a
+  verification cache, never a trust root: it is ignored when missing, damaged,
+  foreign, from another revision, or when any pinned file's stamp or digest
+  disagrees — every such case falls back to the full re-hash, so a changed file
+  under an unchanged marker is still caught. It is written atomically (a torn
+  marker is ignored) and excluded from `inspect`/`models list` output.
 
 ## Verification
 

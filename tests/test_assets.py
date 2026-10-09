@@ -6,6 +6,7 @@ import hashlib
 import importlib
 import json
 import logging
+import os
 import subprocess
 import sys
 import textwrap
@@ -16,6 +17,7 @@ from typing import Any
 
 import pytest
 
+import parsecraft.assets.manager as manager_module
 from parsecraft.assets import (
     AssetError,
     AssetManager,
@@ -247,6 +249,127 @@ def test_ensure_insufficient_disk_space(tmp_path: Path) -> None:
 def test_ensure_disk_space_sufficient_when_free_exceeds_headroom(tmp_path: Path) -> None:
     manager = AssetManager(cache_dir=tmp_path, downloader=FakeDownloader(), min_free_bytes=0)
     manager.ensure(make_pin(descriptor=make_descriptor(size_bytes=len(CONTENT))))
+
+
+def test_second_ensure_skips_rehashing_a_verified_asset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The fast path is the fix: a warm, unchanged cache must not re-read 9.5 GB."""
+    manager = AssetManager(cache_dir=tmp_path, downloader=FakeDownloader())
+    manager.ensure(make_pin())  # first ensure downloads and hashes
+
+    def explode(path: Path) -> str:
+        raise AssertionError(f"re-hashed {path.name} although the marker still matches")
+
+    monkeypatch.setattr(manager_module, "sha256_of", explode)
+    assert manager.ensure(make_pin()) == [str(tmp_path / "acme--model" / "abc123" / "weights.bin")]
+
+
+def test_changed_file_under_an_unchanged_marker_is_still_caught(tmp_path: Path) -> None:
+    """The integrity contract: content changed, marker untouched -> still verified."""
+    manager = AssetManager(cache_dir=tmp_path, downloader=FakeDownloader())
+    manager.ensure(make_pin())
+    marker = tmp_path / "acme--model" / "abc123" / manager_module._VERIFICATION_MARKER_FILENAME
+    before = marker.read_text(encoding="utf-8")
+    (tmp_path / "acme--model" / "abc123" / "weights.bin").write_bytes(b"tampered-content")
+    assert marker.read_text(encoding="utf-8") == before  # the marker really is stale
+    with pytest.raises(ChecksumMismatchError):
+        manager.ensure(make_pin())
+
+
+def test_resized_file_is_caught_even_with_the_mtime_restored(tmp_path: Path) -> None:
+    """Same timestamp, different size: still a change the marker must not vouch for."""
+    manager = AssetManager(cache_dir=tmp_path, downloader=FakeDownloader())
+    manager.ensure(make_pin())
+    target = tmp_path / "acme--model" / "abc123" / "weights.bin"
+    stat = target.stat()
+    target.write_bytes(CONTENT + b"-extra")
+    os.utime(target, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    with pytest.raises(ChecksumMismatchError):
+        manager.ensure(make_pin())
+
+
+def test_marker_never_vouches_for_a_different_pin(tmp_path: Path) -> None:
+    """A marker whose recorded digest differs from the pin must not be trusted."""
+    manager = AssetManager(cache_dir=tmp_path, downloader=FakeDownloader())
+    manager.ensure(make_pin())
+    other = make_pin(expected_sha256={"weights.bin": hashlib.sha256(b"something else").hexdigest()})
+    with pytest.raises(ChecksumMismatchError):
+        manager.ensure(other)
+
+
+def test_marker_from_another_revision_is_ignored(tmp_path: Path) -> None:
+    """Markers are per revision; a new revision verifies from scratch."""
+    manager = AssetManager(cache_dir=tmp_path, downloader=FakeDownloader())
+    manager.ensure(make_pin())
+    manager.ensure(make_pin(descriptor=make_descriptor(model_revision="def456")))  # downloads into its own directory
+    assert sorted(path.name for path in (tmp_path / "acme--model").iterdir() if path.is_dir()) == ["abc123", "def456"]
+    assert (tmp_path / "acme--model" / "abc123" / manager_module._VERIFICATION_MARKER_FILENAME).is_file()
+    assert (tmp_path / "acme--model" / "def456" / manager_module._VERIFICATION_MARKER_FILENAME).is_file()
+
+
+def test_corrupt_marker_falls_back_to_full_verification(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A damaged marker is ignored, never trusted — and never crashes the run."""
+    manager = AssetManager(cache_dir=tmp_path, downloader=FakeDownloader())
+    manager.ensure(make_pin())
+    (tmp_path / "acme--model" / "abc123" / manager_module._VERIFICATION_MARKER_FILENAME).write_text("{not json", encoding="utf-8")
+    hashed: list[str] = []
+    monkeypatch.setattr(manager_module, "sha256_of", lambda path: hashed.append(path.name) or DIGEST)
+    manager.ensure(make_pin())
+    assert hashed == ["weights.bin"]  # verified the slow way, exactly as before the marker existed
+
+
+def test_marker_naming_another_revision_is_ignored(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A marker whose recorded revision differs must not verify this revision."""
+    manager = AssetManager(cache_dir=tmp_path, downloader=FakeDownloader())
+    manager.ensure(make_pin())
+    marker = tmp_path / "acme--model" / "abc123" / manager_module._VERIFICATION_MARKER_FILENAME
+    payload = json.loads(marker.read_text(encoding="utf-8"))
+    payload["model_revision"] = "999999"
+    marker.write_text(json.dumps(payload), encoding="utf-8")
+    hashed: list[str] = []
+    monkeypatch.setattr(manager_module, "sha256_of", lambda path: hashed.append(path.name) or DIGEST)
+    manager.ensure(make_pin())
+    assert hashed == ["weights.bin"]
+
+
+def test_marker_of_an_older_record_version_is_ignored(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A marker shape we no longer understand is treated as absent."""
+    manager = AssetManager(cache_dir=tmp_path, downloader=FakeDownloader())
+    manager.ensure(make_pin())
+    marker = tmp_path / "acme--model" / "abc123" / manager_module._VERIFICATION_MARKER_FILENAME
+    payload = json.loads(marker.read_text(encoding="utf-8"))
+    payload["record_version"] = manager_module._MARKER_RECORD_VERSION + 99
+    marker.write_text(json.dumps(payload), encoding="utf-8")
+    hashed: list[str] = []
+    monkeypatch.setattr(manager_module, "sha256_of", lambda path: hashed.append(path.name) or DIGEST)
+    manager.ensure(make_pin())
+    assert hashed == ["weights.bin"]
+
+
+def test_deleted_file_is_caught_even_though_the_marker_verified_it(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The file vanished after verification -> not the marker's word to vouch for it."""
+    manager = AssetManager(cache_dir=tmp_path, downloader=FakeDownloader())
+    manager.ensure(make_pin())
+    (tmp_path / "acme--model" / "abc123" / "weights.bin").unlink()
+    monkeypatch.setattr(manager_module, "sha256_of", lambda path: DIGEST)
+    manager.ensure(make_pin())  # re-downloads, then verifies the fresh copy
+    assert (tmp_path / "acme--model" / "abc123" / "weights.bin").is_file()
+
+
+def test_inspect_cache_does_not_list_the_verification_marker(tmp_path: Path) -> None:
+    """The marker is manager bookkeeping: it must not appear as a cached asset file."""
+    manager = AssetManager(cache_dir=tmp_path, downloader=FakeDownloader())
+    manager.ensure(make_pin())
+    report = manager.inspect_cache()
+    assert [file.filename for asset in report.assets for file in asset.files] == ["weights.bin"]
+
+
+def test_disk_space_gate_is_unchanged_by_a_verified_marker(tmp_path: Path) -> None:
+    """A verified cache needs no headroom; a download still demands it."""
+    manager = AssetManager(cache_dir=tmp_path, downloader=FakeDownloader(), min_free_bytes=1 << 60)
+    manager.ensure(make_pin())
+    manager.ensure(make_pin())  # verified: no gate, no re-hash
+    with pytest.raises(InsufficientDiskSpaceError):
+        manager.ensure(make_pin(descriptor=make_descriptor(model_revision="def456", size_bytes=1 << 40)))
 
 
 def test_ensure_checksum_mismatch_raises(tmp_path: Path) -> None:

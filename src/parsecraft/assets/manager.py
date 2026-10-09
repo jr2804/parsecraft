@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import shutil
 from datetime import UTC, datetime
 from importlib.metadata import version as _dist_version
@@ -31,11 +32,16 @@ from parsecraft.assets.models import (
     CachedAssetFile,
     CacheReport,
     LicenseAcceptance,
+    VerificationMarker,
+    VerifiedFile,
     human_bytes,
 )
 from parsecraft.backends.protocol import ModelAssetDescriptor
 
 _LICENSE_STORE_FILENAME = "license-acceptances.json"
+#: Dot-prefixed so it cannot collide with a file a model repository ships.
+_VERIFICATION_MARKER_FILENAME = ".parsecraft-verification.json"
+_MARKER_RECORD_VERSION = 1
 _CHUNK_SIZE = 1 << 20
 
 #: The first-use download notice goes through this logger (INFO); the CLI
@@ -89,7 +95,7 @@ class AssetManager:
                             size_bytes=file.stat().st_size,
                         )
                         for file in sorted(revision_dir.iterdir())
-                        if file.is_file()
+                        if file.is_file() and not file.name.startswith(_VERIFICATION_MARKER_FILENAME)
                     ]
                     assets.append(
                         CachedAsset(
@@ -162,13 +168,28 @@ class AssetManager:
     def ensure(self, pin: AssetPin) -> list[str]:
         """Guarantee the pinned files exist locally; return their local paths.
 
-        Order of operations: offline check → license gate → disk-space check →
-        resumable download → checksum validation.
+        Order of operations: marker fast path → offline check → license gate →
+        disk-space check → resumable download → checksum validation.
+
+        The fast path is what keeps a warm cache cheap: a pinned file whose size
+        and mtime still match what the verification marker recorded, and whose
+        recorded digest still equals the pin's, is taken as verified without
+        reading it again (re-hashing 9.5 GB measured ~29 s per backend
+        instantiation, and the executor builds one per page group). Any
+        deviation — content changed, resized, retouched, missing, or a marker
+        from another revision or another pin — falls through to the full path,
+        which re-hashes everything and rewrites the marker. The license and
+        disk-space gates are untouched: they still run exactly when a download is
+        required.
         """
         descriptor = pin.descriptor
         model_id = descriptor.model_id
         revision = descriptor.model_revision
         target = self.revision_dir(model_id, revision)
+
+        marker = self._read_marker(model_id, revision)
+        if marker is not None and self._marker_verifies(pin, marker, target):
+            return [str(target / filename) for filename in pin.filenames]
 
         if not self.has_all_files(pin):
             if self.offline:
@@ -190,7 +211,8 @@ class AssetManager:
             for filename in pin.filenames:
                 self.downloader.download(model_id, revision, filename, str(target))
 
-        self._verify_checksums(pin, target)
+        verified = self._verify_checksums(pin, target)
+        self._write_marker(model_id, revision, verified)
         return [str(target / filename) for filename in pin.filenames]
 
     @staticmethod
@@ -223,16 +245,82 @@ class AssetManager:
             raise InsufficientDiskSpaceError(pin.descriptor.model_id, pin.descriptor.model_revision, required, available)
 
     @staticmethod
-    def _verify_checksums(pin: AssetPin, target: Path) -> None:
+    def _verify_checksums(pin: AssetPin, target: Path) -> dict[str, VerifiedFile]:
+        """Hash every pinned file, raising on the first mismatch.
+
+        Returns the verified stamps so the caller can record them in the marker
+        without reading the files a second time.
+        """
         model_id = pin.descriptor.model_id
         revision = pin.descriptor.model_revision
+        verified: dict[str, VerifiedFile] = {}
         for filename in pin.filenames:
             expected = pin.expected_sha256.get(filename)
             if expected is None:
                 continue
-            actual = sha256_of(target / filename)
+            path = target / filename
+            actual = sha256_of(path)
             if actual != expected:
                 raise ChecksumMismatchError(model_id, revision, filename, expected, actual)
+            stat = path.stat()
+            verified[filename] = VerifiedFile(sha256=actual, size=stat.st_size, mtime_ns=stat.st_mtime_ns)
+        return verified
+
+    # ── verification marker ────────────────────────────────────────────────
+
+    def _marker_path(self, model_id: str, revision: str) -> Path:
+        return self.revision_dir(model_id, revision) / _VERIFICATION_MARKER_FILENAME
+
+    def _read_marker(self, model_id: str, revision: str) -> VerificationMarker | None:
+        """The recorded verification for this revision, or ``None`` when unusable.
+
+        A missing, damaged, foreign, or older-version marker is never trusted:
+        the caller then verifies from scratch, which is exactly the old cost.
+        """
+        path = self._marker_path(model_id, revision)
+        if not path.is_file():
+            return None
+        try:
+            marker = VerificationMarker.model_validate_json(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):  # unreadable or damaged JSON/payload
+            return None
+        if marker.record_version != _MARKER_RECORD_VERSION:
+            return None
+        if (marker.model_id, marker.model_revision) != (model_id, revision):
+            return None
+        return marker
+
+    def _marker_verifies(self, pin: AssetPin, marker: VerificationMarker, target: Path) -> bool:
+        """Whether every pinned file is unchanged since the marker recorded it."""
+        for filename in pin.filenames:
+            expected = pin.expected_sha256.get(filename)
+            if expected is None:
+                continue  # an unpinned file carries no integrity contract to re-check
+            recorded = marker.files.get(filename)
+            if recorded is None or recorded.sha256 != expected:
+                return False  # the marker claims something else about this pin's file
+            try:
+                stat = (target / filename).stat()
+            except OSError:
+                return False  # gone since it was verified
+            if recorded.size != stat.st_size or recorded.mtime_ns != stat.st_mtime_ns:
+                return False
+        return True
+
+    def _write_marker(self, model_id: str, revision: str, verified: dict[str, VerifiedFile]) -> None:
+        """Record what was just verified; written atomically so a torn marker is ignored."""
+        path = self._marker_path(model_id, revision)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        marker = VerificationMarker(
+            record_version=_MARKER_RECORD_VERSION,
+            model_id=model_id,
+            model_revision=revision,
+            files=verified,
+        )
+        temporary = path.with_name(f"{path.name}.tmp")
+        payload = json.dumps(marker.model_dump(mode="json"), indent=2, sort_keys=True)
+        temporary.write_text(f"{payload}\n", encoding="utf-8")
+        os.replace(temporary, path)
 
 
 def _dist_version_or(default: str) -> str:

@@ -62,6 +62,31 @@ class CacheReport(BaseModel):
     total_bytes: int = Field(ge=0)
 
 
+class VerifiedFile(BaseModel):
+    """One file as verified once: its digest plus the metadata it was verified at."""
+
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    size: int = Field(ge=0)
+    #: ``st_mtime_ns`` — nanosecond resolution, so an edit lands on a new value.
+    mtime_ns: int
+
+
+class VerificationMarker(BaseModel):
+    """Which files of one revision were verified, and what they looked like then.
+
+    A verification **cache, never a trust root**: the pin's SHA-256 stays the
+    integrity contract, and a marker only lets the manager skip re-reading a
+    file that has not changed since it was verified. The window is the usual
+    one for a content-addressed cache — content altered while preserving both
+    size and mtime is not detected without reading the file.
+    """
+
+    record_version: int
+    model_id: str
+    model_revision: str
+    files: dict[str, VerifiedFile] = Field(default_factory=dict)
+
+
 def human_bytes(size: int | None) -> str:
     """Human-readable byte size; ``-`` when unknown."""
     if size is None:
