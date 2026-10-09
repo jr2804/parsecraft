@@ -272,6 +272,12 @@ def test_page_needs_ocr_conditions(signal_kwargs: dict[str, Any], expected: bool
     assert page_needs_ocr(make_signal(**signal_kwargs)) is expected
 
 
+def test_page_needs_ocr_honours_a_classifier_verdict() -> None:
+    """A classifier verdict is augment-only: it can ADD ocr-need, never remove it (ADR-0004 A2)."""
+    signal = make_signal().model_copy(update={"classifier_needs_ocr": True})
+    assert page_needs_ocr(signal) is True
+
+
 def test_extract_hints_from_codes_and_image_mass() -> None:
     analysis = make_analysis([make_signal(images=7)], 1, (FEATURE_TABLE_CODE, FEATURE_EQUATIONS_CODE))
     hints = extract_hints(analysis)
