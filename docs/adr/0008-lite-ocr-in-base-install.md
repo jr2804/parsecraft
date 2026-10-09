@@ -89,18 +89,31 @@ tier for one engine's packaging gap.
    accelerator runtime a user installs (ONNX Runtime providers, OpenVINO, a
    Vulkan-class engine) is their own install — no new primitives, no new probe
    facts in v1.
-10. **The base gains a permissive PDF raster surface: `pypdfium2`.** Scanned-PDF
-    OCR needs page rasterization, and the only one we had was `_common.py`'s
-    PyMuPDF surface — the AGPL `pdf` extra (ADR-0003 opt-in). Putting AGPL on the
-    default path is not acceptable, so the base depends on `pypdfium2` and the
-    shared raster surface prefers it, keeping the PyMuPDF path for hosts that
-    installed the AGPL extra. Verified at 5.14.0: licence **BSD-3-Clause +
-    Apache-2.0** (permissive, no copyleft addendum), and 22 of 23 published files
-    are **`py3-none-<platform>`** — ABI-independent, so unlike `onnxruntime` this
+10. **The base gains a permissive PDF raster surface: `pypdfium2`, which
+    REPLACES the PyMuPDF raster path.** Scanned-PDF OCR needs page rasterization,
+    and the only one we had was `_common.py`'s PyMuPDF surface — the AGPL `pdf`
+    extra (ADR-0003 opt-in). Putting AGPL on the default path is not acceptable,
+    so the base depends on `pypdfium2` (plus `Pillow`, its documented bridge to
+    encoded images — decision 14) and the shared raster surface uses it alone.
+    Verified at 5.14.0: licence **BSD-3-Clause + Apache-2.0** (permissive, no
+    copyleft addendum), and 22 of 23 published files are
+    **`py3-none-<platform>`** — ABI-independent, so unlike `onnxruntime` this
     dependency carries no interpreter-version risk (it installs on the GIL tiers
-    and would install on free-threaded builds too). This also removes the AGPL
-    requirement from OCR-on-PDF generally, which is a strict improvement for the
-    existing `ocr-*` family.
+    and would install on free-threaded builds too).
+
+    **The PyMuPDF fallback is deliberately NOT kept** (amended 2026-10-09 after
+    the implementation review): a base dependency cannot be absent, so the
+    fallback's only firing condition would be "pypdfium2 fails on a PDF that
+    PyMuPDF can parse" — a case with no evidence, paid for with a second engine's
+    stubs, tests and a dual channel in the one place that must be deterministic.
+    One raster engine, always present, is the honest design; unreachable branches
+    are removed rather than kept behind a condition nobody can take.
+
+    The AGPL `pdf` extra survives and is not orphaned: `native/pdf_text.py`,
+    `native/pdf.py` and `native/code_layout.py` import PyMuPDF directly for
+    native-PDF text extraction. Its raster-related wording is what changed —
+    OCR no longer needs it, and the old "pip install 'parsecraft[pdf]'" failure
+    path disappears with the fallback.
 
 ## Amendment (2026-10-09): implementation rulings (pc-3rp design)
 
@@ -139,8 +152,8 @@ in the tree.
     OCR extras and docling, and licence-permissive; hand-rolling an image encoder
     to avoid it would be the shim this project rejects. Consequence, to be stated
     rather than discovered: the shared raster surface serves **all** OCR
-    backends, so the existing `ocr-*` adapters move to the pypdfium2-preferred
-    surface with the PyMuPDF fallback.
+    backends, so the existing `ocr-*` adapters move to the pypdfium2 surface,
+    which is now the only raster engine (see decision 10).
 
 Decision 5's planner distinction (`engine missing` vs `no OCR backend
 installed`) is realised through decision 13, not by moving the signal into the
