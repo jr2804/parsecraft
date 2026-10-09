@@ -111,12 +111,19 @@ rationale. Cut first; split the subtree only as a last resort.
 ## Verification
 
 ```bash
-mise all        # test + lint + format (composite task)
-mise test       # pytest with coverage gate (100%)
-mise lint       # ruff + ty + codespell
-mise format     # ruff format + isort + pyreorder
-mise format-md  # rumdl over docs/, .agents/, ./ (Markdown only)
+mise all          # test + lint + format + format-check (composite task)
+mise test         # pytest with coverage gate (100%)
+mise lint         # ruff + ty + codespell
+mise format       # ruff format + isort + pyreorder
+mise format-md    # rumdl over docs/, .agents/, ./ (Markdown only)
+mise format-check # verify the tree is formatter-canonical (CI runs this alone)
 ```
+
+Land only on a green **repo-wide** `mise all`: per-file checks and `mise test`
+alone are not evidence (they do not run lint/typecheck/format-check, and both
+2026-10-09 red main tips came in that way). The formatters rewrite files, so
+`format-check` — not the formatters — is what proves a committed tree is
+canonical.
 
 Pre-commit hooks (`.pre-commit-config.yaml`) run a subset of the above on every
 commit. Run `pre-commit run --all-files` to check the whole tree.

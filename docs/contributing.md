@@ -29,10 +29,11 @@ mise test
 ### Code Quality
 
 ```bash
-mise lint       # ruff check
-mise typecheck  # ty check
-mise spell      # codespell
-mise format     # ruff format + isort + pyreorder
+mise lint         # ruff check
+mise typecheck    # ty check
+mise spell        # codespell
+mise format       # ruff format + isort + pyreorder
+mise format-check # verify the tree is canonical (what CI runs)
 ```
 
 ### Pull Requests

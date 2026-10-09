@@ -9,9 +9,16 @@ title: CI and CD
 
 | Job | Runner | Runs |
 | --- | ------ | ---- |
-| `quality` | ubuntu | `mise lint` + `mise spell` |
+| `quality` | ubuntu | `mise lint` + `mise spell` + `mise format-check` |
 | `tests` | ubuntu, macos, windows | `mise test` (100% coverage gate) |
 | `docs` | ubuntu | `mise docs` |
+
+The `quality` job's `format-check` is the CI half of the local `mise all`
+gate: it verifies that the committed tree is already canonical (`pyreorder
+check`, `rumdl check`, `ruff format --check`, import order) and never rewrites
+anything. The formatters themselves run only locally — a gate that only
+reformats cannot detect drift, it just leaves it in the working tree for the
+next run to rewrite again.
 
 The test matrix:
 

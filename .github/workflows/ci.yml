@@ -89,6 +89,12 @@ jobs:
     - name: Check spelling
       run: mise spell
 
+    # Fails on non-canonical formatting instead of rewriting: the formatters
+    # above run only locally, so this is the check that makes a committed tree
+    # provably canonical (pyreorder / rumdl / ruff).
+    - name: Check formatting
+      run: mise format-check
+
   tests:
     needs:
     - quality
