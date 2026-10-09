@@ -17,6 +17,7 @@ from typing import Any
 
 import pytest
 
+from parsecraft.assets import AssetManager, AssetPin, downloader_for, sha256_of
 from parsecraft.assets.errors import OfflineModeError
 from parsecraft.assets.github import GitHubDownloader
 from parsecraft.backends.errors import BackendError, DependencyUnavailableError
@@ -342,7 +343,7 @@ def _config(**options: str | int | float | bool) -> BackendConfig:
 
 
 @pytest.fixture(autouse=True)
-def _no_network_tessdata(monkeypatch: pytest.MonkeyPatch) -> None:
+def _no_network_tessdata(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
     """No test in this module may reach the network or the real managed cache.
 
     Found the hard way: this module's docstring claims the suite is offline, but
@@ -356,7 +357,13 @@ def _no_network_tessdata(monkeypatch: pytest.MonkeyPatch) -> None:
     The tests that exercise tessdata resolution call the function through their
     own module-level name, which still binds the original — so they are
     unaffected.
+
+    The ``network`` tier is exempt, and deliberately so: those tests exist
+    precisely to reach the real upstream, and guarding them here would make the
+    opt-in tier impossible to write in this module.
     """
+    if "network" in request.keywords:
+        return
 
     def _forbidden(*args: object, **kwargs: object) -> None:
         raise AssertionError("a test reached the network for tessdata")
@@ -424,6 +431,39 @@ def test_the_tessdata_pins_are_real_content_hashes() -> None:
 def test_the_capability_record_declares_no_asset() -> None:
     """Decision: the asset is fetched at convert time, so routing never excludes it."""
     assert TESSERACT_CAPABILITIES.model_asset is None
+
+
+# ── network tier (opt-in: -m network --run-downloads) ────────────────────────
+
+
+@pytest.mark.network
+def test_the_pinned_tessdata_still_downloads_from_the_real_upstream(tmp_path: Path) -> None:
+    """The one thing the offline suite cannot prove: that the pin still resolves.
+
+    Every other test here stubs the network, so nothing would catch a changed URL
+    template, an upstream rename, or a regression in the per-segment encoding —
+    the downloader would keep "succeeding" against nothing and the suite would
+    stay green. That is not hypothetical: an offline gate is exactly what let a
+    17.6 MiB silent fetch through for a whole arc.
+
+    So this fetches the smallest pinned file (~3.9 MB, not the full 17.6 MB set)
+    through the REAL downloader and asserts the bytes against the pin we ship.
+    ``tmp_path`` keeps it out of the user's managed cache — which matters,
+    because the model cache root has no environment override at all.
+
+    Opt-in via the ``network`` marker: the default gate must never touch the
+    network. Run with ``mise run test-network``.
+    """
+    pin = next(p for p in TESSERACT_ASSET.file_pins if p.path == "eng.traineddata")
+    single = TESSERACT_ASSET.model_copy(update={"file_pins": (pin,), "size_bytes": pin.size})
+
+    manager = AssetManager(cache_dir=tmp_path, downloader=downloader_for(single.model_source))
+    paths = manager.ensure(AssetPin(descriptor=single, filenames=[pin.path], expected_sha256={pin.path: pin.sha256}))
+
+    fetched = Path(paths[0])
+    assert fetched.is_file()
+    assert fetched.stat().st_size == pin.size
+    assert sha256_of(fetched) == pin.sha256
 
 
 def _request(source: SourceDocument | None = None) -> ConversionRequest:
