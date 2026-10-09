@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError
 from pathlib import Path
@@ -13,6 +14,7 @@ from pydantic import ValidationError
 from parsecraft import pipeline as public_pipeline
 from parsecraft.backends import default_registry
 from parsecraft.backends.errors import BackendError, DependencyUnavailableError
+from parsecraft.backends.ocr.tesseract import TesseractUnavailableError
 from parsecraft.backends.protocol import (
     AnalysisResult,
     BackendCapabilities,
@@ -54,7 +56,7 @@ from parsecraft.pipeline import (
     media_type_for,
     pipeline_failure,
 )
-from parsecraft.pipeline.executor import ALL_PASSES_FAILED_CODE
+from parsecraft.pipeline.executor import ALL_PASSES_FAILED_CODE, _exception_failure
 from parsecraft.routing import Intent, RoutingConstraints, RoutingError
 
 PRODUCED = datetime(2026, 9, 27, tzinfo=UTC)
@@ -278,6 +280,26 @@ def test_total_failure_records_one_document_signal_and_reads_back(monkeypatch: p
     assert failure.backend == "native-pdf"
     # the per-page record stays for machine consumers
     assert all([d.code for d in page.diagnostics] == [ALL_PASSES_FAILED_CODE] for page in document.pages)
+
+
+def test_a_missing_ocr_engine_is_reported_as_a_dependency_failure() -> None:
+    """An absent OS binary is a missing DEPENDENCY, not a broken backend.
+
+    Pinned end-to-end through the executor's own mapping rather than by
+    inspecting the exception type, because the observable outcome is the failure
+    CODE: ``dependency_missing`` points the operator at a package, while the
+    generic ``backend_error`` points them at our code.
+    """
+    failure, _ = _exception_failure(
+        "ocr-tesseract",
+        "0.1.0",
+        PassKind.VISUAL,
+        TesseractUnavailableError("the tesseract engine was not found on this host"),
+        time.monotonic(),
+    )
+
+    assert failure.code is FailureCode.DEPENDENCY_MISSING
+    assert "tesseract engine" in failure.detail
 
 
 def test_partial_failure_is_a_successful_document_not_a_pipeline_failure(monkeypatch: pytest.MonkeyPatch) -> None:

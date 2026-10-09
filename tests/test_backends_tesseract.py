@@ -18,7 +18,7 @@ from typing import Any
 import pytest
 
 from parsecraft.assets.errors import OfflineModeError
-from parsecraft.backends.errors import BackendError
+from parsecraft.backends.errors import BackendError, DependencyUnavailableError
 from parsecraft.backends.ocr import tesseract
 from parsecraft.backends.ocr._models import TESSDATA_FILES, TESSERACT_ASSET, TESSERACT_CAPABILITIES, TESSERACT_ENV, TESSERACT_LANGUAGES
 from parsecraft.backends.ocr.tesseract import (
@@ -121,6 +121,17 @@ def test_the_typed_error_names_the_os_package(monkeypatch: pytest.MonkeyPatch) -
     assert "apt install tesseract-ocr" in detail
     assert "brew install tesseract" in detail
     assert TESSERACT_ENV in detail
+
+
+def test_the_missing_engine_is_a_dependency_failure_not_a_generic_backend_error() -> None:
+    """The failure CODE is the point: DEPENDENCY_MISSING, not BACKEND_ERROR.
+
+    ``executor._exception_failure`` maps ``DependencyUnavailableError`` to
+    ``DEPENDENCY_MISSING``. A plain ``BackendError`` here would report a generic
+    backend failure and send the operator looking at the backend instead of at
+    the missing OS package the message names.
+    """
+    assert issubclass(TesseractUnavailableError, DependencyUnavailableError)
 
 
 def _clear_declaration(monkeypatch: pytest.MonkeyPatch) -> None:

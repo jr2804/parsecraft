@@ -45,12 +45,13 @@ from glob import glob
 from pathlib import Path
 from subprocess import DEVNULL, TimeoutExpired, run
 
-from parsecraft.backends.errors import BackendError
+from parsecraft.backends.errors import BackendError, DependencyUnavailableError
 from parsecraft.backends.ocr import _common
 from parsecraft.backends.ocr._models import (
     OCR_BACKEND_VERSION,
     TESSERACT_ASSET,
     TESSERACT_CAPABILITIES,
+    TESSERACT_ENGINE,
     TESSERACT_ENV,
     TESSERACT_LANGUAGES,
     TESSERACT_NAME,
@@ -110,8 +111,26 @@ _TESSDATA_SUFFIX = ".traineddata"
 _POSIX_TESSDATA_ROOTS: tuple[str, ...] = ("/usr/share/tesseract-ocr/*/tessdata", "/usr/local/share/tessdata")
 
 
-class TesseractUnavailableError(BackendError):
-    """No tesseract installation could be located on this host."""
+class TesseractUnavailableError(DependencyUnavailableError):
+    """No tesseract installation could be located on this host.
+
+    A ``DependencyUnavailableError`` deliberately: the executor's own mapping
+    turns that into the ``DEPENDENCY_MISSING`` failure code, which is the honest
+    reading — this host cannot run this backend — rather than the generic
+    ``BACKEND_ERROR`` a plain ``BackendError`` would produce. It is also what
+    ADR-0008 decision 4 (as amended) names as the only outcome when the engine
+    is absent.
+
+    The base constructor is bypassed on purpose: it formats a message about a
+    Python extra, while the remedy here is an OS package whose install command
+    differs per platform family. ``module`` names what is actually missing; the
+    base's ``extra`` concept does not apply here and is deliberately left unset
+    rather than filled with something untrue.
+    """
+
+    def __init__(self, message: str) -> None:
+        BackendError.__init__(self, message)
+        self.module = TESSERACT_ENGINE
 
 
 # ── backend ─────────────────────────────────────────────────────────────────
