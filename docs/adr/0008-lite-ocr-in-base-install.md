@@ -102,6 +102,51 @@ tier for one engine's packaging gap.
     requirement from OCR-on-PDF generally, which is a strict improvement for the
     existing `ocr-*` family.
 
+## Amendment (2026-10-09): implementation rulings (pc-3rp design)
+
+Decisions 11-14, taken while reviewing `.agents/plans/ocr-lite/01-design.md`.
+They record how decisions 3, 5 and 10 above are realised; none changes a
+principle, and the environment/asset mechanisms they reuse are the ones already
+in the tree.
+
+11. **Tessdata source: the OFFICIAL upstream, not a mirror.**
+    `ModelAssetDescriptor` gains a defaulted `model_source` discriminator and a
+    `GitHubDownloader` (stdlib `urllib`, no new dependency) is selected in
+    `ensure_assets`. The HF mirror available today is missing `equ` — i.e. it
+    would silently void decision 7 — and provenance for a hashed asset belongs
+    with the upstream that publishes it, not a third-party re-tag. Existing
+    descriptors are unaffected (the field is defaulted) and the URL+sha256 pin
+    discipline is identical across sources.
+12. **`allow_ocr` derives from host facts, not from heavyweight extras.**
+    `None` means "an `ocr-*` extra is installed **or** a usable engine exists for
+    a registered OCR backend". Deriving it from the extras alone would exclude
+    the base backend on exactly the hosts decision 1 exists for; enabling OCR
+    whenever a base backend merely exists would route pages into a family that
+    then cannot run.
+13. **Engine presence is a host fact, generally named.**
+    `BackendDescriptor.required_engine: str | None` plus
+    `EnvironmentInfo.engines: frozenset[str]` (probed; `tesseract` only today),
+    with one `is_hard_eligible` condition: a backend declaring a required engine
+    is ineligible when that engine is absent. This is the `gpu_usable` /
+    `installed_extras` pattern — a probe fact flowing to one eligibility check —
+    not a new routing primitive: `INTENT_RULES` and `can_degrade_to_native` are
+    untouched, and no backend name is special-cased. The same fact feeds
+    decision 12, so one mechanism serves both. Pandoc and the docling LibreOffice
+    path are the obvious future members; they are deliberately **not** migrated
+    here.
+14. **The base gains `Pillow` alongside `pypdfium2`.** It is pypdfium2's own
+    documented bridge to encoded images (`to_pil`), already a dependency of the
+    OCR extras and docling, and licence-permissive; hand-rolling an image encoder
+    to avoid it would be the shim this project rejects. Consequence, to be stated
+    rather than discovered: the shared raster surface serves **all** OCR
+    backends, so the existing `ocr-*` adapters move to the pypdfium2-preferred
+    surface with the PyMuPDF fallback.
+
+Decision 5's planner distinction (`engine missing` vs `no OCR backend
+installed`) is realised through decision 13, not by moving the signal into the
+executor: a host-configuration problem must be visible where routing decisions
+are explained.
+
 ## Alternatives considered
 
 - **(a) True base dependency on a wheel engine** and **(b) a self-referential core
