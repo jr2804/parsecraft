@@ -366,7 +366,7 @@ def _no_network_tessdata(request: pytest.FixtureRequest, monkeypatch: pytest.Mon
         return
 
     def _forbidden(*args: object, **kwargs: object) -> None:
-        raise AssertionError("a test reached the network for tessdata")
+        raise AssertionError("a test reached the network for tessdata — mark it 'network' and run it under --run-downloads, or stub the call")
 
     monkeypatch.setattr(tesseract, "resolve_tessdata_dir", lambda config: None)
     monkeypatch.setattr(GitHubDownloader, "download", staticmethod(_forbidden))
