@@ -3,7 +3,13 @@ description = "Run linter (ruff)"
 run = 'ruff check src/ tests/ --fix --no-cache'
 
 [tasks.typecheck]
-description = "Run type checker (ty)"
+description = "Run type checker (ty) against the PROJECT venv, never a stray one"
+# ty honours $VIRTUAL_ENV, and a session that activated another tree's venv (the
+# all-extras .venv is the usual culprit) makes every optional-extra import look
+# resolvable - so `ty: ignore[unresolved-import]` markers are reported as unused
+# and the gate goes red on a tree that is green. Pinning VIRTUAL_ENV to this
+# project's own venv makes the check hermetic and worktree-correct.
+env = { VIRTUAL_ENV = "{{config_root}}/.venv" }
 run = 'ty check src/ tests/'
 
 [tasks.spell]
