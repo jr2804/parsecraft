@@ -18,6 +18,7 @@ from typing import Any
 import pytest
 
 from parsecraft.assets.errors import OfflineModeError
+from parsecraft.assets.github import GitHubDownloader
 from parsecraft.backends.errors import BackendError, DependencyUnavailableError
 from parsecraft.backends.ocr import tesseract
 from parsecraft.backends.ocr._models import TESSDATA_FILES, TESSERACT_ASSET, TESSERACT_CAPABILITIES, TESSERACT_ENV, TESSERACT_LANGUAGES
@@ -338,6 +339,30 @@ def test_an_offline_run_refuses_before_attempting_a_download(
 
 def _config(**options: str | int | float | bool) -> BackendConfig:
     return BackendConfig(name="ocr-tesseract", options=dict(options))
+
+
+@pytest.fixture(autouse=True)
+def _no_network_tessdata(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test in this module may reach the network or the real managed cache.
+
+    Found the hard way: this module's docstring claims the suite is offline, but
+    calling ``convert()`` resolves tessdata for real. On a host with no system
+    tessdata that means ``ensure_assets`` downloads ~17.6 MiB from GitHub into
+    the USER's cache — which one test did, silently, on every gate run.
+
+    Two doors are closed. ``resolve_tessdata_dir`` is stubbed so ``convert()``
+    stays hermetic, and the GitHub download primitive itself raises, so any
+    FUTURE unpatched path fails the test loudly instead of quietly fetching.
+    The tests that exercise tessdata resolution call the function through their
+    own module-level name, which still binds the original — so they are
+    unaffected.
+    """
+
+    def _forbidden(*args: object, **kwargs: object) -> None:
+        raise AssertionError("a test reached the network for tessdata")
+
+    monkeypatch.setattr(tesseract, "resolve_tessdata_dir", lambda config: None)
+    monkeypatch.setattr(GitHubDownloader, "download", staticmethod(_forbidden))
 
 
 def _isolate_system_tessdata(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
