@@ -1,0 +1,120 @@
+# ADR-0008: A lightweight OCR backend in the base install (tesseract, system binary + pulled assets)
+
+- **Status:** Accepted
+- **Date:** 2026-10-09
+- **Deciders:** user (ruling relayed via knox-1), pc-1
+- **Related:** bead `pc-utm` (recon `.agents/plans/ocr-lite/00-recon.md`),
+  ADR-0005 (system binary, GPL pandoc), ADR-0006 (bring-your-own dependency),
+  ADR-0007 (conditional-licence opt-in extra), ADR-0001 amendment (free-threaded
+  cells suspended), root AGENTS.md rules 3 and 10
+
+## Context
+
+The user ruled that parsecraft's **base** install must ship a lightweight OCR
+backend — not another heavyweight `ocr-*` extra. The need is concrete: a
+consumer that consolidates onto parsecraft and installs only
+`parsecraft[liteparse,pdf-lite,docling,pandoc]` has **no OCR engine at all**, so
+scanned pages degrade to the native path and produce nothing but a
+`degraded_pages` trace. Required properties: no GPU, no network at run time, and
+small enough to be a default.
+
+The recon (`pc-utm`) established the constraint set:
+
+- **`onnxruntime` — the only small, permissive, CPU-capable wheel engine — cannot
+  be a base dependency.** It publishes `cp314t` wheels for Linux only and no
+  sdist, so `uv sync` fails outright on free-threaded macOS/Windows (proved by a
+  live dry-run). PEP 508 has no free-threaded marker, so neither an optional
+  dependency nor a self-referential core extra can escape that cell; carrying it
+  as an extra is also **latently rule-10-violating** (the extras gate runs on
+  3.13 only, so it would ship green and break a free-threaded host).
+- **`tesseract` as a system binary is the only matrix-safe candidate.** Apache-2.0
+  binary *and* Apache-2.0 `tessdata` (so, unlike pandoc, **no copyleft
+  addendum**), `eng`+`deu`+`equ`+`osd` fast models = 5.37 MB, and it is not a
+  wheel, so no interpreter cell can fail on it.
+- `rapidocr` (Apache-2.0 code and weights, all three models bundled in the wheel,
+  no runtime fetch) has better accuracy-per-MB but **no German** — PP-OCRv4's
+  repertoire is zh/en/ja with a 63-character alphanumeric charset, so `ä ö ü ß`
+  are absent, which is a correctness gap for a German corpus, not a quality one.
+- Eliminated: `paddlepaddle` (no cp314 wheel), `easyocr` (~800 MB torch plus a
+  runtime weight download), `ocrmypdf` (MPL-2.0, wrong tool), `tesserocr` (no
+  Windows wheels).
+
+The user also ruled that when an asset is not installable through pyproject, the
+implementation must **pull it on demand**, and that the free-threaded CI cells
+are suspended for now (ADR-0001 amendment) rather than repricing the interpreter
+tier for one engine's packaging gap.
+
+## Decision
+
+1. **Ship shape (c): a base-registered OCR backend over the `tesseract` system
+   binary.** The *backend* is in the base and eligible by default; the *engine*
+   is an OS package. No new extra is declared for it.
+2. **Engine discovery is a probe, not an assumption** (ADR-0005 pattern,
+   `backends/docling/libreoffice.py` as the template): an env-var override first,
+   then a bounded platform search (PATH on POSIX; the standard install roots on
+   Windows), then a typed, actionable `DependencyUnavailableError` naming the OS
+   package to install. A declaration is honoured verbatim and never probed.
+3. **Assets are pulled on demand through the managed cache.** The backend
+   declares the `tessdata` files it needs (`eng`, `deu`, `equ`, `osd`) as its
+   **`model_asset`**, with pinned upstream URLs (GitHub `tesseract-ocr/tessdata_fast`)
+   and sha256 per file. That routes them through the existing machinery — managed
+   cache, `parsecraft models list/install`, the first-use download notice, and the
+   offline exclusion — which is exactly what marker and mineru could not use
+   because they fetch their own weights. System-provided tessdata wins when it is
+   present and complete (`TESSDATA_PREFIX`), so a host with an OS install
+   downloads nothing.
+4. **The engine binary itself is discovered first, never fetched silently.** If
+   absent, the pull-on-demand path is an **explicit, opt-in** step from a pinned,
+   hash-verified upstream release, documented as a supply-chain action (a
+   third-party executable, provenance recorded, verification mandatory). The
+   typed error is the default outcome; pulling is what the user chooses.
+5. **No new routing primitives.** `INTENT_RULES` and `can_degrade_to_native` are
+   unchanged; the backend declares no GPU requirement and no VRAM, so it is
+   eligible on a CPU-only host through the existing `is_hard_eligible` path. The
+   only routing change is observational: `planner._degraded_reason` gets a
+   distinct string for *engine missing* versus *no OCR backend installed*, so a
+   host-configuration problem stops reading like a routing failure.
+6. **`model_asset` is declared for the pulled assets, `None` for anything the
+   backend does not download.** Weight provenance is recorded in the descriptor.
+7. **Formula handling: `equ` ships with the pulled set and the limitation is
+   documented.** No page-type-dependent engine selection in v1 — that is a new
+   decision primitive for a bounded gain; formula-critical documents stay with the
+   heavyweight `ocr-*` extras.
+8. **The accuracy path is documented, not built:** a marker-style
+   **bring-your-own** `rapidocr` backend (no extra declared → rule 10 untouched)
+   is the rule-10-safe way to offer it later, with its German gap and its
+   free-threaded unavailability stated where it is offered.
+9. **Acceleration stays optional and user-provided.** The base engine is CPU;
+   heavier or acceleratable engines remain in the `ocr-*` extras, and any
+   accelerator runtime a user installs (ONNX Runtime providers, OpenVINO, a
+   Vulkan-class engine) is their own install — no new primitives, no new probe
+   facts in v1.
+
+## Alternatives considered
+
+- **(a) True base dependency on a wheel engine** and **(b) a self-referential core
+  extra**: both rejected — the free-threaded macOS/Windows cell cannot resolve,
+  and (b) buys no coverage the matrix does not already deny.
+- **(d) A wheel engine as an ordinary extra**: rejected. Beyond the same wall, it
+  would ship green while being unusable on a supported-adjacent tier — a latent
+  rule-10 violation, since the extras gate only runs on 3.13.
+- **Declaring tesseract as a base *Python* dependency**: impossible; there is no
+  engine on PyPI (`tesserocr` has no Windows wheels, `pytesseract` is a wrapper),
+  which is precisely why decision 3 exists.
+
+## Consequences
+
+- A default install gains a working OCR path with one OS package; consumers that
+  cannot install OS packages get a typed error naming what to install, and can
+  opt into the pulled engine instead.
+- The asset machinery is exercised by a **base** backend for the first time,
+  which makes `models install/list` meaningful without any heavy extra.
+- `pc-w3w` (first-use download notice) now covers a base path; the notice matters
+  more, not less.
+- Rule-10 scope is now explicitly stated (bead `pc-45p`) and the free-threaded
+  tier is suspended with a recorded re-entry condition (ADR-0001 amendment); the
+  extras-availability reporting job (`pc-7qq`) makes the gap observable without
+  gating.
+- Re-entry for a wheel-based default engine: when `onnxruntime` ships
+  free-threaded macOS/Windows wheels, decisions 1 and 2 can be revisited — the
+  adapter boundary is the backend, so the engine behind it can change.
