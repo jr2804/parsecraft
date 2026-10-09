@@ -106,7 +106,13 @@ def is_hard_eligible(descriptor: BackendDescriptor, constraints: RoutingConstrai
         constraints.gpu_usable and capabilities.estimated_vram_gb is not None and capabilities.estimated_vram_gb <= constraints.vram_budget_gb
     )
     formats_covered = not constraints.formats or constraints.formats.issubset(set(capabilities.supported_formats))
-    offline_ok = not constraints.offline or capabilities.model_asset is None
+    model_asset = capabilities.model_asset
+    # Offline excludes DOWNLOADS, not assets (pc-m0k): a backend whose pinned
+    # weights are verified present in the managed cache needs no network, so it
+    # stays eligible when offline is declared. The verified-present fact is the
+    # probe's pc-u4q marker semantics; anything not verified present counts as
+    # absent (fail-safe) and is left to the convert-time pre-attempt refusal.
+    offline_ok = not constraints.offline or model_asset is None or f"{model_asset.model_id}@{model_asset.model_revision}" in constraints.cached_assets
     declared_languages = capabilities.languages
     # A language request only narrows backends that DECLARE languages:
     # language-agnostic candidates (native included) are never excluded.

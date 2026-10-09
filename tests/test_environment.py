@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import tomllib
 from collections.abc import Callable
 from pathlib import Path
@@ -10,12 +11,17 @@ from subprocess import TimeoutExpired
 import pytest
 from pydantic import ValidationError
 
+import parsecraft.assets.manager as manager_module
+from parsecraft.assets.manager import AssetManager
+from parsecraft.assets.models import AssetPin
 from parsecraft.backends import registry as registry_module
 from parsecraft.backends.protocol import (
+    AssetFilePin,
     BackendCapabilities,
     BackendConfig,
     BackendDescriptor,
     DocumentBackend,
+    ModelAssetDescriptor,
 )
 from parsecraft.backends.registry import default_registry
 from parsecraft.environment import probe as probe_module
@@ -27,6 +33,12 @@ from parsecraft.routing.rules import is_hard_eligible
 
 #: The one module the probe looks up outside the extras map (CUDA runtime check).
 _TORCH = "torch"
+
+
+# ── pc-m0k: the cached-assets fact ──────────────────────────────────
+
+_ASSET_CONTENT = b"ocr-ovis-weights"
+_ASSET_DIGEST = hashlib.sha256(_ASSET_CONTENT).hexdigest()
 
 
 class _Completed:
@@ -61,6 +73,16 @@ class _Spec:
 
     def __init__(self, origin: str | None) -> None:
         self.origin = origin
+
+
+class _WritingDownloader:
+    """Local stand-in for a fetcher: writes content matching the pin's digest."""
+
+    @staticmethod
+    def download(model_id: str, revision: str, filename: str, dest_dir: str) -> str:
+        target = Path(dest_dir) / filename
+        target.write_bytes(_ASSET_CONTENT)
+        return str(target)
 
 
 # ── GPU detection ───────────────────────────────────────────────────────────────
@@ -440,19 +462,6 @@ def _patch_engine_discovery(monkeypatch: pytest.MonkeyPatch, engines: set[str], 
     return asked
 
 
-def _patch_entry_points(monkeypatch: pytest.MonkeyPatch, descriptors: list[BackendDescriptor]) -> list[str]:
-    """Install fake entry points; returns every group the registry asked for."""
-    points = [_EntryPoint(_FakeFactory(descriptor)) for descriptor in descriptors]
-    requested: list[str] = []
-
-    def _fake_entry_points(*, group: str) -> list[_EntryPoint]:
-        requested.append(group)
-        return points
-
-    monkeypatch.setattr(registry_module, "entry_points", _fake_entry_points)
-    return requested
-
-
 def _patch_find_spec(monkeypatch: pytest.MonkeyPatch, present: set[str]) -> list[str]:
     """Fake ``find_spec``; returns the module names that were looked up."""
     looked_up: list[str] = []
@@ -463,21 +472,6 @@ def _patch_find_spec(monkeypatch: pytest.MonkeyPatch, present: set[str]) -> list
 
     monkeypatch.setattr(probe_module, "find_spec", _fake_find_spec)
     return looked_up
-
-
-def _patch_smi(
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    stdout: str = "",
-    returncode: int = 0,
-    error: Exception | None = None,
-) -> None:
-    def _fake_run(*_args: object, **_kwargs: object) -> _Completed:
-        if error is not None:
-            raise error
-        return _Completed(stdout=stdout, returncode=returncode)
-
-    monkeypatch.setattr(probe_module, "run", _fake_run)
 
 
 def test_environment_info_is_frozen() -> None:
@@ -564,6 +558,109 @@ def test_permitting_ocr_cannot_admit_a_backend_whose_engine_is_missing() -> None
 
     assert constraints.allow_ocr is True  # permissive...
     assert is_hard_eligible(backend, constraints) is False  # ...but never eligible without its engine
+
+
+def test_probe_lists_verified_cached_assets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """pc-m0k: the probe reports "model_id@revision" for assets verified in the cache."""
+    monkeypatch.setattr(manager_module, "default_cache_dir", lambda: tmp_path)
+    _prime_verified_cache(tmp_path)
+    _patch_smi(monkeypatch, error=FileNotFoundError("nvidia-smi"))
+    _patch_entry_points(monkeypatch, [_asset_descriptor()])
+
+    assert probe_environment().cached_assets == frozenset({"acme/model@abc123"})
+
+
+def test_probe_counts_a_corrupted_cache_as_absent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fail-safe: content changed since verification -> the asset counts as absent."""
+    monkeypatch.setattr(manager_module, "default_cache_dir", lambda: tmp_path)
+    pin = _prime_verified_cache(tmp_path)
+    revision_dir = tmp_path / "acme--model" / pin.descriptor.model_revision
+    (revision_dir / "weights.bin").write_bytes(b"corrupted payload")
+    _patch_smi(monkeypatch, error=FileNotFoundError("nvidia-smi"))
+    _patch_entry_points(monkeypatch, [_asset_descriptor()])
+
+    assert probe_environment().cached_assets == frozenset()
+
+
+def _prime_verified_cache(tmp_path: Path) -> AssetPin:
+    """Build a managed cache holding one verified revision of the fixture asset."""
+    manager = AssetManager(cache_dir=tmp_path, downloader=_WritingDownloader())
+    descriptor = _asset_descriptor().capabilities.model_asset
+    assert descriptor is not None  # the fixture always declares one
+    pin = AssetPin(
+        descriptor=descriptor,
+        filenames=["weights.bin"],
+        expected_sha256={"weights.bin": _ASSET_DIGEST},
+    )
+    manager.ensure(pin)  # local fake fetch + checksum verification + marker write
+    return pin
+
+
+def _asset_descriptor() -> BackendDescriptor:
+    """A backend whose model asset carries a one-file integrity manifest."""
+    return BackendDescriptor(
+        name="ocr-ovis",
+        capabilities=BackendCapabilities(
+            supported_formats=["application/pdf"],
+            model_asset=ModelAssetDescriptor(
+                model_id="acme/model",
+                model_revision="abc123",
+                model_license="apache-2.0",
+                code_license="apache-2.0",
+                asset_license="cc-by-4.0",
+                file_pins=(AssetFilePin(path="weights.bin", sha256=_ASSET_DIGEST),),
+            ),
+        ),
+    )
+
+
+def test_probe_skips_assets_without_an_integrity_manifest(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No file_pins -> nothing to verify -> absent (fail-safe), never a validation error."""
+    descriptor = BackendDescriptor(
+        name="ocr-manifestless",
+        capabilities=BackendCapabilities(
+            supported_formats=["application/pdf"],
+            model_asset=ModelAssetDescriptor(
+                model_id="acme/manifestless",
+                model_revision="r1",
+                model_license="apache-2.0",
+                code_license="apache-2.0",
+                asset_license="cc-by-4.0",
+            ),
+        ),
+    )
+    _patch_smi(monkeypatch, error=FileNotFoundError("nvidia-smi"))
+    _patch_entry_points(monkeypatch, [descriptor])
+
+    assert probe_environment().cached_assets == frozenset()
+
+
+def _patch_entry_points(monkeypatch: pytest.MonkeyPatch, descriptors: list[BackendDescriptor]) -> list[str]:
+    """Install fake entry points; returns every group the registry asked for."""
+    points = [_EntryPoint(_FakeFactory(descriptor)) for descriptor in descriptors]
+    requested: list[str] = []
+
+    def _fake_entry_points(*, group: str) -> list[_EntryPoint]:
+        requested.append(group)
+        return points
+
+    monkeypatch.setattr(registry_module, "entry_points", _fake_entry_points)
+    return requested
+
+
+def _patch_smi(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    stdout: str = "",
+    returncode: int = 0,
+    error: Exception | None = None,
+) -> None:
+    def _fake_run(*_args: object, **_kwargs: object) -> _Completed:
+        if error is not None:
+            raise error
+        return _Completed(stdout=stdout, returncode=returncode)
+
+    monkeypatch.setattr(probe_module, "run", _fake_run)
 
 
 def test_constraints_reject_invalid_plan_inputs() -> None:

@@ -17,8 +17,11 @@ from importlib.util import find_spec
 from pathlib import Path
 from subprocess import TimeoutExpired, run
 
+from parsecraft.assets.manager import AssetManager
+from parsecraft.assets.models import AssetPin
 from parsecraft.backends.ocr._models import TESSERACT_ENGINE, TESSERACT_ENV
 from parsecraft.backends.ocr.tesseract import find_tesseract_cmd
+from parsecraft.backends.protocol import ModelAssetDescriptor
 from parsecraft.backends.registry import BackendRegistry
 from parsecraft.environment.models import EnvironmentInfo
 
@@ -83,6 +86,14 @@ _TORCH_VERSION_FILE = "version.py"
 _TORCH_CUDA_PATTERN = re.compile(r"^cuda(?:\s*:\s*[\w\[\]\. ]+)?\s*=\s*(.+)$", re.MULTILINE)
 
 
+class _NoFetch:
+    """The probe never downloads: a structural downloader that fails loudly."""
+
+    @staticmethod
+    def download(model_id: str, revision: str, filename: str, dest_dir: str) -> str:
+        raise AssertionError("the environment probe never downloads assets")
+
+
 def probe_environment() -> EnvironmentInfo:
     """Detect this host's routing-relevant facts — offline, deterministic.
 
@@ -103,6 +114,7 @@ def probe_environment() -> EnvironmentInfo:
     # on the host's GPU presence rather than the installed torch build.
     cuda_note = cuda_runtime_note()
     required_engines = {d.capabilities.required_engine for d in descriptors if d.capabilities.required_engine is not None}
+    required_assets = [d.capabilities.model_asset for d in descriptors if d.capabilities.model_asset is not None]
     return EnvironmentInfo(
         backends=backends,
         installed_extras=installed,
@@ -110,6 +122,7 @@ def probe_environment() -> EnvironmentInfo:
         gpu_usable=vram_budget_gb > 0 and cuda_note is None,
         offline=_declared_offline(),
         engines=_detect_engines(required_engines),
+        cached_assets=_detect_cached_assets(required_assets),
     )
 
 
@@ -162,6 +175,30 @@ def _detect_engines(required: Collection[str]) -> frozenset[str]:
     discovery — see :func:`_engine_available`.
     """
     return frozenset(name for name in required if _engine_available(name))
+
+
+def _detect_cached_assets(assets: Collection[ModelAssetDescriptor]) -> frozenset[str]:
+    """Which of the *declared* model assets are verified present in the cache (pc-m0k).
+
+    Same economy as engines: only assets some registered backend declares are
+    checked. Verification is the pc-u4q marker semantics via
+    ``AssetManager.is_verified`` — a pure cache read with no download and no
+    re-hash; an unverifiable asset (missing, foreign, or half-written marker,
+    or no per-file manifest at all) counts as absent (fail-safe).
+    """
+    manager = AssetManager(offline=True, downloader=_NoFetch())  # the probe verifies, never fetches
+    verified = set[str]()
+    for asset in assets:
+        if not asset.file_pins:
+            continue  # no integrity manifest -> nothing to verify -> absent
+        pin = AssetPin(
+            descriptor=asset,
+            filenames=[file_pin.path for file_pin in asset.file_pins],
+            expected_sha256={file_pin.path: file_pin.sha256 for file_pin in asset.file_pins},
+        )
+        if manager.is_verified(pin):
+            verified.add(f"{asset.model_id}@{asset.model_revision}")
+    return frozenset(verified)
 
 
 def _engine_available(name: str) -> bool:

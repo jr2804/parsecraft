@@ -200,8 +200,38 @@ def test_allow_ocr_and_offline_rules() -> None:
     tele = make_desc("ocr-tele", ALL_FORMATS, group="ocr-tele")
     assert is_hard_eligible(tele, full_constraints(allow_ocr=False)) is False
     assetful = make_desc("ocr-ovis", ALL_FORMATS, gpu=True, vram=6.0, group="ocr-ovis", with_asset=True)
+    # Offline excludes DOWNLOADS, not assets (pc-m0k): the asset counts as
+    # absent unless its "model_id@revision" is in cached_assets.
     assert is_hard_eligible(assetful, full_constraints(offline=True)) is False
+    assert is_hard_eligible(assetful, full_constraints(offline=True, cached_assets={"acme/model@r1"})) is True
     assert is_hard_eligible(assetful, full_constraints(offline=False)) is True
+
+
+def test_offline_eligibility_tracks_the_asset_identity_and_online_rule() -> None:
+    """Warm-verified stays eligible offline; wrong revision and online cases pin the edges."""
+    assetful = make_desc("ocr-ovis", ALL_FORMATS, gpu=True, vram=6.0, group="ocr-ovis", with_asset=True)
+    # A cache entry for another revision does not admit this pin (fail-safe).
+    stale = full_constraints(offline=True, cached_assets={"acme/model@r0"})
+    assert is_hard_eligible(assetful, stale) is False
+    # A different asset's entry neither admits nor blocks anyone else.
+    other = full_constraints(offline=True, cached_assets={"acme/other@r1"})
+    assert is_hard_eligible(assetful, other) is False
+    # Online is unaffected by the fact entirely.
+    assert is_hard_eligible(assetful, full_constraints(offline=False, cached_assets=set())) is True
+
+
+def test_offline_plan_includes_a_cached_model_asset_backend() -> None:
+    """Real planning run (pc-m0k): the offline plan now admits the cached backend."""
+    cached = make_desc("ocr-ovis", ALL_FORMATS, gpu=True, vram=6.0, group="ocr-ovis", with_asset=True)
+    fallback = make_desc("ocr-tele", ALL_FORMATS, group="ocr-tele")
+    analysis = make_analysis(garbled(2), 2)
+    constraints = full_constraints(offline=True, cached_assets={"acme/model@r1"}, formats=ALL_FORMATS, allow_ocr=True)
+    plan = plan_route(analysis, [fallback, cached], constraints)
+    assert all(page.chosen == "ocr-ovis" for page in plan.pages)  # the cached heavy backend leads
+    # Clear the cache (drop the fact) and the same plan excludes it again.
+    cleared = full_constraints(offline=True, formats=ALL_FORMATS, allow_ocr=True)
+    plan_cleared = plan_route(analysis, [fallback, cached], cleared)
+    assert all(page.chosen == "ocr-tele" for page in plan_cleared.pages)
 
 
 def test_intent_family_rules() -> None:

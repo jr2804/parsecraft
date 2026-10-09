@@ -37,6 +37,7 @@ def constraints_from_environment(
         vram_budget_gb=environment.vram_budget_gb,
         gpu_usable=environment.gpu_usable,
         engines=environment.engines,
+        cached_assets=set(environment.cached_assets),
         max_passes=max_passes,
         allow_ocr=allow_ocr,
         offline=environment.offline,

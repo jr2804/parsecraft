@@ -26,6 +26,13 @@ class EnvironmentInfo(BaseModel):
     outright through the engine's environment variable (ADR-0008 decision 2). It
     is a routing fact, not an inventory: only engines some backend declares as
     required are probed, so a host never pays for a fact nobody asked for.
+
+    ``cached_assets`` names the model assets ("model_id@revision") whose pinned
+    weights are VERIFIED present in the managed cache (pc-u4q semantics: the
+    marker's digest matches the pin and size+mtime are unchanged). Only assets
+    some backend declares are checked; probing is a pure cache read — no
+    network, no re-hash — and an unverifiable asset counts as absent
+    (fail-safe).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -36,3 +43,4 @@ class EnvironmentInfo(BaseModel):
     gpu_usable: bool = False
     offline: bool = False
     engines: frozenset[str] = Field(default_factory=frozenset)
+    cached_assets: frozenset[str] = Field(default_factory=frozenset)

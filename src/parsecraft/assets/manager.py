@@ -165,6 +165,19 @@ class AssetManager:
         target = self.revision_dir(pin.descriptor.model_id, pin.descriptor.model_revision)
         return all((target / filename).is_file() for filename in pin.filenames)
 
+    def is_verified(self, pin: AssetPin) -> bool:
+        """Whether every pinned file is verified present per pc-u4q semantics.
+
+        The verification marker's digest must equal the pin's and each file's
+        size+mtime must be unchanged since verification — a pure cache read:
+        no download, no re-hash. A missing, foreign, or half-written marker
+        counts as absent (fail-safe), exactly like the ``ensure`` fast path.
+        """
+        marker = self._read_marker(pin.descriptor.model_id, pin.descriptor.model_revision)
+        if marker is None:
+            return False
+        return self._marker_verifies(pin, marker, self.revision_dir(pin.descriptor.model_id, pin.descriptor.model_revision))
+
     def ensure(self, pin: AssetPin) -> list[str]:
         """Guarantee the pinned files exist locally; return their local paths.
 

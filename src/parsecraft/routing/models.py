@@ -74,6 +74,12 @@ class RoutingConstraints(BaseModel):
     #: candidate declaring ``required_engine`` is dropped unless its engine is
     #: in here; every other candidate is unaffected.
     engines: frozenset[str] = Field(default_factory=frozenset)
+    #: Asset ids ("model_id@revision") verified present in the managed cache
+    #: (mirrors ``EnvironmentInfo.cached_assets``). Offline excludes DOWNLOADS,
+    #: not assets (pc-m0k): a candidate whose declared model asset is verified
+    #: here stays eligible when ``offline`` is set — offline means "do not
+    #: download", literally.
+    cached_assets: frozenset[str] = Field(default_factory=frozenset)
     max_passes: int = Field(default=1, ge=1)
     allow_ocr: bool = True
     offline: bool = True
