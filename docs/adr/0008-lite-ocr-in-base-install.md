@@ -63,11 +63,30 @@ tier for one engine's packaging gap.
    because they fetch their own weights. System-provided tessdata wins when it is
    present and complete (`TESSDATA_PREFIX`), so a host with an OS install
    downloads nothing.
-4. **The engine binary itself is discovered first, never fetched silently.** If
-   absent, the pull-on-demand path is an **explicit, opt-in** step from a pinned,
-   hash-verified upstream release, documented as a supply-chain action (a
-   third-party executable, provenance recorded, verification mandatory). The
-   typed error is the default outcome; pulling is what the user chooses.
+4. **The engine binary itself is discovered first, and never fetched.** If it is
+   absent, the typed, actionable `DependencyUnavailableError` is the **only**
+   outcome — the OS package manager is the install path, and the error names the
+   package per platform family (`tesseract-ocr` / `tesseract` / choco+winget).
+
+   **Amended 2026-10-09 after the implementation verified the upstream:** the
+   original text promised an opt-in pull "from a pinned, hash-verified upstream
+   release", and **no such release exists on any platform** — the official
+   `tesseract-ocr/tesseract` 5.5.3 ships a single Windows *installer*
+   (`tesseract-ocr-w64-setup-5.5.3.20260724.exe`, 26,573,224 B), UB-Mannheim
+   v5.4.0.20240606 the same shape (50,175,248 B), Linux and macOS have distro
+   packages only, and the sole per-platform binaries anywhere are conda-forge
+   rebuilds (203 files with per-file sha256) packaged for conda and needing
+   dependency extraction to become runnable. Both candidates are *worse* than
+   what this decision protects against: silently running a third-party installer
+   is a larger supply-chain action than a hash-verified binary, and a conda
+   rebuild is a rebuild-of-a-rebuild. A pull seam with no artifact to pull would
+   be dead code, which this codebase removes on principle.
+
+   **Re-entry condition:** a portable, hash-published upstream release. If one
+   appears, either pull it directly or add the operator-supplied pinned URL +
+   sha256 variant (considered and deliberately deferred: it puts the trust
+   decision at the operator boundary, which is the right place for a third-party
+   executable, but it needs a new config surface and nothing can use it today).
 5. **No new routing primitives.** `INTENT_RULES` and `can_degrade_to_native` are
    unchanged; the backend declares no GPU requirement and no VRAM, so it is
    eligible on a CPU-only host through the existing `is_hard_eligible` path. The
