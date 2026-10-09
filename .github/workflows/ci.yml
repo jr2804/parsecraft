@@ -159,6 +159,12 @@ jobs:
     - name: Check formatting
       run: mise format-check
 
+    # Workflow SEMANTICS, not YAML syntax: unknown strategy keys, missing
+    # matrix keys, bad expressions — the class PyYAML and the test suite
+    # cannot see (pc-8a1: the 36f8b7e matrix demotion).
+    - name: Lint workflows
+      run: mise actionlint
+
   tests:
     needs:
     - quality

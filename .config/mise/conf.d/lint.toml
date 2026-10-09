@@ -9,3 +9,8 @@ run = 'ty check src/ tests/'
 [tasks.spell]
 description = "Run spell checker (codespell)"
 run = "codespell src/ tests/"
+
+[tasks.actionlint]
+description = "Lint GitHub Actions workflows (semantics: strategy/matrix keys, expressions — what YAML parsing cannot see)"
+# No arguments: actionlint defaults to .github/workflows/*.{yml,yaml}.
+run = "actionlint"

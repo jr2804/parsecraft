@@ -12,7 +12,7 @@ jobs run in parallel:
 | --- | ------ | ---- |
 | `extras` | ubuntu, windows | `uv sync -U --all-extras --all-groups --all-packages --dry-run` on 3.13 (root `AGENTS.md` rule 10) |
 | `extras-availability` | ubuntu, macos, windows | the same assertion on 3.14 and 3.14t; **reporting only** (`continue-on-error`) |
-| `quality` | ubuntu | `mise lint` + `mise spell` + `mise format-check` |
+| `quality` | ubuntu | `mise lint` + `mise spell` + `mise format-check` + `mise actionlint` |
 | `tests` | ubuntu, macos, windows | `mise test` (100% coverage gate) |
 | `docs` | ubuntu | `mise docs` |
 
