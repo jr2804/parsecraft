@@ -87,3 +87,34 @@ upstream empirically:
 - The unlicensed pipeline kit stays a standing risk item: if upstream never
   declares a licence, the docs statement says so and the opt-in stays honest
   rather than assuming permission.
+
+## Amendment (2026-10-09): licence facts corrected for the pinned 4.0.11
+
+The Context section above describes the surface the pc-ha9 recon measured
+against the 2.x line. Implementation (bead `pc-gv8`) pinned
+`mineru>=4.0.11,<5` — the last 2.x (2.7.6) requires Python <3.14 and cannot
+  install on the canonical dev env, making rule 10 impossible — and the
+4.0.11 licence surface differs:
+
+- The AGPL-3.0 checkpoint (`MinerU2.5-2509-1.2B`) is **not referenced
+  anywhere in 4.0.11** (zero grep hits in the wheel).
+- The 4.0.11 VLM checkpoint `MinerU2.5-Pro-2605-1.2B` and the torch
+  pipeline kit `MinerU-4_models_torch` declare **Apache-2.0**.
+- The Windows/CPU **default** engine is llama-cpp →
+  `jinzhenj/MinerU2.5-Pro-2605-1.2B-GGUF`, which declares **no licence** —
+  note this is not an exotic path: it is what a default Windows install
+  downloads.
+- The ONNX pipeline kit `MinerU-4_models_onnx` also declares **no licence**.
+- The code licence is unchanged: `LicenseRef-MinerU-Open-Source-License`
+  (Apache-2.0 plus commercial thresholds, attribution duty,
+  termination-without-notice).
+
+**Ruling (pc-1, under the user's 2026-10-09 decision): the GO stands.** The
+correction is strictly-better-or-equal on every axis versus the picture the
+user approved (no AGPL anywhere; undeclared-weights risk unchanged;
+conditional code licence unchanged). The documentation statement ships the
+corrected facts: Apache-2.0 checkpoint and torch kit; **undeclared licence**
+on the default Windows/CPU GGUF engine and the ONNX kit (unknown terms —
+stated, not assumed); the conditional code licence with its thresholds,
+attribution duty, and termination clause. The standing-risk consequence
+above applies verbatim to the undeclared GGUF/ONNX artifacts.
