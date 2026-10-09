@@ -7,7 +7,14 @@ Pinned revisions and licenses verified against the HF API 2026-09-27
 
 from __future__ import annotations
 
-from parsecraft.backends.protocol import GPU_NOT_NEEDED, GPU_REQUIRED, AssetFilePin, BackendCapabilities, ModelAssetDescriptor
+from parsecraft.backends.protocol import (
+    GPU_NOT_NEEDED,
+    GPU_REQUIRED,
+    AssetFilePin,
+    BackendCapabilities,
+    ModelAssetDescriptor,
+    ModelSource,
+)
 
 #: Shared backend version for the whole OCR family (adapter code, not model).
 OCR_BACKEND_VERSION = "0.1.0"
@@ -273,12 +280,65 @@ TESSERACT_LANGUAGES: tuple[str, ...] = ("eng", "deu")
 #: VLM backends do not, and a declared format stays a per-backend claim.
 TESSERACT_FORMATS: tuple[str, ...] = (*OCR_FORMATS, "image/tiff")
 
+# ── tessdata: the pulled asset (ADR-0008 decision 3) ─────────────────────────
+
+TESSDATA_MODEL_ID = "tesseract-ocr/tessdata_fast"
+#: An IMMUTABLE commit, never ``main``: the asset machinery pins a revision, so a
+#: branch name would let the pinned bytes move under a verified hash. Resolved
+#: from the GitHub API and hashed from the actual files on 2026-10-09 — the
+#: blob SHAs the API reports are git-object hashes, not content hashes.
+TESSDATA_REVISION = "87416418657359cb625c412a48b6e1d6d41c29bd"
+#: ``eng``/``deu`` are what the backend requests; ``osd`` ships with the pulled
+#: set because orientation detection is part of a usable install, and ``equ``
+#: because decision 7 puts formula support in the pulled set even though v1
+#: never selects it automatically.
+TESSDATA_FILES: tuple[str, ...] = ("eng", "deu", "equ", "osd")
+_TESSDATA_SUFFIX = ".traineddata"
+
+TESSDATA_FILE_PINS: tuple[AssetFilePin, ...] = (
+    AssetFilePin(path="eng.traineddata", sha256="7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2", size=4113088),
+    AssetFilePin(path="deu.traineddata", sha256="19d219bbb6672c869d20a9636c6816a81eb9a71796cb93ebe0cb1530e2cdb22d", size=1525436),
+    AssetFilePin(path="equ.traineddata", sha256="8f660323d8a7b7a0e8d2fae1a3439e6e470222bfbb990b2ab7fe9e1fb4791c0b", size=2251950),
+    AssetFilePin(path="osd.traineddata", sha256="9cf5d576fcc47564f11265841e5ca839001e7e6f38ff7f7aacf46d15a96b00ff", size=10562727),
+)
+#: Sum of the pinned sizes, so the disk-space gate can refuse before downloading.
+TESSDATA_TOTAL_BYTES = 18453201
+
+#: The pulled tessdata. NOT declared as ``capabilities.model_asset`` — see the
+#: comment on :data:`TESSERACT_CAPABILITIES`.
+TESSERACT_ASSET = ModelAssetDescriptor(
+    model_id=TESSDATA_MODEL_ID,
+    model_revision=TESSDATA_REVISION,
+    model_license="apache-2.0",
+    code_license="apache-2.0",
+    asset_license="apache-2.0",
+    requires_user_acceptance=False,
+    source_urls=[
+        "https://github.com/tesseract-ocr/tessdata_fast",
+        f"https://github.com/tesseract-ocr/tessdata_fast/tree/{TESSDATA_REVISION}",
+    ],
+    size_bytes=TESSDATA_TOTAL_BYTES,
+    quantization=None,
+    estimated_vram_gb=None,
+    file_pins=TESSDATA_FILE_PINS,
+    # Not a mirror: the Hub copy of tessdata_fast has no `equ`, which would
+    # silently void decision 7 (ADR-0008 decision 11).
+    model_source=ModelSource.GITHUB,
+)
+
 TESSERACT_CAPABILITIES = ocr_capabilities(
-    # No asset and no extra yet: the tessdata ``model_asset`` lands with the
-    # asset work that follows, so this descriptor states only what the code can
-    # do today. ``gpu_requirement`` is NOT_NEEDED — a CPU subprocess engine with
-    # no weights on the GPU, eligible on a CPU-only host through the existing
-    # ``is_hard_eligible`` path with no new routing primitive.
+    # ``asset`` is None ON PURPOSE even though the backend pulls tessdata
+    # (:data:`TESSERACT_ASSET`). Declaring it would make ``is_hard_eligible`` drop
+    # this backend whenever ``constraints.offline`` holds — and offline DEFAULTS
+    # to True at the library level, so every embedder that did not explicitly
+    # declare online would lose the base OCR path entirely. That is the opposite
+    # of what decision 1 exists for. The cost is real and is accepted knowingly:
+    # the CLI model catalogue is driven by ``capabilities.model_asset``, so this
+    # asset is absent from ``parsecraft models list`` and unaddressable by
+    # ``models install/remove <name>``. Refining the offline rule to exclude only
+    # ASSETS rather than asset-carrying backends would fix this and the same
+    # false exclusion for every already-cached model backend; that is a separate
+    # decision (ADR-0008 option C), not this bead's to make.
     asset=None,
     optional_dependency_group=None,
     gpu_requirement=GPU_NOT_NEEDED,

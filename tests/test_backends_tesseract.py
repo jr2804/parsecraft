@@ -10,23 +10,26 @@ the other.
 
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from parsecraft.assets.errors import OfflineModeError
 from parsecraft.backends.errors import BackendError
 from parsecraft.backends.ocr import tesseract
-from parsecraft.backends.ocr._models import TESSERACT_CAPABILITIES, TESSERACT_ENV
+from parsecraft.backends.ocr._models import TESSDATA_FILES, TESSERACT_ASSET, TESSERACT_CAPABILITIES, TESSERACT_ENV, TESSERACT_LANGUAGES
 from parsecraft.backends.ocr.tesseract import (
     TesseractBackend,
     TesseractUnavailableError,
     find_tesseract_cmd,
+    resolve_tessdata_dir,
     resolve_tesseract_cmd,
     transcribe_page,
 )
-from parsecraft.backends.protocol import BackendConfig, ConversionRequest, SourceDocument
+from parsecraft.backends.protocol import BackendConfig, ConversionRequest, ModelSource, SourceDocument
 
 _PNG = b"\x89PNG\r\n\x1a\nfake-png"
 
@@ -223,7 +226,7 @@ def test_analysis_never_runs_the_engine(monkeypatch: pytest.MonkeyPatch) -> None
         raise AssertionError("analyze must not touch the engine")
 
     monkeypatch.setattr(tesseract, "run", explode)
-    analysis = TesseractBackend().analyze(_image_source())
+    analysis = TesseractBackend(_config()).analyze(_image_source())
 
     assert analysis.page_count == 1
     assert analysis.signals[0].has_native_text is False
@@ -233,12 +236,158 @@ def test_conversion_carries_the_engine_as_its_only_provenance(monkeypatch: pytes
     """No weights means no model to attribute a page to — the trace says so."""
     _capture_run(monkeypatch, _Completed(stdout="hello"))
 
-    result = TesseractBackend().convert(_request())
+    result = TesseractBackend(_config()).convert(_request())
 
     assert result.backend.name == "ocr-tesseract"
     assert result.backend.model_id is None
     assert result.backend.model_revision is None
     assert result.pages[0].blocks[0].content == "hello"
+
+
+# ── tessdata resolution (ADR-0008 decision 3) ───────────────────────────────
+
+
+def test_complete_system_tessdata_wins_and_nothing_is_fetched(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """An OS lang pack means zero downloads (decision 3).
+
+    The directory deliberately holds ONLY the requested languages: ``equ`` and
+    ``osd`` are in the PULLED set, and requiring them here would defeat the
+    purpose since no OS package ships ``equ``.
+    """
+    _isolate_system_tessdata(monkeypatch, tmp_path)
+    directory = _system_tessdata(tmp_path, TESSERACT_LANGUAGES)
+    monkeypatch.setenv("TESSDATA_PREFIX", str(directory))
+    fetched: list[object] = []
+    monkeypatch.setattr(tesseract._common, "ensure_assets", lambda d, c: fetched.append(d))
+
+    assert resolve_tessdata_dir(_config()) == str(directory)
+    assert fetched == []
+
+
+def test_an_incomplete_system_tessdata_falls_through_to_the_managed_cache(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _isolate_system_tessdata(monkeypatch, tmp_path)
+    directory = _system_tessdata(tmp_path, ("eng",))  # deu missing
+    monkeypatch.setenv("TESSDATA_PREFIX", str(directory))
+    fetched: list[object] = []
+    monkeypatch.setattr(tesseract._common, "ensure_assets", lambda d, c: fetched.append(d) or "managed/tessdata")
+
+    assert resolve_tessdata_dir(_config()) == "managed/tessdata"
+    assert len(fetched) == 1
+
+
+def test_an_incomplete_declaration_still_falls_through_to_the_packaging_scan(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A declaration is consulted alone, but an incomplete one is not the last word."""
+    monkeypatch.setenv("TESSDATA_PREFIX", str(_system_tessdata(tmp_path, ("eng",))))
+    # ``pkg/5/tessdata`` mirrors the real packaging layout the glob expects.
+    packaged = _system_tessdata(tmp_path / "pkg" / "5", TESSERACT_LANGUAGES)
+    monkeypatch.setattr(tesseract, "_POSIX_TESSDATA_ROOTS", (f"{tmp_path.as_posix()}/pkg/*/tessdata",))
+    monkeypatch.setattr(tesseract._common, "ensure_assets", lambda d, c: "managed/tessdata")
+    assert resolve_tessdata_dir(_config()) == str(packaged)
+
+
+def _system_tessdata(root: Path, languages: tuple[str, ...]) -> Path:
+    directory = root / "tessdata"
+    directory.mkdir(parents=True)
+    for language in languages:
+        (directory / f"{language}.traineddata").write_bytes(b"stub-model")
+    return directory
+
+
+def test_no_system_tessdata_uses_the_managed_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _isolate_system_tessdata(monkeypatch, tmp_path)
+    monkeypatch.setattr(tesseract._common, "ensure_assets", lambda d, c: "managed/tessdata")
+
+    assert resolve_tessdata_dir(_config()) == "managed/tessdata"
+
+
+def test_an_offline_run_refuses_before_attempting_a_download(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The real code path: OfflineModeError, raised before any transfer (pc-eoa).
+
+    Nothing is created — ``ensure`` checks offline before it makes a directory —
+    so this leaves no trace in the cache.
+    """
+    _isolate_system_tessdata(monkeypatch, tmp_path)
+    cache = tmp_path / "cache"
+    monkeypatch.setattr("parsecraft.assets.manager.default_cache_dir", lambda: cache)
+
+    with pytest.raises(OfflineModeError):
+        resolve_tessdata_dir(_config(offline=True))
+
+    assert not cache.exists()
+
+
+def _config(**options: str | int | float | bool) -> BackendConfig:
+    return BackendConfig(name="ocr-tesseract", options=dict(options))
+
+
+def _isolate_system_tessdata(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Remove both system-tessdata sources so resolution is deterministic.
+
+    The packaging glob would otherwise find a REAL install on a CI runner that
+    has one, which is exactly the kind of host-dependent assertion memory #1127
+    warns about.
+    """
+    monkeypatch.delenv("TESSDATA_PREFIX", raising=False)
+    monkeypatch.setattr(tesseract, "_POSIX_TESSDATA_ROOTS", (str(tmp_path / "no-such-tesseract" / "*" / "tessdata"),))
+
+
+def test_the_resolved_tessdata_dir_reaches_the_engine(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(tesseract, "resolve_tesseract_cmd", lambda: "/usr/bin/tesseract")
+
+    def fake_run(argv: list[str], **kwargs: object) -> _Completed:
+        calls.append(argv)
+        Path(argv[1]).write_bytes(_PNG)
+        return _Completed()
+
+    monkeypatch.setattr(tesseract, "run", fake_run)
+    transcribe_page(1, _request(), "/managed/tessdata")
+
+    argv = calls[0]
+    assert argv[argv.index("--tessdata-dir") + 1] == "/managed/tessdata"
+
+
+def test_no_tessdata_argument_when_nothing_was_resolved(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Absence of a resolved dir means the engine's own default stands."""
+    calls: list[list[str]] = []
+    monkeypatch.setattr(tesseract, "resolve_tesseract_cmd", lambda: "/usr/bin/tesseract")
+
+    def fake_run(argv: list[str], **kwargs: object) -> _Completed:
+        calls.append(argv)
+        Path(argv[1]).write_bytes(_PNG)
+        return _Completed()
+
+    monkeypatch.setattr(tesseract, "run", fake_run)
+    transcribe_page(1, _request())
+
+    assert "--tessdata-dir" not in calls[0]
+
+
+def test_the_tessdata_pins_are_real_content_hashes() -> None:
+    """A pinned revision must be immutable, and the sizes must agree with the pins."""
+    asset = TESSERACT_ASSET
+
+    assert asset.model_source is ModelSource.GITHUB
+    assert re.fullmatch(r"[0-9a-f]{40}", asset.model_revision), "revision must be a commit, not a branch"
+    assert asset.model_revision != "main"
+    assert {pin.path for pin in asset.file_pins} == {f"{name}.traineddata" for name in TESSDATA_FILES}
+    assert all(re.fullmatch(r"[0-9a-f]{64}", pin.sha256) for pin in asset.file_pins)
+    assert all(pin.size is not None and pin.size > 0 for pin in asset.file_pins)
+    assert sum(pin.size or 0 for pin in asset.file_pins) == asset.size_bytes
+
+
+def test_the_capability_record_declares_no_asset() -> None:
+    """Decision: the asset is fetched at convert time, so routing never excludes it."""
+    assert TESSERACT_CAPABILITIES.model_asset is None
 
 
 def _request(source: SourceDocument | None = None) -> ConversionRequest:

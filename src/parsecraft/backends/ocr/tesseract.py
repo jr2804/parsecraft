@@ -41,6 +41,7 @@ import os
 import shutil
 import sys
 import tempfile
+from glob import glob
 from pathlib import Path
 from subprocess import DEVNULL, TimeoutExpired, run
 
@@ -48,6 +49,7 @@ from parsecraft.backends.errors import BackendError
 from parsecraft.backends.ocr import _common
 from parsecraft.backends.ocr._models import (
     OCR_BACKEND_VERSION,
+    TESSERACT_ASSET,
     TESSERACT_CAPABILITIES,
     TESSERACT_ENV,
     TESSERACT_LANGUAGES,
@@ -97,6 +99,17 @@ DESCRIPTOR = BackendDescriptor(
 )
 
 
+# ── tessdata resolution (ADR-0008 decision 3) ───────────────────────────────
+
+#: The variable tesseract itself reads for its tessdata directory. A declaration
+#: is honoured verbatim, like the engine declaration above.
+_TESSDATA_PREFIX_ENV = "TESSDATA_PREFIX"
+_TESSDATA_SUFFIX = ".traineddata"
+#: POSIX packaging owns these locations; the version directory is part of the
+#: first, so one bounded glob covers every packaged release without a walk.
+_POSIX_TESSDATA_ROOTS: tuple[str, ...] = ("/usr/share/tesseract-ocr/*/tessdata", "/usr/local/share/tessdata")
+
+
 class TesseractUnavailableError(BackendError):
     """No tesseract installation could be located on this host."""
 
@@ -110,15 +123,26 @@ class TesseractBackend:
     name = TESSERACT_NAME
     capabilities = TESSERACT_CAPABILITIES
 
+    def __init__(self, config: BackendConfig) -> None:
+        #: Carried because the asset fetch reads ``options["offline"]`` — the
+        #: create sites thread it there (pc-e38) precisely so a factory can
+        #: refuse a download BEFORE attempting one.
+        self._config = config
+
     def convert(self, request: ConversionRequest) -> BackendResult:
         """Transcribe the requested window through the shared bounds machinery."""
+        tessdata = resolve_tessdata_dir(self._config)
+
+        def infer_page(number: int, inner: ConversionRequest) -> str:
+            return transcribe_page(number, inner, tessdata)
+
         return _common.convert_pages(
             backend_name=self.name,
             backend_version=OCR_BACKEND_VERSION,
             asset=None,
             source=request.source,
             request=request,
-            infer_page=transcribe_page,
+            infer_page=infer_page,
         )
 
     @staticmethod
@@ -137,13 +161,60 @@ class TesseractFactory:
     descriptor: BackendDescriptor = DESCRIPTOR
 
     def __call__(self, config: BackendConfig) -> DocumentBackend:
-        return TesseractBackend()
+        return TesseractBackend(config)
+
+
+def resolve_tessdata_dir(config: BackendConfig) -> str | None:
+    """The tessdata directory to run with: a complete system one, else the managed cache.
+
+    Resolved once per conversion rather than per page — the answer cannot change
+    mid-run, and the managed path is an ``AssetManager.ensure`` that re-hashes
+    every pinned file whenever the verification marker does not cover it.
+
+    The offline refusal needs no code here: :func:`_common.ensure_assets` builds
+    an offline ``AssetManager``, whose ``ensure`` raises ``OfflineModeError``
+    BEFORE any transfer is attempted (the pc-eoa pre-attempt pattern). An offline
+    host with complete system tessdata never reaches it.
+    """
+    system = find_system_tessdata()
+    if system is not None:
+        return system
+    return _common.ensure_assets(TESSERACT_ASSET, config)
+
+
+def find_system_tessdata() -> str | None:
+    """A system tessdata directory holding every language this backend requests.
+
+    System-provided tessdata WINS when it is present and complete, so a host that
+    installed the OS language packs downloads nothing at all (decision 3).
+    "Complete" means complete **for the languages this backend actually invokes**:
+    requiring ``equ`` would defeat the purpose, since no OS lang pack ships it
+    and v1 never selects it anyway (decision 7).
+
+    ``TESSDATA_PREFIX`` is consulted first and alone — a declaration is a
+    decision, not a fact to second-guess. Only when it is unset or incomplete do
+    the packaging-owned locations get searched.
+    """
+    declared = os.environ.get(_TESSDATA_PREFIX_ENV, "").strip()
+    if declared and _tessdata_is_complete(Path(declared)):
+        return declared
+    for pattern in _POSIX_TESSDATA_ROOTS:
+        for candidate in sorted(glob(pattern)):
+            path = Path(candidate)
+            if path.is_dir() and _tessdata_is_complete(path):
+                return str(path)
+    return None
+
+
+def _tessdata_is_complete(directory: Path) -> bool:
+    """Whether ``directory`` holds every requested ``.traineddata``."""
+    return all((directory / f"{language}{_TESSDATA_SUFFIX}").is_file() for language in TESSERACT_LANGUAGES)
 
 
 # ── engine invocation ───────────────────────────────────────────────────────
 
 
-def transcribe_page(page_number: int, request: ConversionRequest) -> str:
+def transcribe_page(page_number: int, request: ConversionRequest, tessdata_dir: str | None = None) -> str:
     """One page of ``request.source`` through the engine, as plain text.
 
     Tesseract reads no PDF, so a PDF page goes through the shared raster surface
@@ -166,6 +237,8 @@ def transcribe_page(page_number: int, request: ConversionRequest) -> str:
             "--psm",
             str(_PAGE_SEGMENTATION_MODE),
         ]
+        if tessdata_dir is not None:
+            argv += ["--tessdata-dir", tessdata_dir]
         try:
             completed = run(  # noqa: S603 - fixed argv, no shell
                 argv,
