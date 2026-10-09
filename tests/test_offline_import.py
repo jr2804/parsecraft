@@ -109,7 +109,6 @@ _SCRIPT = textwrap.dedent(
     print(f"IMPORTS_OK core={len(core)} backends={len(ordered)}")
     """,
 ).replace("__HEAVY_ROOTS__", repr(sorted(_HEAVY_RUNTIME_ROOTS)))
-)
 
 
 _COLLECTION_SCRIPT = textwrap.dedent(
@@ -198,7 +197,7 @@ _COLLECTION_SCRIPT = textwrap.dedent(
         raise SystemExit(1)
     print(f"COLLECTION_OK {len(paths)}")
     """,
-)
+).replace("__HEAVY_ROOTS__", repr(sorted(_HEAVY_RUNTIME_ROOTS)))
 
 
 def test_package_imports_offline_without_heavy_runtimes() -> None:
