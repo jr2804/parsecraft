@@ -28,6 +28,10 @@ disable = ["MD033"]
 # List of file/directory patterns to exclude from linting
 exclude = [
     ".beads",
+    # Archived records (close comments, recon docs) are immutable history: their
+    # long single-line prose is the record, not a formatting defect, and reflowing
+    # it would churn. The same reasoning as the .beads exclusion (2026-10-09).
+    ".agents/history/",
 ]
 
 # Respect .gitignore files when scanning directories (default: true)
