@@ -217,3 +217,44 @@ moving any rail:
   `AnalysisResult.classification`).** Deferred: widens the frozen public
   contract and every consumer for data only diagnostics need; revisit only if
   provenance must be machine-read.
+
+## Amendment (2026-10-09): offline excludes downloads, not assets
+
+**Decision (user ruling, bead `pc-m0k`):** `offline` means *do not download* —
+literally. A model-asset backend stays eligible offline when its weights are
+**verified present** in the managed cache, and is excluded only when they are
+not proven present.
+
+**Predicate.** `is_hard_eligible` admits a backend carrying `model_asset` under
+`constraints.offline` iff its `model_id@revision` appears in the new
+`RoutingConstraints.cached_assets` fact. One condition, no new routing
+primitive, no backend name special-cased; `allow_ocr`, engine, GPU and format
+rules are untouched, and online behaviour is unchanged.
+
+**What "verified present" means.** `AssetManager.is_verified(pin)` reuses the
+verification-marker semantics introduced for the re-hash fix (`pc-u4q`): the
+marker's recorded digest equals the pin's expected digest and the file's size
+and `st_mtime_ns` are unchanged. It is a pure cache read — no download, no
+re-hash. Missing, foreign, damaged, other-revision or half-written markers count
+as **absent**, as do assets with no per-file manifest, so the failure direction
+is fail-safe: anything not proven present is treated as a download that would be
+needed.
+
+**Probe economy.** `EnvironmentInfo.cached_assets` is computed only for assets
+that some registered backend actually declares, and its `AssetManager` carries a
+never-downloads downloader, so verification can neither fetch nor import the Hub.
+
+**Second line of defence unchanged.** The convert-time pre-attempt refusal
+(`options["offline"]` → typed `DEPENDENCY_MISSING`) remains for the genuinely
+absent case; this amendment changes *eligibility*, not the refusal.
+
+**Why the rule was wrong as written.** `RoutingConstraints.offline` defaults to
+`True` for embedders (network is opt-in). Excluding *assets* rather than
+*downloads* therefore made that default silently exclude MinerU and the four OCR
+VLM backends on a host whose multi-GB weights were already sitting in the cache —
+an ineligibility with no network consequence at all, which reads from the outside
+as a routing bug. Weights verified in the managed cache are not a download.
+
+**Consequence to expect.** With a warm verified cache an offline-declared plan
+may now lead with MinerU or an OCR VLM backend; clear the cache and they are
+excluded again — which is the behaviour the rule was always meant to express.
