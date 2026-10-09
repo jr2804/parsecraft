@@ -85,8 +85,10 @@ tests, and keep the 100% coverage gate green.
     cached by filename and validated structurally (never by hash), so upstream
     edits do not fail the tier.
 - `mise test` always stays offline and fast — only the default tier runs.
-- Never weaken `fail_under = 100` (`pyproject.toml`) or the offline import
-  gate (`test_offline_import.py`).
+- Never weaken `fail_under = 100` (`pyproject.toml`) or the gates in
+  `test_offline_import.py` — the offline package-import check **and** the
+  collection-safety sweep (every `tests/test_*.py` re-imported with the heavy
+  extras blocked; pc-eo7).
 
 ## Verification
 

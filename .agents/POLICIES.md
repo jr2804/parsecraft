@@ -42,6 +42,13 @@ Universal defaults. Project-specific standards live in child AGENTS.md.
 - **No forward-referenced default arguments** — `pyreorder` stepdown reorders
   functions, so a default value must never name a function defined later; use
   `= None` and resolve in the body (call-time lookup is order-safe).
+- **Imports must survive `pyreorder`** — `hoist_inline_imports` promotes a
+  function-local import to module scope, so an inline import must be SAFE to
+  hoist; cycle-avoidance, heavy and optional imports use call-time
+  `importlib.import_module(...)` typed with a local `Protocol`, never a
+  function-local import (examples/casualties: memories #1474/#1477,
+  `backends/registry.py`, `tests/test_backends_marker.py`; gate:
+  `test_offline_import.py`).
 - No new code-quality tooling by default — opt in per project.
 
 ## Completion checklist
