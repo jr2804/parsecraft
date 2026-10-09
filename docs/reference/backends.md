@@ -21,8 +21,8 @@ today from what is planned. Each third-party tool keeps its own licence.
 !!! warning "MinerU is a conditional-licence opt-in"
     `parsecraft[mineru]` carries a **conditional** licence surface, not a
     copyleft one — the distinction matters, so it gets its own statement
-    (ADR-0007). Installing the extra is your consent to these terms:
-
+    ([ADR-0007](../adr/0007-mineru-conditional-licence-optin.md)). Installing
+    the extra is your consent to these terms:
     - **Code:** `LicenseRef-MinerU-Open-Source-License` — Apache-2.0 **plus**
       commercial thresholds (>100M MAU or >USD 20M revenue), an online-service
       attribution duty, and termination-without-notice.
@@ -33,8 +33,6 @@ today from what is planned. Each third-party tool keeps its own licence.
       `MinerU-4_models_onnx`). Unknown terms are stated, not assumed — the
       GGUF engine is what a default Windows install downloads, so this is not
       an exotic path.
-
-    See [ADR-0007](../adr/0007-mineru-conditional-licence-optin.md).
 
 ## Native (in-package)
 
