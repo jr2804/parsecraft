@@ -51,9 +51,10 @@ duplicated; integrity data (per-file SHA-256) lives in `AssetPin`.
   marker is ignored) and excluded from `inspect`/`models list` output.
 - `inspect_cache`'s `total_bytes` aggregates the whole revision tree while
   `CachedAsset.files` lists direct children only (its contract) — a backend may
-  nest its weights, as MinerU does into `$MINERU_HOME/models/`. `models list`
-  shows that measured size for a cached revision, the declared estimate
-  otherwise.
+  nest its weights, as MinerU does into `$MINERU_HOME/models/`. It counts bytes
+  physically stored under the revision and never follows a symlink: a directory
+  symlink is not descended, a file symlink is not counted. `models list` shows
+  that measured size for a cached revision, the declared estimate otherwise.
 
 ## Verification
 

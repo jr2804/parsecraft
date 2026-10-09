@@ -357,6 +357,27 @@ def test_deleted_file_is_caught_even_though_the_marker_verified_it(tmp_path: Pat
     assert (tmp_path / "acme--model" / "abc123" / "weights.bin").is_file()
 
 
+def test_inspect_cache_counts_only_bytes_physically_stored(tmp_path: Path) -> None:
+    """Aliases are never counted: a file symlink is skipped, a directory symlink is not descended."""
+    revision_dir = tmp_path / "acme--model" / "abc123"
+    revision_dir.mkdir(parents=True)
+    (revision_dir / "weights.bin").write_bytes(CONTENT)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "other.bin").write_bytes(b"z" * 100)
+    try:
+        (outside / "broken").symlink_to(tmp_path / "nowhere")
+        (revision_dir / "aliased.bin").symlink_to(outside / "other.bin")
+        (revision_dir / "linked-dir").symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("this platform needs extra privileges to create symlinks")
+    report = AssetManager(cache_dir=tmp_path, downloader=FakeDownloader()).inspect_cache()
+    asset = report.assets[0]
+    assert [f.filename for f in asset.files] == ["aliased.bin", "weights.bin"]
+    assert asset.total_bytes == len(CONTENT)
+    assert report.total_bytes == len(CONTENT)
+
+
 def test_inspect_cache_does_not_list_the_verification_marker(tmp_path: Path) -> None:
     """The marker is manager bookkeeping: it must not appear as a cached asset file, nor add bytes."""
     manager = AssetManager(cache_dir=tmp_path, downloader=FakeDownloader())

@@ -38,7 +38,12 @@ class LicenseAcceptance(BaseModel):
 
 
 class CachedAssetFile(BaseModel):
-    """One file present in the local asset cache."""
+    """One file present in the local asset cache.
+
+    Always a **direct child** of its revision directory: a backend may nest its
+    weights deeper (MinerU under ``$MINERU_HOME/models/``), and those nested
+    files are counted in `CachedAsset.total_bytes` but never listed here.
+    """
 
     filename: str
     path: str
@@ -46,7 +51,12 @@ class CachedAssetFile(BaseModel):
 
 
 class CachedAsset(BaseModel):
-    """One pinned model revision present in the local asset cache."""
+    """One pinned model revision present in the local asset cache.
+
+    ``files`` lists direct children only while ``total_bytes`` covers the whole
+    revision tree, so the two need not agree. ``total_bytes`` counts bytes
+    physically stored under the revision and excludes symlinked aliases.
+    """
 
     model_id: str
     revision: str

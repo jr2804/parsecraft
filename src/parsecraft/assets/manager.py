@@ -347,13 +347,23 @@ def slug(model_id: str) -> str:
 
 
 def _revision_bytes(revision_dir: Path) -> int:
-    """Total bytes under a revision dir, counting nested subdirectories.
+    """Bytes physically stored under a revision dir, aliases excluded.
 
     ``CachedAssetFile`` lists only direct children (its contract), but a backend
     may nest its weights deeper — MinerU stores them under
     ``$MINERU_HOME/models/`` — so the size is aggregated over the whole tree.
+
+    Symlinks are neither counted nor followed: ``rglob`` does not descend a
+    directory symlink (a link to a huge tree cannot explode the walk) and the
+    filter below drops file symlinks (a link into another revision cannot make
+    that target's bytes count twice). The number is what this revision occupies,
+    not what it can reach.
     """
-    return sum(path.stat().st_size for path in revision_dir.rglob("*") if path.is_file() and not path.name.startswith(_VERIFICATION_MARKER_FILENAME))
+    return sum(
+        path.stat().st_size
+        for path in revision_dir.rglob("*")
+        if path.is_file() and not path.is_symlink() and not path.name.startswith(_VERIFICATION_MARKER_FILENAME)
+    )
 
 
 def sha256_of(path: Path) -> str:
