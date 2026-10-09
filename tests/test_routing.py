@@ -701,9 +701,42 @@ def test_short_native_text_page_degrades_instead_of_erroring() -> None:
     page = plan.pages[0]
     assert page.intent is Intent.NATIVE
     assert page.chosen == "native-text"
-    assert "OCR unavailable (no eligible OCR backend)" in page.reason
+    assert "OCR unavailable (no OCR backend is installed)" in page.reason
     assert "degraded to native" in page.reason
     assert "text_chars=34" in page.reason
+
+
+def test_a_missing_engine_is_named_in_the_degradation_reason() -> None:
+    """Decision 5: a host-configuration problem must not read like a routing failure.
+
+    The engine case names the engine, because the remedy is one OS package. A
+    generic "no eligible OCR backend" here would send the operator looking at
+    routing rules instead of at their host.
+    """
+    signal = make_signal(1, text_chars=34)
+    analysis = make_analysis([signal], 1)
+    backends = [make_desc("native-text"), make_desc("ocr-tesseract", required_engine="tesseract")]
+
+    plan = plan_route(analysis, backends, full_constraints(formats={"text/plain"}, installed_extras=set(), engines=frozenset()))
+    reason = plan.pages[0].reason
+
+    assert "the tesseract engine is not installed on this host" in reason
+    assert "no eligible OCR backend" not in reason
+
+
+def test_an_eligible_engine_leaves_the_degradation_reading_as_a_routing_fact() -> None:
+    """With the engine present, whatever still blocks OCR is a routing-level cause."""
+    signal = make_signal(1, text_chars=34)
+    analysis = make_analysis([signal], 1)
+    backends = [make_desc("native-text"), make_desc("ocr-tesseract", required_engine="tesseract")]
+
+    plan = plan_route(
+        analysis,
+        backends,
+        full_constraints(formats={"text/plain"}, installed_extras=set(), engines=frozenset({"tesseract"}), allow_ocr=False),
+    )
+
+    assert "no eligible OCR backend (missing extras, OCR disabled, or no usable GPU)" in plan.pages[0].reason
 
 
 def test_blank_page_degrades_when_ocr_family_is_empty() -> None:

@@ -57,6 +57,7 @@ def plan_route(
         intent = classify_page(signal, analysis.page_count, hints)
         family = [descriptor for descriptor in eligible if in_intent_family(intent, descriptor)]
         degraded = False
+        unavailable = ""
         degradation_code: str | None = None
         degradation_score: float | None = None
         if not family and intent is not Intent.NATIVE and can_degrade_to_native(signal, eligible):
@@ -66,6 +67,7 @@ def plan_route(
             # degrade to NATIVE with a recorded reason instead of failing a
             # valid document (routing/AGENTS.md, pc-ztq).
             degraded = True
+            unavailable = _ocr_unavailable_cause(backends, constraints)
             degradation_code, degradation_score = degradation_for(signal)
             intent = Intent.NATIVE
             family = [descriptor for descriptor in eligible if in_intent_family(intent, descriptor)]
@@ -84,7 +86,7 @@ def plan_route(
                 intent=intent,
                 candidates=candidates,
                 chosen=candidates[0],
-                reason=_degraded_reason(signal, candidates[0]) if degraded else _reason(intent, candidates[0], signal),
+                reason=_degraded_reason(signal, candidates[0], unavailable) if degraded else _reason(intent, candidates[0], signal),
                 degradation_code=degradation_code,
                 degradation_score=degradation_score,
             )
@@ -133,11 +135,37 @@ def _primary(pages: list[PageRoute]) -> str:
     return sorted(counts, key=lambda name: (-counts[name], name))[0]
 
 
-def _degraded_reason(signal: PageSignal, chosen: str) -> str:
+def _ocr_unavailable_cause(backends: Sequence[BackendDescriptor], constraints: RoutingConstraints) -> str:
+    """Why no OCR backend was eligible — a HOST fact, not a routing failure (decision 5).
+
+    The distinction is the whole point: a host missing its engine and a host with
+    no OCR backend at all need different fixes, and both used to read as the same
+    opaque "no eligible OCR backend". The engine case NAMES the engine, because
+    the remedy is a single OS package.
+
+    It reads the same two facts ``is_hard_eligible`` reads — the declared backend
+    set and ``constraints.engines`` — rather than re-deriving eligibility, so the
+    message can never claim a cause the eligibility rule did not apply.
+    """
+    declared = [descriptor for descriptor in backends if is_ocr(descriptor)]
+    if not declared:
+        return "no OCR backend is installed"
+    missing = sorted(
+        {
+            descriptor.capabilities.required_engine
+            for descriptor in declared
+            if descriptor.capabilities.required_engine is not None and descriptor.capabilities.required_engine not in constraints.engines
+        }
+    )
+    if missing:
+        return f"the {', '.join(missing)} engine is not installed on this host"
+    return "no eligible OCR backend (missing extras, OCR disabled, or no usable GPU)"
+
+
+def _degraded_reason(signal: PageSignal, chosen: str, cause: str) -> str:
     """Recorded when an OCR-intent page falls back to native (no OCR family)."""
     return (
-        f"page {signal.page_number}: OCR unavailable (no eligible OCR backend); "
-        f"degraded to native (native text present, text_chars={signal.text_chars}); first pass {chosen}"
+        f"page {signal.page_number}: OCR unavailable ({cause}); degraded to native (native text present, text_chars={signal.text_chars}); first pass {chosen}"
     )
 
 
