@@ -11,6 +11,6 @@ description = "Run spell checker (codespell)"
 run = "codespell src/ tests/"
 
 [tasks.actionlint]
-description = "Lint GitHub Actions workflows (semantics: strategy/matrix keys, expressions — what YAML parsing cannot see)"
-# No arguments: actionlint defaults to .github/workflows/*.{yml,yaml}.
-run = "actionlint"
+description = "Lint GitHub Actions workflows (jactionlint — maintained actionlint fork; semantics: strategy/matrix keys, expressions — what YAML parsing cannot see)"
+# No arguments: jactionlint defaults to .github/workflows/*.{yml,yaml}.
+run = "jactionlint"

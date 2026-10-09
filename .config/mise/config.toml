@@ -16,7 +16,10 @@ bun = "latest"
 "pypi:codespell" = "2.4.3"
 # Workflow SEMANTICS, which ruff/PyYAML cannot see: unknown strategy keys,
 # missing matrix keys, bad expressions (pc-8a1: the 36f8b7e matrix demotion).
-"actionlint" = "1.7.12"
+# jactionlint (not the deprecated registry `actionlint`): the maintained fork,
+# proofed on both pc-8a1 bug shapes — historical invalid YAML and the
+# valid-YAML strategy-key variant (pc-1 decision, 2026-10-09).
+"github:jdx/jactionlint" = "1.8.2"
 
 # CLI tools rg and tree-cli -> use `rg --files | tree-cli --fromfile` to get a nice tree view of the project files
 ripgrep = "latest"
