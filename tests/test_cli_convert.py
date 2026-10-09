@@ -12,7 +12,7 @@ import pytest
 from typer.testing import CliRunner, Result
 
 import parsecraft.cli.convert as convert_module
-from parsecraft.assets import AssetManager, AssetPin
+from parsecraft.assets import AssetError, AssetManager, AssetPin
 from parsecraft.backends import BackendRegistry
 from parsecraft.backends.errors import BackendError, DependencyUnavailableError, UnsupportedDependencyVersionError
 from parsecraft.backends.protocol import (
@@ -419,6 +419,7 @@ def test_convert_offline_image_never_downloads(registry: BackendRegistry, tmp_pa
     must see ``options["offline"]`` and refuse the uncached download — the
     asset error names the model id and the downloader is never invoked.
     """
+
     class _FakeDownloader:
         """Records calls; stands in for the Hugging Face downloader."""
 
@@ -466,6 +467,31 @@ def test_convert_offline_image_never_downloads(registry: BackendRegistry, tmp_pa
     assert result.exit_code == 1
     assert "ocr-model-x" in _text(result)
     assert downloader.calls == []
+
+
+def test_convert_execution_asset_error_maps_to_convert_error(tmp_path: Path, registry: BackendRegistry) -> None:
+    """The execution-path AssetError mapping (pc-e38): exit 1, model named.
+
+    Analysis succeeds on a plain native stub; the plan's lead is a backend whose
+    factory must acquire a model and refuses, so the executor's per-pass
+    ``registry.create`` — not the analyzer's — is what surfaces the asset error.
+    """
+
+    class _AssetFactory:
+        """Factory that must acquire a model asset before it can convert."""
+
+        def __init__(self, descriptor: BackendDescriptor) -> None:
+            self.descriptor = descriptor
+
+        def __call__(self, config: BackendConfig) -> DocumentBackend:
+            raise AssetError("ocr-demo", "r1", "local model dir not found: /nope")
+
+    _register(registry, _descriptor("native-a", ("text/plain",)), content="converted paragraph")
+    registry.register("native-b", _AssetFactory(_descriptor("native-b", ("text/plain",))))
+    result = runner.invoke(app, ["convert", str(_source_file(tmp_path)), "--backend", "native-b"])
+    assert result.exit_code == 1
+    assert "model assets unavailable" in _text(result)
+    assert "ocr-demo" in _text(result)
 
 
 def test_convert_unsupported_dependency_version_is_classified(tmp_path: Path, registry: BackendRegistry) -> None:
