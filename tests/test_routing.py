@@ -539,11 +539,12 @@ def test_plan_no_eligible_backend_raises() -> None:
 
 
 def test_plan_intent_family_empty_raises_with_intent() -> None:
-    # A blank page never degrades (native would emit nothing) — with the OCR
-    # family forbidden, routing still fails loudly.
-    blank = make_analysis([make_signal(1, text_chars=0, native=False, blank=True)], 1)
+    # A page that visibly holds content but has no text layer still cannot
+    # degrade (native would emit an empty page for a scan) — with the OCR family
+    # forbidden, routing still fails loudly and names the intent.
+    scanned = make_analysis([make_signal(1, text_chars=0, native=False, blank=False, images=1)], 1)
     with pytest.raises(NoEligibleBackendError) as exc_info:
-        plan_route(blank, all_backends(), full_constraints(allow_ocr=False, formats=set()))
+        plan_route(scanned, all_backends(), full_constraints(allow_ocr=False, formats=set()))
     assert exc_info.value.intent is Intent.OCR_GENERAL
 
 
@@ -675,17 +676,26 @@ def test_short_native_text_page_degrades_instead_of_erroring() -> None:
     assert "text_chars=34" in page.reason
 
 
-def test_blank_page_still_errors_when_ocr_family_empty() -> None:
+def test_blank_page_degrades_when_ocr_family_is_empty() -> None:
+    """pc-ztq flipped this: a blank page used to fail the whole document.
+
+    Nothing to read means nothing to lose, so the empty native page is the honest
+    result; the OCR intent is still what the rules decided, and the degradation is
+    recorded rather than silent.
+    """
     signal = make_signal(1, text_chars=0, native=False, blank=True)
     analysis = make_analysis([signal], 1)
     assert classify_page(signal, 1, extract_hints(analysis)) is Intent.OCR_GENERAL
-    with pytest.raises(NoEligibleBackendError) as exc_info:
-        plan_route(
-            analysis,
-            [make_desc("native-text")],
-            full_constraints(formats={"text/plain"}, installed_extras=set()),
-        )
-    assert exc_info.value.intent is Intent.OCR_GENERAL  # native would emit nothing
+    plan = plan_route(
+        analysis,
+        [make_desc("native-text")],
+        full_constraints(formats={"text/plain"}, installed_extras=set()),
+    )
+    page = plan.pages[0]
+    assert page.intent is Intent.NATIVE
+    assert page.candidates == ["native-text"]
+    assert page.degradation_code == "degraded-blank-page"
+    assert page.degradation_score == 0.0
 
 
 def test_textless_nonblank_page_still_errors_when_ocr_family_empty() -> None:
@@ -741,7 +751,13 @@ def test_can_degrade_requires_a_non_ocr_backend() -> None:
     assert can_degrade_to_native(signal, [make_desc("native-text")]) is True
     assert can_degrade_to_native(signal, [make_desc("ocr-only", ALL_FORMATS, group="ocr-x")]) is False
     blank = make_signal(1, text_chars=0, native=False, blank=True)
-    assert can_degrade_to_native(blank, [make_desc("native-text")]) is False
+    # pc-ztq: a blank page has no content to lose, so an empty native page is the
+    # honest result rather than a reason to fail the whole document.
+    assert can_degrade_to_native(blank, [make_desc("native-text")]) is True
+    # A page that visibly holds content but has no text layer must still refuse:
+    # native would emit an empty page for a scan.
+    scanned = make_signal(1, text_chars=0, native=False, blank=False, images=1)
+    assert can_degrade_to_native(scanned, [make_desc("native-text")]) is False
 
 
 # ── degradation records: codes, scores, consistency ────────────────────────
@@ -774,6 +790,32 @@ def test_garbled_text_degradation_is_flagged_distinctly() -> None:
     assert page.degradation_code == "degraded-garbled-text"  # mojibake ≠ thin content
     assert page.degradation_score == 0.75  # clean-text share
     assert page.degradation_code != "degraded-short-text"
+
+
+def test_blank_page_keeps_its_ocr_intent_when_an_ocr_backend_is_eligible() -> None:
+    """The classification is untouched: with an OCR family present, nothing changes."""
+    signal = make_signal(1, text_chars=0, native=False, blank=True, images=0)
+    plan = plan_route(
+        make_analysis([signal], 1),
+        [make_desc("native-text"), make_desc("ocr-ovis", ALL_FORMATS, group="ocr-ovis", vram=2.0)],
+        full_constraints(formats={"text/plain"}),
+    )
+    page = plan.pages[0]
+    assert page.intent is Intent.OCR_GENERAL
+    assert page.candidates == ["ocr-ovis"]
+    assert page.degradation_code is None
+
+
+def test_an_all_blank_document_plans_instead_of_failing() -> None:
+    """An all-blank source is a valid, empty-ish document — not an error."""
+    signals = [make_signal(page, text_chars=0, native=False, blank=True, images=0) for page in (1, 2, 3)]
+    plan = plan_route(
+        make_analysis(signals, 3),
+        [make_desc("native-text")],
+        full_constraints(formats={"text/plain"}, installed_extras=set()),
+    )
+    assert [page.intent for page in plan.pages] == [Intent.NATIVE] * 3
+    assert {page.degradation_code for page in plan.pages} == {"degraded-blank-page"}
 
 
 def test_non_degraded_route_has_no_degradation_fields() -> None:

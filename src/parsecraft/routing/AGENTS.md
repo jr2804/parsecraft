@@ -73,13 +73,18 @@ identical plan.
   value. `QUALITY` flips the VRAM direction — a **documented proxy** for model
   strength, not a measurement (an undeclared size sorts last either way).
 - Degradation is the mirror of the NATIVE-lead guard: when an OCR-intent
-  page finds no OCR family (missing extras / `allow_ocr` off) but the page
-  still has native text (not blank, not text-less) and a non-OCR backend
-  covers the constrained format, `plan_route` degrades that page to NATIVE
-  with a recorded reason ("OCR unavailable … degraded to native …") instead
-  of failing a valid document. Genuinely blank / no-native-text pages keep
-  raising `NoEligibleBackendError` — native would emit nothing. Rule lives
-  in `rules.can_degrade_to_native`; classification itself is unchanged.
+  page finds no OCR family (missing extras / `allow_ocr` off / no usable GPU)
+  but native can tell the truth about it, `plan_route` degrades that page to
+  NATIVE with a recorded reason ("OCR unavailable … degraded to native …")
+  instead of failing a valid document. Two shapes may degrade: a page with
+  native text, and a **blank** page (pc-ztq — nothing to read, so the empty
+  native page is the honest result; refusing there once failed whole documents
+  over a page with no content). A page that visibly holds content but has no
+  text layer keeps raising `NoEligibleBackendError`: native would silently emit
+  an empty page for a scan. Rule lives in `rules.can_degrade_to_native`;
+  classification itself is unchanged, so blank pages still route to OCR
+  whenever an OCR backend is eligible. Codes: `degraded-garbled-text`,
+  `degraded-short-text`, `degraded-blank-page` (score 0.0).
 - Language detection is an injectable seam the same way:
   `language.LanguageDetector` (`detect_language(text) -> str | None`). The
   requested language arrives as plain data on `RoutingConstraints.language`

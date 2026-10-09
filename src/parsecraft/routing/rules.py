@@ -35,9 +35,13 @@ FEATURE_FIGURES_CODE = "feature:figures"
 FEATURE_CODE_CODE = "feature:code"
 
 
-#: Degradation codes: mojibake vs thin content mean different things downstream.
+#: Degradation codes: mojibake vs thin content vs nothing-at-all mean different
+#: things downstream.
 DEGRADED_GARBLED_TEXT_CODE = "degraded-garbled-text"
 DEGRADED_SHORT_TEXT_CODE = "degraded-short-text"
+#: A blank page (pc-ztq): it holds no content, so an empty native page loses
+#: nothing — unlike mojibake or thin text, there is no extraction to lose.
+DEGRADED_BLANK_PAGE_CODE = "degraded-blank-page"
 
 
 class IntentRule(BaseModel):
@@ -125,10 +129,14 @@ def in_intent_family(intent: Intent, descriptor: BackendDescriptor) -> bool:
 def degradation_for(signal: PageSignal) -> tuple[str, float]:
     """``(code, score)`` recorded when an OCR-intent page degrades to native.
 
-    Garbled pages report the clean-text share (``1 - replacement_ratio``);
-    thin pages report the share of the native-text threshold met
+    A blank page scores 0.0: it holds none of the text a native pass is asked
+    for, and an empty page is the honest result rather than a loss. Garbled pages
+    report the clean-text share (``1 - replacement_ratio``); every other
+    degrading page reports the share of the native-text threshold met
     (``text_chars / NATIVE_MIN_TEXT_CHARS``) — both in ``[0, 1]``.
     """
+    if signal.blank:
+        return DEGRADED_BLANK_PAGE_CODE, 0.0
     ratio = signal.replacement_char_ratio
     if ratio is not None and ratio > MAX_REPLACEMENT_RATIO:
         return DEGRADED_GARBLED_TEXT_CODE, round(max(1.0 - ratio, 0.0), 6)
@@ -136,14 +144,23 @@ def degradation_for(signal: PageSignal) -> tuple[str, float]:
 
 
 def can_degrade_to_native(signal: PageSignal, eligible: Sequence[BackendDescriptor]) -> bool:
-    """OCR-intent fallback: only when the page can actually emit native text.
+    """OCR-intent fallback: whether a native pass can honestly stand in.
 
-    Mirror of the planner's NATIVE-lead guard: with no OCR family available,
-    a page that still has native text (not blank, not text-less) degrades to
-    NATIVE with a recorded reason; a genuinely blank/no-native-text page must
-    keep raising, because native would emit nothing.
+    Mirror of the planner's NATIVE-lead guard: with no OCR family available
+    (missing extras, ``allow_ocr`` off, no usable GPU) a page may degrade to
+    NATIVE with a recorded reason — but only when native can tell the truth about
+    it. Three shapes differ, and only two may degrade:
+
+    - **blank** — there is nothing to read, so native's empty page *is* the
+      result. Refusing here failed a whole document over a page with no content
+      (pc-ztq); the OCR intent is untouched, so the page still routes to OCR
+      whenever an OCR backend is eligible.
+    - **thin or garbled text** — native extracts what is there; the recorded
+      degradation keeps the loss visible.
+    - **scanned, no native text** — native would emit an empty page for a page
+      that visibly has content, so the refusal stays.
     """
-    return not signal.blank and signal.has_native_text and any(not is_ocr(descriptor) for descriptor in eligible)
+    return (signal.blank or signal.has_native_text) and any(not is_ocr(descriptor) for descriptor in eligible)
 
 
 def is_ocr(descriptor: BackendDescriptor) -> bool:

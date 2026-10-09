@@ -915,6 +915,27 @@ def test_degradation_quality_signal_ride_on_the_document(monkeypatch: pytest.Mon
     assert second.document.quality == quality
 
 
+def test_blank_page_degrades_into_a_document_level_quality_signal(monkeypatch: pytest.MonkeyPatch) -> None:
+    """pc-ztq end to end: the blank page converts instead of failing the document."""
+    registry = make_registry(monkeypatch)
+    add_stub(registry, make_descriptor("native-a"))
+    analysis = AnalysisResult(
+        source_hash="0" * 64,
+        page_count=1,
+        signals=[_PS(page_number=1, has_native_text=False, text_chars=0, image_count=0, blank=True, replacement_char_ratio=None)],
+        diagnostics=[],
+    )
+
+    result = execute(analysis, registry, make_constraints(), make_source(), produced_at=PRODUCED)
+
+    assert pipeline_failure(result.document) is None  # an empty-ish document, not a failure
+    quality = result.document.quality
+    assert [signal.name for signal in quality] == ["degraded-blank-page"]
+    assert quality[0].page_number == 1
+    assert quality[0].score == 0.0  # nothing to extract, so nothing lost
+    assert "degraded to native" in (quality[0].detail or "")
+
+
 def test_non_degraded_document_has_empty_quality(monkeypatch: pytest.MonkeyPatch) -> None:
     registry = make_registry(monkeypatch)
     add_stub(registry, make_descriptor("native-a"))

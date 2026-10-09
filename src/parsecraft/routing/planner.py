@@ -61,9 +61,10 @@ def plan_route(
         degradation_score: float | None = None
         if not family and intent is not Intent.NATIVE and can_degrade_to_native(signal, eligible):
             # Mirror of the NATIVE-lead guard: no OCR family is available
-            # (missing extras / allow_ocr off) but this page can still emit
-            # native text → degrade to NATIVE with a recorded reason instead
-            # of failing a valid document (routing/AGENTS.md).
+            # (missing extras / allow_ocr off / no usable GPU) but native can
+            # tell the truth about this page (it has text, or it is blank) →
+            # degrade to NATIVE with a recorded reason instead of failing a
+            # valid document (routing/AGENTS.md, pc-ztq).
             degraded = True
             degradation_code, degradation_score = degradation_for(signal)
             intent = Intent.NATIVE

@@ -213,7 +213,10 @@ def test_zero_pages_and_zero_analyzer_chars_yield_none_rates(monkeypatch: pytest
     assert row.pages == 0
     assert row.pages_per_second is None
     assert row.text_coverage is None
-    assert row.selected is None  # no page signals → plan_route raises → unplannable
+    # The blank page plans now (pc-ztq: it degrades to native), so the row IS
+    # selected — the None rates above come from zero output, not from an
+    # unplannable document.
+    assert row.selected is True
 
 
 # ── skips ──────────────────────────────────────────────────────────────────
