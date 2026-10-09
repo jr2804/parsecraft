@@ -25,6 +25,9 @@ Always applicable. Boundaries, priorities, verification, checklist.
 ## Change constraints
 
 - Minimal, surgical edits. Preserve existing style.
+- **Progressive, never pinned** (user directive 2026-10-09): mise tools and
+  dependencies track `latest`. When an update breaks the gate, fix the code or
+  the dependency — never pin the tool back to the version that used to pass.
 - No new dependencies without explicit instruction.
 - No unrelated refactoring while fixing a bug.
 - Optional extras / joint-resolution scope — see rule 10 in root `AGENTS.md`.
