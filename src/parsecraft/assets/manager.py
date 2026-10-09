@@ -244,28 +244,6 @@ class AssetManager:
         if available - self.min_free_bytes < required:
             raise InsufficientDiskSpaceError(pin.descriptor.model_id, pin.descriptor.model_revision, required, available)
 
-    @staticmethod
-    def _verify_checksums(pin: AssetPin, target: Path) -> dict[str, VerifiedFile]:
-        """Hash every pinned file, raising on the first mismatch.
-
-        Returns the verified stamps so the caller can record them in the marker
-        without reading the files a second time.
-        """
-        model_id = pin.descriptor.model_id
-        revision = pin.descriptor.model_revision
-        verified: dict[str, VerifiedFile] = {}
-        for filename in pin.filenames:
-            expected = pin.expected_sha256.get(filename)
-            if expected is None:
-                continue
-            path = target / filename
-            actual = sha256_of(path)
-            if actual != expected:
-                raise ChecksumMismatchError(model_id, revision, filename, expected, actual)
-            stat = path.stat()
-            verified[filename] = VerifiedFile(sha256=actual, size=stat.st_size, mtime_ns=stat.st_mtime_ns)
-        return verified
-
     # ── verification marker ────────────────────────────────────────────────
 
     def _marker_path(self, model_id: str, revision: str) -> Path:
@@ -290,7 +268,45 @@ class AssetManager:
             return None
         return marker
 
-    def _marker_verifies(self, pin: AssetPin, marker: VerificationMarker, target: Path) -> bool:
+    def _write_marker(self, model_id: str, revision: str, verified: dict[str, VerifiedFile]) -> None:
+        """Record what was just verified; written atomically so a torn marker is ignored."""
+        path = self._marker_path(model_id, revision)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        marker = VerificationMarker(
+            record_version=_MARKER_RECORD_VERSION,
+            model_id=model_id,
+            model_revision=revision,
+            files=verified,
+        )
+        temporary = path.with_name(f"{path.name}.tmp")
+        payload = json.dumps(marker.model_dump(mode="json"), indent=2, sort_keys=True)
+        temporary.write_text(f"{payload}\n", encoding="utf-8")
+        os.replace(temporary, path)
+
+    @staticmethod
+    def _verify_checksums(pin: AssetPin, target: Path) -> dict[str, VerifiedFile]:
+        """Hash every pinned file, raising on the first mismatch.
+
+        Returns the verified stamps so the caller can record them in the marker
+        without reading the files a second time.
+        """
+        model_id = pin.descriptor.model_id
+        revision = pin.descriptor.model_revision
+        verified: dict[str, VerifiedFile] = {}
+        for filename in pin.filenames:
+            expected = pin.expected_sha256.get(filename)
+            if expected is None:
+                continue
+            path = target / filename
+            actual = sha256_of(path)
+            if actual != expected:
+                raise ChecksumMismatchError(model_id, revision, filename, expected, actual)
+            stat = path.stat()
+            verified[filename] = VerifiedFile(sha256=actual, size=stat.st_size, mtime_ns=stat.st_mtime_ns)
+        return verified
+
+    @staticmethod
+    def _marker_verifies(pin: AssetPin, marker: VerificationMarker, target: Path) -> bool:
         """Whether every pinned file is unchanged since the marker recorded it."""
         for filename in pin.filenames:
             expected = pin.expected_sha256.get(filename)
@@ -306,21 +322,6 @@ class AssetManager:
             if recorded.size != stat.st_size or recorded.mtime_ns != stat.st_mtime_ns:
                 return False
         return True
-
-    def _write_marker(self, model_id: str, revision: str, verified: dict[str, VerifiedFile]) -> None:
-        """Record what was just verified; written atomically so a torn marker is ignored."""
-        path = self._marker_path(model_id, revision)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        marker = VerificationMarker(
-            record_version=_MARKER_RECORD_VERSION,
-            model_id=model_id,
-            model_revision=revision,
-            files=verified,
-        )
-        temporary = path.with_name(f"{path.name}.tmp")
-        payload = json.dumps(marker.model_dump(mode="json"), indent=2, sort_keys=True)
-        temporary.write_text(f"{payload}\n", encoding="utf-8")
-        os.replace(temporary, path)
 
 
 def _dist_version_or(default: str) -> str:

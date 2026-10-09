@@ -16,8 +16,11 @@ Discovery contract:
 from __future__ import annotations
 
 import hashlib
+import importlib
 import threading
+from collections.abc import Mapping
 from importlib.metadata import entry_points
+from typing import Protocol, cast
 
 from parsecraft.backends.errors import (
     BackendAlreadyRegisteredError,
@@ -121,17 +124,6 @@ class BackendRegistry:
             suffixes |= self.suffixes_for(descriptor, installed_only=installed_only)
         return suffixes
 
-    def suffixes_for(self, descriptor: BackendDescriptor, *, installed_only: bool = True) -> set[str]:
-        """The suffixes ONE descriptor can ingest — the per-backend half of :meth:`suffixes`."""
-        if installed_only and not _extra_installed(descriptor):
-            return set()
-        # Imported here, not at module scope: ``parsecraft.pipeline`` imports
-        # ``parsecraft.backends``, so a module-level import would cycle.
-        from parsecraft.pipeline.analysis import MEDIA_TYPES
-
-        formats = descriptor.capabilities.supported_formats
-        return {suffix for suffix, media_type in MEDIA_TYPES.items() if media_type in formats}
-
     def fingerprint(self) -> str:
         """Deterministic identity of the registered backend set — a cache key.
 
@@ -153,6 +145,15 @@ class BackendRegistry:
         """
         factory = self._factory_for(name)
         return factory(config if config is not None else BackendConfig(name=name))
+
+    @staticmethod
+    def suffixes_for(descriptor: BackendDescriptor, *, installed_only: bool = True) -> set[str]:
+        """The suffixes ONE descriptor can ingest — the per-backend half of :meth:`suffixes`."""
+        if installed_only and not _extra_installed(descriptor):
+            return set()
+
+        formats = descriptor.capabilities.supported_formats
+        return {suffix for suffix, media_type in _media_types().items() if media_type in formats}
 
     def _factory_for(self, name: str) -> BackendFactory:
         """Locked lookup of ``name``'s factory (discovery first); raises NotFound."""
@@ -189,12 +190,47 @@ class BackendRegistry:
 default_registry = BackendRegistry()
 
 
+class _AnalysisModule(Protocol):
+    """The slice of ``parsecraft.pipeline.analysis`` the projection reads."""
+
+    MEDIA_TYPES: Mapping[str, str]
+
+
+class _ProbeModule(Protocol):
+    """The slice of ``parsecraft.environment.probe`` the projection reads."""
+
+    def extra_present(self, group: str) -> bool:
+        """Whether every import package of an extra resolves."""
+        ...
+
+
 def _extra_installed(descriptor: BackendDescriptor) -> bool:
     """Whether a descriptor's optional extra is actually installed (detected)."""
     group = descriptor.capabilities.optional_dependency_group
     if group is None:  # no extra gate — the backend is always a candidate
         return True
-    # Local import: ``parsecraft.environment`` imports ``parsecraft.backends``.
-    from parsecraft.environment.probe import extra_present
 
-    return extra_present(group)
+    return _extra_present(group)
+
+
+def _extra_present(group: str) -> bool:
+    """``environment.probe.extra_present``, resolved at call time.
+
+    ``parsecraft.environment`` imports this package, so a module-level import here
+    would cycle — and an *inline* ``from`` import would be hoisted to the top by
+    pyreorder (``[transforms] hoist_inline_imports = true``), reintroducing it.
+    ``importlib`` at call time, through a declared Protocol so the attribute
+    access stays typed, is the shape that survives both.
+    """
+    module = cast("_ProbeModule", importlib.import_module("parsecraft.environment.probe"))
+    return module.extra_present(group)
+
+
+def _media_types() -> Mapping[str, str]:
+    """The extension→MIME table ``pipeline.MEDIA_TYPES`` — the single source.
+
+    Fetched at call time for the same cycle reason as :func:`_extra_present`:
+    ``parsecraft.pipeline`` imports this package.
+    """
+    module = cast("_AnalysisModule", importlib.import_module("parsecraft.pipeline.analysis"))
+    return module.MEDIA_TYPES

@@ -387,6 +387,25 @@ def test_ensure_skips_files_without_pinned_checksum(tmp_path: Path) -> None:
     assert Path(paths[0]).read_bytes() == CONTENT
 
 
+def test_marker_fast_path_tolerates_a_pin_without_checksums(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unpinned file carries no integrity contract, so a verified marker still holds.
+
+    The fast path walks the pin's files, finds a file the pin gives no digest for,
+    and skips it rather than reading the missing pin as a change.
+    """
+    manager = AssetManager(cache_dir=tmp_path, downloader=FakeDownloader())
+    pin = make_pin(expected_sha256={})
+    manager.ensure(pin)
+
+    hashed: list[str] = []
+    monkeypatch.setattr(manager_module, "sha256_of", lambda path: hashed.append(path.name) or DIGEST)
+    assert manager.ensure(pin) == [str(tmp_path / "acme--model" / "abc123" / "weights.bin")]
+    assert hashed == []  # nothing to re-check, so nothing was read
+
+
 def test_ensure_announces_the_download_before_fetching(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     """One INFO line (model, size, destination) exists before the first fetch call."""
     announced: list[bool] = []

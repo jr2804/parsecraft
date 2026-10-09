@@ -179,7 +179,7 @@ class _EngineStub:
     ) -> list[VllmOutput]:
         assert isinstance(sampling, _SamplingParamsStub)
         self.calls.append((requests, sampling))
-        return cast("list[VllmOutput]", [_VllmOutputStub(self.text)])
+        return [_VllmOutputStub(self.text)]
 
 
 class _VllmStub:

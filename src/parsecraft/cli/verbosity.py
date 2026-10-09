@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 
 #: Library defaults applied before a backend imports its stack, unless verbose.
@@ -45,7 +45,7 @@ QUIET_LOGGERS: tuple[str, ...] = (
 
 
 @contextmanager
-def third_party_output(*, verbose: bool) -> Iterator[None]:
+def third_party_output(*, verbose: bool) -> Generator[None]:
     """Suppress third-party library chatter for the duration, unless ``verbose``.
 
     ``verbose`` suppresses nothing at all: it leaves the environment and every
