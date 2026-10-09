@@ -219,6 +219,38 @@ def test_zero_pages_and_zero_analyzer_chars_yield_none_rates(monkeypatch: pytest
     assert row.selected is True
 
 
+def test_unplannable_document_keeps_selected_null(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A document routing cannot plan is still measured, with no invented verdict.
+
+    The page is a scan: no text layer, not blank, and the registry holds no OCR
+    backend — the one shape that still refuses to degrade (pc-ztq), so
+    ``plan_route`` raises and ``selected`` stays null instead of claiming a route.
+    """
+
+    def scanned_analysis(source: SourceDocument, name: str) -> AnalysisResult:
+        return AnalysisResult(
+            source_hash="0" * 64,
+            page_count=1,
+            signals=[
+                PageSignal(
+                    page_number=1,
+                    has_native_text=False,
+                    text_chars=0,
+                    image_count=1,
+                    blank=False,
+                    replacement_char_ratio=None,
+                )
+            ],
+            diagnostics=[],
+        )
+
+    registry = make_registry(monkeypatch)
+    add_stub(registry, make_descriptor("native-a"), analyze_fn=scanned_analysis)
+    report = run_benchmark([make_document(tmp_path, "doc-s.txt")], registry, default_constraints())
+    row = report.results[0]
+    assert row.selected is None  # unplannable: the row is measured, the verdict is not invented
+
+
 # ── skips ──────────────────────────────────────────────────────────────────
 
 
