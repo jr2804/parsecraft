@@ -62,7 +62,15 @@ def _offline_tripwire(request: pytest.FixtureRequest, monkeypatch: pytest.Monkey
     real_connect = cast("_LooseCall", socket.socket.connect)
 
     def _is_local(host: object) -> bool:
-        """Loopback and wildcard literals are not the network (pc-mp2)."""
+        """Loopback and wildcard literals are not the network (pc-mp2).
+
+        Exempt because loopback traffic never leaves this machine, so
+        local-transport tests stay real; anything intentionally talking to a
+        local service is marker-gated anyway (the ollama judge). A hostname
+        that RESOLVES to loopback is still caught — getaddrinfo is tripwired
+        before any address exists. Do not widen this list: it exempts a
+        shape, not a purpose.
+        """
         return not isinstance(host, str) or host == "" or host.lower() in {"localhost", "127.0.0.1", "::1"} or host.startswith("127.")
 
     def _deny(nodeid: str) -> NoReturn:
