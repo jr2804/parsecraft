@@ -17,6 +17,10 @@ run_windows = ".venv-gpu/Scripts/python -m pytest tests/test_backends_ocr_gpu.py
 description = "Judge tier: live systemone/jev-latest (TYPESAFE_API_KEY), zen/<model> (OPENCODE_API_KEY), or the semi-live local ollama/<model> (needs the systemone extra: uv run --isolated --extra systemone pytest -m judge --run-judge)"
 run = "uv run pytest -m judge --run-judge"
 
+[tasks.test-network]
+description = "Network tier: tests marked `network` (real fetches — honest name, not riding corpus)"
+run = "uv run pytest -m network --run-downloads"
+
 [tasks.bench-docling]
 description = "Docling vs native-pdf measurement (on-demand, NOT part of the gate; full corpus may take hours)"
 run = "uv run --extra docling --extra pdf --extra pdf-lite python scripts/bench_docling.py .tmp/docling-bench/*.pdf"

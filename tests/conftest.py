@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import socket
+from collections.abc import Iterator, Mapping
 from pathlib import Path
+from typing import NoReturn, Protocol, cast
 
 import pytest
 
@@ -19,6 +22,81 @@ _RUN_GPU = "--run-gpu"
 _RUN_JUDGE = "--run-judge"
 
 _test_dir = Path(__file__).parent
+
+#: Opt-in tiers that legitimately connect. The offline tripwire exempts on the
+#: MARKER alone — never on test names or module lists — so the mechanism stays
+#: general (pc-mp2).
+_NETWORK_EXEMPT_MARKERS = frozenset({_NETWORK_MARKER, _CORPUS_MARKER, _GPU_MARKER, _JUDGE_MARKER})
+
+
+class _LooseCall(Protocol):
+    """Delegated socket primitive: the wrappers below call the real one loosely."""
+
+    def __call__(self, *args: object, **kwargs: object) -> object: ...
+
+
+class _HasKeywords(Protocol):
+    """What the tripwire reads off ``request.node`` (pytest does not export Node)."""
+
+    keywords: Mapping[str, object]
+
+
+def _may_reach_network(item: _HasKeywords) -> bool:
+    """Whether ``item`` carries an opt-in tier marker (keyed on the marker alone)."""
+    return any(marker in item.keywords for marker in _NETWORK_EXEMPT_MARKERS)
+
+
+@pytest.fixture(autouse=True)
+def _offline_tripwire(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """The default suite must PROVE offline, not merely avoid network by luck (pc-mp2).
+
+    Any real network attempt in an ordinary test raises immediately and names
+    the test. The block is socket-level, so httpx, urllib, huggingface_hub and
+    the judge SDKs are all covered by one gate; it does not reach
+    subprocesses (the offline-import gate blocks network in its own
+    subprocess already). Exemption keys on the tier MARKER alone: network /
+    judge / corpus / gpu tests only run under their ``--run-*`` flags, so an
+    unmarked test can never legitimately connect.
+    """
+    if _may_reach_network(request.node):
+        yield
+        return
+
+    real_getaddrinfo = cast("_LooseCall", socket.getaddrinfo)
+    real_create_connection = cast("_LooseCall", socket.create_connection)
+    real_connect = cast("_LooseCall", socket.socket.connect)
+
+    def _is_local(host: object) -> bool:
+        """Loopback and wildcard literals are not the network (pc-mp2)."""
+        return not isinstance(host, str) or host == "" or host.lower() in {"localhost", "127.0.0.1", "::1"} or host.startswith("127.")
+
+    def _deny(nodeid: str) -> NoReturn:
+        raise AssertionError(
+            f"{nodeid} reached the network — mark it '{_NETWORK_MARKER}' (or a tier marker) and run it under the matching --run flag, or stub the call"
+        )
+
+    nodeid = request.node.nodeid
+
+    def _forbidden_getaddrinfo(host: object, port: object, *args: object, **kwargs: object) -> object:
+        if _is_local(host):
+            return real_getaddrinfo(host, port, *args, **kwargs)
+        _deny(nodeid)
+
+    def _forbidden_create_connection(address: object, *args: object, **kwargs: object) -> object:
+        if isinstance(address, tuple) and address and _is_local(address[0]):
+            return real_create_connection(address, *args, **kwargs)
+        _deny(nodeid)
+
+    def _forbidden_connect(self: socket.socket, address: object, *args: object, **kwargs: object) -> None:
+        if isinstance(address, tuple) and address and _is_local(address[0]):
+            real_connect(self, address, *args, **kwargs)
+        else:
+            _deny(nodeid)
+
+    monkeypatch.setattr(socket, "getaddrinfo", _forbidden_getaddrinfo)
+    monkeypatch.setattr(socket, "create_connection", _forbidden_create_connection)
+    monkeypatch.setattr(socket.socket, "connect", _forbidden_connect)
+    yield
 
 
 @pytest.fixture
