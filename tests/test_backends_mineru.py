@@ -428,9 +428,15 @@ def test_convert_enables_image_analysis_on_request(mineru_stub: _State) -> None:
     assert mineru_stub.convert_calls[0]["image_analysis"] is True
 
 
-def test_create_points_mineru_home_at_the_parsecraft_cache(mineru_stub: _State, tmp_path: Path) -> None:
+def test_create_points_mineru_home_into_the_managed_cache(mineru_stub: _State, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """ADR-0007 d4: the self-fetched weights must sit where the cache tooling looks."""
+    monkeypatch.setattr("parsecraft.assets.manager.user_cache_path", lambda _appname: tmp_path / "cache")
     _backend()
-    assert os.environ["MINERU_HOME"] == str(tmp_path / "cache" / "mineru")
+    asset = mineru_module.MINERU_ASSET
+    expected = tmp_path / "cache" / "models" / asset.model_id.replace("/", "--") / asset.model_revision
+    # <cache root>/models/<slug>/<revision> — a revision dir of the managed
+    # layout, never a sibling of it: `models list`/`clean`/`remove` must see it.
+    assert Path(os.environ["MINERU_HOME"]) == expected
 
 
 def test_create_respects_an_existing_mineru_home(mineru_stub: _State, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -503,7 +509,7 @@ def test_page_number_is_the_single_normalization_point(mineru_stub: _State) -> N
 
 
 @pytest.fixture
-def mineru_stub(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[_State]:
+def mineru_stub(monkeypatch: pytest.MonkeyPatch) -> Iterator[_State]:
     """Install the stub package tree and force a fresh heavy-impl import."""
     state = _State()
     saved_env = dict(os.environ)
@@ -533,29 +539,22 @@ def mineru_stub(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[_St
         def close(self) -> None:
             self.closed = True
 
-    def _user_cache_path(_name: str) -> Path:
-        return tmp_path / "cache"
-
     mineru_pkg = types.ModuleType("mineru")
     analyze_pkg = types.ModuleType("mineru.backend")
     analyze_mod = types.ModuleType("mineru.backend.analyze")
     render_mod = types.ModuleType("mineru.render")
     pdfium_mod = types.ModuleType("pypdfium2")
-    platformdirs_mod = types.ModuleType("platformdirs")
     # ``__dict__.update`` is the spelling ruff (B010) and ty both accept:
     # ``setattr(module, ...)`` is rewritten to attribute assignment by --fix,
     # which ty then rejects on a ModuleType.
     analyze_mod.__dict__.update({"doc_analyze": _doc_analyze})
     render_mod.__dict__.update({"render_content_list": _render_content_list})
     pdfium_mod.__dict__.update({"PdfDocument": _PdfDocument})
-    platformdirs_mod.__dict__.update({"user_cache_path": _user_cache_path})
-
     monkeypatch.setitem(sys.modules, "mineru", mineru_pkg)
     monkeypatch.setitem(sys.modules, "mineru.backend", analyze_pkg)
     monkeypatch.setitem(sys.modules, "mineru.backend.analyze", analyze_mod)
     monkeypatch.setitem(sys.modules, "mineru.render", render_mod)
     monkeypatch.setitem(sys.modules, "pypdfium2", pdfium_mod)
-    monkeypatch.setitem(sys.modules, "platformdirs", platformdirs_mod)
     monkeypatch.delenv("MINERU_HOME", raising=False)
     monkeypatch.delitem(sys.modules, _IMPL_MODULE, raising=False)
     try:

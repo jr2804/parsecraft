@@ -21,9 +21,10 @@ Design notes:
   upstream as a cheaper selection input but is deliberately unused until its
   base is verified.
 - MinerU downloads its own weights into ``$MINERU_HOME/models``; ``create()``
-  points ``MINERU_HOME`` at the parsecraft cache unless the user already set
-  it, so the weights stay inside parsecraft's cache tooling and the offline
-  carve-out.
+  points ``MINERU_HOME`` at a revision directory of the managed cache (via
+  ``assets.manager.default_cache_dir`` + ``model_revision_dir``) unless the user
+  already set it, so ``models list``/``clean``/``remove`` see and reclaim the
+  weights (ADR-0007 d4) and the offline carve-out applies.
 - ``image_analysis`` defaults to off: the declared surface needs text chunks,
   and skipping the visual-crop stage is both faster (21.6 s vs 30.5 s on the
   verified fixture) and avoids rasterizing every page.
@@ -41,10 +42,15 @@ from typing import Any
 import pypdfium2 as pdfium  # ty: ignore[unresolved-import] — docvortex dependency; heavy by contract
 from mineru.backend.analyze import doc_analyze  # ty: ignore[unresolved-import] — extra not installed in dev/CI
 from mineru.render import render_content_list  # ty: ignore[unresolved-import] — extra not installed in dev/CI
-from platformdirs import user_cache_path
 
+from parsecraft.assets.manager import default_cache_dir, model_revision_dir
 from parsecraft.backends.errors import BackendError
-from parsecraft.backends.mineru.mineru import DESCRIPTOR, MINERU_BACKEND_VERSION, MINERU_NAME
+from parsecraft.backends.mineru.mineru import (
+    DESCRIPTOR,
+    MINERU_ASSET,
+    MINERU_BACKEND_VERSION,
+    MINERU_NAME,
+)
 from parsecraft.backends.protocol import (
     AnalysisResult,
     BackendConfig,
@@ -180,16 +186,19 @@ def create(config: BackendConfig) -> DocumentBackend:
 
 
 def configure_mineru_env() -> None:
-    """Point MinerU's weight store at the parsecraft cache (cache discipline).
+    """Point MinerU's weight store inside the managed cache layout (ADR-0007 d4).
 
     MinerU fetches its own weights into ``$MINERU_HOME/models`` at conversion
-    time. Without this they land in ``~/.mineru``, outside parsecraft's cache
-    tooling and outside the offline carve-out. An explicitly set
+    time. Without this they land in ``~/.mineru``, where ``parsecraft models
+    list`` cannot see them and ``models clean``/``remove`` cannot reclaim them.
+    The path is a revision directory of the managed layout, so the cache
+    tooling reads and reclaims it like any other model. An explicitly set
     ``MINERU_HOME`` always wins — that is the user's own cache choice.
     """
     if os.environ.get("MINERU_HOME"):
         return
-    os.environ["MINERU_HOME"] = str(user_cache_path("parsecraft") / "mineru")
+    asset = MINERU_ASSET
+    os.environ["MINERU_HOME"] = str(model_revision_dir(default_cache_dir(), asset.model_id, asset.model_revision))
 
 
 def _effort(config: BackendConfig) -> str:

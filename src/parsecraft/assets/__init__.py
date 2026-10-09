@@ -15,7 +15,13 @@ from parsecraft.assets.errors import (
     LicenseNotAcceptedError,
     OfflineModeError,
 )
-from parsecraft.assets.manager import AssetManager, sha256_of, slug
+from parsecraft.assets.manager import (
+    AssetManager,
+    default_cache_dir,
+    model_revision_dir,
+    sha256_of,
+    slug,
+)
 from parsecraft.assets.models import (
     AssetPin,
     CachedAsset,
@@ -39,8 +45,10 @@ __all__ = [
     "LicenseAcceptance",
     "LicenseNotAcceptedError",
     "OfflineModeError",
+    "default_cache_dir",
     "default_downloader",
     "human_bytes",
+    "model_revision_dir",
     "sha256_of",
     "slug",
 ]

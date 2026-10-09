@@ -63,10 +63,11 @@ items to typed IR chunks.
 - Bounds are honored: cancellation, `timeout_s` (checked after the single
   blocking pass), and `max_output_chars`. Failures stay typed (`CANCELLED`,
   `TIMEOUT`, `BUDGET_EXCEEDED`, `BACKEND_ERROR`), never raw.
-- **Cache discipline:** the model cache lives under the parsecraft cache dir
-  (`MINERU_HOME` → `user_cache_path("parsecraft") / "mineru"`), so a model is
-  downloaded once per host rather than per run, and third-party loader progress
-  bars are muted so the CLI output stays readable.
+- **Cache discipline:** `MINERU_HOME` is a revision directory of the managed
+  cache (`<cache>/models/<slug>/<revision>`), so the self-fetched weights are
+  visible to `parsecraft models list` and reclaimable by `models
+  clean`/`remove`; a model is downloaded once per host rather than per run, and
+  third-party loader progress bars are muted so the CLI output stays readable.
 - **Offline:** `options["offline"]` is read before any model work; a declared
   offline run refuses a checkpoint download instead of attempting it.
 - Rule 10: the `mineru` extra must resolve jointly with every other extra —

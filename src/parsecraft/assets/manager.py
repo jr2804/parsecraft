@@ -66,7 +66,7 @@ class AssetManager:
         offline: bool = False,
         min_free_bytes: int = 0,
     ) -> None:
-        self.cache_dir = cache_dir if cache_dir is not None else user_cache_path("parsecraft") / "models"
+        self.cache_dir = cache_dir if cache_dir is not None else default_cache_dir()
         self.downloader: Downloader = downloader if downloader is not None else default_downloader()
         self.offline = offline
         self.min_free_bytes = min_free_bytes
@@ -113,7 +113,7 @@ class AssetManager:
 
     def revision_dir(self, model_id: str, revision: str) -> Path:
         """Local directory holding one pinned revision."""
-        return self.cache_dir / slug(model_id) / revision
+        return model_revision_dir(self.cache_dir, model_id, revision)
 
     def remove(self, model_id: str, revision: str) -> bool:
         """Delete one cached revision; return whether anything was removed."""
@@ -329,6 +329,16 @@ def _dist_version_or(default: str) -> str:
         return _dist_version("parsecraft")
     except Exception:  # noqa: BLE001 - any metadata failure falls back
         return default
+
+
+def default_cache_dir() -> Path:
+    """The managed model cache root (``<user cache>/parsecraft/models``)."""
+    return user_cache_path("parsecraft") / "models"
+
+
+def model_revision_dir(cache_dir: Path, model_id: str, revision: str) -> Path:
+    """Local directory holding one pinned revision under ``cache_dir``."""
+    return cache_dir / slug(model_id) / revision
 
 
 def slug(model_id: str) -> str:

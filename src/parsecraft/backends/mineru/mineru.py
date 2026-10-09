@@ -14,7 +14,7 @@ docs statement — never install this extra silently.
 from __future__ import annotations
 
 import importlib
-from types import ModuleType
+from typing import Protocol, runtime_checkable
 
 from parsecraft.backends.errors import BackendError, DependencyUnavailableError
 from parsecraft.backends.protocol import (
@@ -93,6 +93,15 @@ DESCRIPTOR = BackendDescriptor(
 )
 
 
+@runtime_checkable
+class _ImplModule(Protocol):
+    """Shape the light factory needs from the heavy impl module."""
+
+    def create(self, config: BackendConfig) -> DocumentBackend:
+        """Instantiate the backend — the sanctioned heavy-import boundary."""
+        ...
+
+
 class MineruBackendFactory:
     """Light factory: resolves the heavy impl at instantiation, never before."""
 
@@ -102,13 +111,13 @@ class MineruBackendFactory:
         return _load_impl().create(config)
 
 
-def _load_impl() -> ModuleType:
+def _load_impl() -> _ImplModule:
     """Import the heavy impl module at instantiation time — the only heavy boundary."""
     try:
         module = importlib.import_module(_IMPL_MODULE)
     except ImportError as exc:
-        raise DependencyUnavailableError(_EXTRA, _EXTRA) from exc
-    if not hasattr(module, "create"):
+        raise DependencyUnavailableError(exc.name or _EXTRA, _EXTRA) from exc
+    if not isinstance(module, _ImplModule):
         msg = f"impl module {_IMPL_MODULE!r} must expose create(config)"
         raise BackendError(msg)
     return module
