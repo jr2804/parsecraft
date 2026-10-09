@@ -22,6 +22,7 @@ from parsecraft.environment.constraints import constraints_from_environment
 from parsecraft.environment.models import EnvironmentInfo
 from parsecraft.environment.probe import EXTRA_IMPORTS, META_EXTRAS, probe_environment
 from parsecraft.routing.models import RoutingConstraints, RoutingPreference
+from parsecraft.routing.rules import is_hard_eligible
 
 #: The one module the probe looks up outside the extras map (CUDA runtime check).
 _TORCH = "torch"
@@ -478,11 +479,53 @@ def test_constraints_default_to_the_balanced_preference() -> None:
 
 
 def test_allow_ocr_derivation_and_override() -> None:
-    no_ocr = _environment(installed_extras=frozenset({"pdf-lite"}))
+    """An explicit value always wins over the derivation (both directions)."""
+    no_ocr = _environment(installed_extras=frozenset({"pdf-lite"}), engines=frozenset())
     assert constraints_from_environment(no_ocr).allow_ocr is False
     assert constraints_from_environment(no_ocr, allow_ocr=True).allow_ocr is True
     ocr_present = _environment(installed_extras=frozenset({"ocr-tele"}))
     assert constraints_from_environment(ocr_present, allow_ocr=False).allow_ocr is False
+
+
+def test_a_usable_engine_permits_ocr_without_any_ocr_extra() -> None:
+    """Decision 12: the base backend must not be excluded on a base-only host.
+
+    Deriving OCR permission from the heavyweight extras alone switched OCR off
+    for exactly the hosts decision 1 exists for — a consumer with no ``ocr-*``
+    extra and a working engine had nothing to OCR with.
+    """
+    base_only = _environment(installed_extras=frozenset({"pdf-lite"}), engines=frozenset({"tesseract"}))
+
+    assert constraints_from_environment(base_only).allow_ocr is True
+    # ...and the same host with no engine is back to the honest answer:
+    assert constraints_from_environment(_environment(installed_extras=frozenset({"pdf-lite"}), engines=frozenset())).allow_ocr is False
+
+
+def test_an_explicit_allow_ocr_still_overrides_the_engine_fact() -> None:
+    """An operator banning OCR wins even where a usable engine would permit it."""
+    banned = _environment(installed_extras=frozenset({"ocr-tele"}), engines=frozenset({"tesseract"}))
+
+    assert constraints_from_environment(banned, allow_ocr=False).allow_ocr is False
+
+
+def test_permitting_ocr_cannot_admit_a_backend_whose_engine_is_missing() -> None:
+    """The derivation is permissive; decision 13's gate is what makes it safe.
+
+    ``allow_ocr=True`` only stops OCR backends being excluded wholesale. The
+    backend still has to clear ``is_hard_eligible``, where a declared engine
+    absent from the host's set drops it — so no page is routed into a family that
+    cannot run. This test pins that composition, since the two rules live in
+    different modules.
+    """
+    host = _environment(installed_extras=frozenset({"pdf-lite"}), engines=frozenset({"some-other-engine"}))
+    constraints = constraints_from_environment(host)
+    backend = BackendDescriptor(
+        name="ocr-tesseract",
+        capabilities=BackendCapabilities(supported_formats=["application/pdf"], required_engine="tesseract"),
+    )
+
+    assert constraints.allow_ocr is True  # permissive...
+    assert is_hard_eligible(backend, constraints) is False  # ...but never eligible without its engine
 
 
 def test_constraints_reject_invalid_plan_inputs() -> None:

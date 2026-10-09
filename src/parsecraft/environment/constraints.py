@@ -24,12 +24,13 @@ def constraints_from_environment(
     ``formats`` (empty = no format restriction), ``max_passes`` and
     ``preference`` are plan inputs; ``installed_extras``/``vram_budget_gb``/
     ``gpu_usable``/``engines``/``offline`` always come from the probe.
-    ``allow_ocr=None`` derives OCR permission from the detected OCR extras; an
+    ``allow_ocr=None`` derives OCR permission from the detected OCR extras **or**
+    a usable engine (ADR-0008 decision 12 — see :func:`_ocr_possible`); an
     explicit value overrides the derivation (e.g. an operator banning OCR on a
     GPU-capable host).
     """
     if allow_ocr is None:
-        allow_ocr = any(extra.startswith(_OCR_EXTRA_PREFIX) for extra in environment.installed_extras)
+        allow_ocr = _ocr_possible(environment)
     return RoutingConstraints(
         formats=set(formats),
         installed_extras=set(environment.installed_extras),
@@ -41,3 +42,21 @@ def constraints_from_environment(
         offline=environment.offline,
         preference=preference,
     )
+
+
+def _ocr_possible(environment: EnvironmentInfo) -> bool:
+    """Whether an OCR pass could run here: an ``ocr-*`` extra, or a usable engine.
+
+    Deriving this from the heavyweight extras alone excluded the base backend on
+    exactly the hosts ADR-0008 decision 1 exists for: a base-only consumer has no
+    ``ocr-*`` extra, so OCR was switched off before the engine was ever consulted
+    and a scanned page degraded with nothing to degrade to.
+
+    The OR is deliberately permissive, and decision 13's eligibility gate is what
+    keeps it honest — a backend whose engine is absent is ineligible whatever
+    ``allow_ocr`` says, so permitting OCR can never route a page into a family
+    that then cannot run. That is also why this bridge needs no OCR-specific
+    filter over ``engines``: such a filter would have to know which backends are
+    OCR, which is the name special-casing decision 13 rules out.
+    """
+    return any(extra.startswith(_OCR_EXTRA_PREFIX) for extra in environment.installed_extras) or bool(environment.engines)
