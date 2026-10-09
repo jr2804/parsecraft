@@ -1,5 +1,9 @@
 [tasks.format]
-description = "Format code (ruff, isort, pyreorder)"
+description = "Format code (ruff, isort, pyreorder) — the explicit fixer; NOT part of `mise all`"
+# pc-flz: `mise all` runs format-check on the working tree AS IT STANDS and
+# never rewrites, so a non-canonical tree fails the gate with the formatter's
+# own message instead of being silently fixed into a false green. When that
+# happens, run `mise format` explicitly and re-run the gate.
 run = [
 	"pyreorder run src/ tests/ scripts/ examples/ --config .config/pyreorder.toml",
 	"ruff format src/ tests/ examples/",
@@ -7,18 +11,16 @@ run = [
 ]
 
 [tasks.format-md]
-description = "Lint and reformat Markdown files with rumdl"
+description = "Lint and reformat Markdown files with rumdl; NOT part of `mise all`"
 run = "rumdl fmt --config .config/rumdl.toml src/ docs/ tests/ examples/ scripts/ ./"
 
 [tasks.format-check]
-description = "Verify the committed state is formatter-canonical (pyreorder, rumdl, ruff) - never rewrites"
-# A gate that only FORMATS cannot verify a tree: drift lands silently and every
-# later gate run rewrites files in the shared worktree (two phantom-diff
-# classes landed that way in 2026-10: unsorted Python, MD046/MD013 Markdown).
-# This task fails instead of fixing, and CI runs it alone - so a commit must be
-# canonical before it lands. Locally it waits for the formatters, which is what
-# makes the developer-facing gate still auto-fix.
-wait_for = ["format", "format-md"]
+description = "Verify the working tree is formatter-canonical (pyreorder, rumdl, ruff) - never rewrites"
+# The ONLY format task in `mise all` (pc-flz): it runs on the working tree AS
+# IT STANDS, so a non-canonical tree fails the gate with the formatter's own
+# message instead of being silently rewritten into a false green — exactly how
+# 6572baf's non-canonical commit passed locally. `mise format` is the explicit
+# fixer. CI runs it alone, unchanged.
 run = [
 	"pyreorder check src/ tests/ scripts/ examples/ --config .config/pyreorder.toml",
 	"rumdl check --config .config/rumdl.toml src/ docs/ tests/ examples/ scripts/ ./",
