@@ -38,8 +38,8 @@ items to typed IR chunks.
   (0-based `page_idx` in the content list vs 1-based `page:{page_no}` in the
   doclib locators); the adapter reads `page_idx` and never the locators.
 - `analyze()` is cheap and model-free: page count, per-page text length, and
-  page size come from `pypdfium2` (a declared docvortex dependency, so no new
-  extra is needed). It never loads a model and never downloads.
+  page size come from `pypdfium2` (a base dependency, ADR-0008 — no extra
+  needed). It never loads a model and never downloads.
 - `convert()` runs one `doc_analyze` pass and maps Content List items by type
   (`text`, `table`, `equation`, `image`, `index`, `header`, `footer`,
   `page_number`) to `ChunkKind`. It returns every requested page — empty

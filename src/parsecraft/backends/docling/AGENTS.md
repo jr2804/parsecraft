@@ -49,8 +49,8 @@ plus a bound-checked `convert()` that maps docling items to typed IR chunks.
   docx/pptx/xlsx/odt/ods/odp/rtf/xls and image formats, but they stay
   undeclared until conversion-verified — mirror LiteParse's contract.
 - `analyze()` is cheap and model-free: PDF page count and text length come
-  from `pypdfium2` (a docling dependency), text formats are measured directly.
-  It never loads layout models and never downloads.
+  from `pypdfium2` (a base dependency, ADR-0008), text formats are measured
+  directly. It never loads layout models and never downloads.
 - `convert()` runs one `DocumentConverter` pass, passes `page_range` only for
   PDF (`convert(page_range=...)`), maps items per page (`TableItem` →
   `export_to_markdown`, `TextItem` labels → `ChunkKind`), and returns every
