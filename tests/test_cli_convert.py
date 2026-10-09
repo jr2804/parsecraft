@@ -413,18 +413,23 @@ def test_convert_image_prefers_installed_claimer(tmp_path: Path, monkeypatch: py
 
 
 def test_convert_offline_image_never_downloads(registry: BackendRegistry, tmp_path: Path) -> None:
-    """offline reaches create(): an image convert fails typed, naming the model, with zero downloader calls (pc-e38).
+    """Offline reaches create(): an image convert fails typed, naming the model, with zero downloader calls (pc-e38).
 
     The ``registry`` fixture declares an offline host, so the analyzer's factory
     must see ``options["offline"]`` and refuse the uncached download — the
     asset error names the model id and the downloader is never invoked.
     """
-    calls: list[str] = []
+    class _FakeDownloader:
+        """Records calls; stands in for the Hugging Face downloader."""
 
-    def downloader(url: str, target: Path, **kwargs: object) -> Path:
-        calls.append(url)
-        return target
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str, str, str]] = []
 
+        def download(self, model_id: str, revision: str, filename: str, dest_dir: str) -> str:
+            self.calls.append((model_id, revision, filename, dest_dir))
+            return str(Path(dest_dir) / filename)
+
+    downloader = _FakeDownloader()
     descriptor = _descriptor("ocr-image", ("image/png",))
 
     class _AssetFactory:
@@ -437,7 +442,7 @@ def test_convert_offline_image_never_downloads(registry: BackendRegistry, tmp_pa
             manager = AssetManager(
                 cache_dir=tmp_path / "cache",
                 downloader=downloader,
-                offline=config.options.get("offline", False),
+                offline=bool(config.options.get("offline", False)),
             )
             manager.ensure(
                 AssetPin(
@@ -460,7 +465,7 @@ def test_convert_offline_image_never_downloads(registry: BackendRegistry, tmp_pa
     result = runner.invoke(app, ["convert", str(path)])
     assert result.exit_code == 1
     assert "ocr-model-x" in _text(result)
-    assert calls == []
+    assert downloader.calls == []
 
 
 def test_convert_unsupported_dependency_version_is_classified(tmp_path: Path, registry: BackendRegistry) -> None:

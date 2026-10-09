@@ -21,6 +21,7 @@ from parsecraft.backends.protocol import (
     BackendRef,
     BackendResult,
     ConversionRequest,
+    DocumentBackend,
     SourceDocument,
 )
 from parsecraft.backends.registry import BackendRegistry
@@ -577,7 +578,7 @@ def test_analyze_source_propagates_backend_errors(monkeypatch: pytest.MonkeyPatc
 
 
 def test_analyze_source_threads_offline_option(monkeypatch: pytest.MonkeyPatch) -> None:
-    """offline reaches the analyzer's factory as options["offline"] (pc-e38)."""
+    """Offline reaches the analyzer's factory as options["offline"] (pc-e38)."""
     registry = make_registry(monkeypatch)
     seen: list[bool] = []
 
@@ -586,7 +587,7 @@ def test_analyze_source_threads_offline_option(monkeypatch: pytest.MonkeyPatch) 
 
         @staticmethod
         def __call__(config: BackendConfig) -> _WorkingAnalyzer:
-            seen.append(config.options.get("offline", False))
+            seen.append(bool(config.options.get("offline", False)))
             return _WorkingAnalyzer()
 
     registry.register("native-a", Factory())
@@ -606,19 +607,22 @@ def test_execute_threads_offline_to_every_pass(monkeypatch: pytest.MonkeyPatch) 
             self.descriptor = descriptor
 
         def __call__(self, config: BackendConfig) -> DocumentBackend:
-            seen.append(config.options.get("offline", False))
+            seen.append(bool(config.options.get("offline", False)))
             return _StubFactory(self.descriptor, echo_ok, [], None)(config)
 
     registry.register("native-a", Factory(make_descriptor("native-a")))
     analysis = make_analysis(1)
     execute(analysis, registry, make_constraints(offline=True), make_source(), produced_at=PRODUCED)
-    assert seen and all(seen)  # every pass create() saw offline=True
+    assert seen
+    assert all(seen)  # every pass create() saw offline=True
     seen.clear()
     execute(analysis, registry, make_constraints(), make_source(), produced_at=PRODUCED)
-    assert seen and all(seen)  # the library default is offline=True, so every pass sees it
+    assert seen
+    assert all(seen)  # the library default is offline=True, so every pass sees it
     seen.clear()
     execute(analysis, registry, make_constraints(offline=False), make_source(), produced_at=PRODUCED)
-    assert seen and not any(seen)  # an explicitly online host clears the flag
+    assert seen
+    assert not any(seen)  # an explicitly online host clears the flag
 
 
 def test_media_type_for_covers_extended_families(tmp_path: Path) -> None:
