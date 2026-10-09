@@ -102,7 +102,7 @@ class AssetManager:
                             model_id=model_dir.name.replace("--", "/"),
                             revision=revision_dir.name,
                             files=files,
-                            total_bytes=sum(file.size_bytes for file in files),
+                            total_bytes=_revision_bytes(revision_dir),
                         )
                     )
         return CacheReport(
@@ -344,6 +344,16 @@ def model_revision_dir(cache_dir: Path, model_id: str, revision: str) -> Path:
 def slug(model_id: str) -> str:
     """Filesystem-safe directory name for a model id."""
     return model_id.replace("/", "--")
+
+
+def _revision_bytes(revision_dir: Path) -> int:
+    """Total bytes under a revision dir, counting nested subdirectories.
+
+    ``CachedAssetFile`` lists only direct children (its contract), but a backend
+    may nest its weights deeper — MinerU stores them under
+    ``$MINERU_HOME/models/`` — so the size is aggregated over the whole tree.
+    """
+    return sum(path.stat().st_size for path in revision_dir.rglob("*") if path.is_file() and not path.name.startswith(_VERIFICATION_MARKER_FILENAME))
 
 
 def sha256_of(path: Path) -> str:

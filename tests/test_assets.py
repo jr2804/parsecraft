@@ -96,19 +96,21 @@ def test_inspect_cache_empty_and_missing_dir(tmp_path: Path) -> None:
     assert AssetManager(cache_dir=tmp_path / "missing", downloader=FakeDownloader()).inspect_cache().total_bytes == 0
 
 
-def test_inspect_cache_reports_files_and_skips_subdirs(tmp_path: Path) -> None:
+def test_inspect_cache_lists_direct_children_and_counts_nested_bytes(tmp_path: Path) -> None:
     revision_dir = tmp_path / "acme--model" / "abc123"
     revision_dir.mkdir(parents=True)
     (revision_dir / "weights.bin").write_bytes(CONTENT)
-    (revision_dir / "nested").mkdir()
+    nested = revision_dir / "nested"
+    nested.mkdir()
+    (nested / "deeper.bin").write_bytes(b"nested-weights")
     report = AssetManager(cache_dir=tmp_path, downloader=FakeDownloader()).inspect_cache()
     assert len(report.assets) == 1
     asset = report.assets[0]
     assert asset.model_id == "acme/model"
     assert asset.revision == "abc123"
     assert [f.filename for f in asset.files] == ["weights.bin"]
-    assert asset.total_bytes == len(CONTENT)
-    assert report.total_bytes == len(CONTENT)
+    assert asset.total_bytes == len(CONTENT) + len(b"nested-weights")
+    assert report.total_bytes == len(CONTENT) + len(b"nested-weights")
 
 
 def test_remove_missing_returns_false(tmp_path: Path) -> None:
@@ -356,11 +358,12 @@ def test_deleted_file_is_caught_even_though_the_marker_verified_it(tmp_path: Pat
 
 
 def test_inspect_cache_does_not_list_the_verification_marker(tmp_path: Path) -> None:
-    """The marker is manager bookkeeping: it must not appear as a cached asset file."""
+    """The marker is manager bookkeeping: it must not appear as a cached asset file, nor add bytes."""
     manager = AssetManager(cache_dir=tmp_path, downloader=FakeDownloader())
     manager.ensure(make_pin())
     report = manager.inspect_cache()
     assert [file.filename for asset in report.assets for file in asset.files] == ["weights.bin"]
+    assert report.total_bytes == len(CONTENT)
 
 
 def test_disk_space_gate_is_unchanged_by_a_verified_marker(tmp_path: Path) -> None:

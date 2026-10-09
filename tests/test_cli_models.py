@@ -88,6 +88,27 @@ def test_entries_join_cache_state(tmp_path: Path) -> None:
     assert items[0].estimated_vram_gb == 1.0
 
 
+def test_entries_report_measured_size_for_a_cached_revision(tmp_path: Path) -> None:
+    """A backend that nests its weights (MinerU) still gets a non-zero listing size."""
+    asset = _asset(size_bytes=1 << 30)
+    manager = _manager(tmp_path)
+    _cache_revision(tmp_path, asset)
+    nested = tmp_path / "cache" / slug(asset.model_id) / asset.model_revision / "models"
+    nested.mkdir()
+    (nested / "weights.safetensors").write_bytes(CONTENT)
+    items = models_module.entries([_descriptor(asset=asset)], manager.inspect_cache())
+    assert items[0].cached is True
+    assert items[0].size_bytes == 2 * len(CONTENT)
+    assert models_module.human_bytes(2 * len(CONTENT)) in models_module.render_entries(items)[1]
+
+
+def test_entries_fall_back_to_the_declared_size_when_uncached(tmp_path: Path) -> None:
+    asset = _asset(size_bytes=1 << 30)
+    items = models_module.entries([_descriptor(asset=asset)], _manager(tmp_path).inspect_cache())
+    assert items[0].cached is False
+    assert items[0].size_bytes == 1 << 30
+
+
 def test_resolve_asset_by_name_and_model_id() -> None:
     descriptors = [_descriptor()]
     assert models_module.resolve_asset("ocr-demo", descriptors)[0] == "ocr-demo"
@@ -228,10 +249,19 @@ def test_cli_models_list_text_and_json(cli_state: tuple[AssetManager, ModelAsset
 
 
 def test_cli_models_list_cached(tmp_path: Path, cli_state: tuple[AssetManager, ModelAssetDescriptor]) -> None:
-    _cache_revision(tmp_path, cli_state[1])
+    asset = cli_state[1]
+    _cache_revision(tmp_path, asset)
+    # A backend may nest its weights (MinerU fetches into $MINERU_HOME/models/...),
+    # so the listing size must count the whole revision tree.
+    nested = tmp_path / "cache" / slug(asset.model_id) / asset.model_revision / "models"
+    nested.mkdir()
+    (nested / "weights.safetensors").write_bytes(CONTENT)
     result = runner.invoke(app, ["models", "list", "--json"])
     assert result.exit_code == 0
     assert json_payload(result)["cached"] is True
+    assert json_payload(result)["size_bytes"] == 2 * len(CONTENT)
+    text = runner.invoke(app, ["models", "list"])
+    assert models_module.human_bytes(2 * len(CONTENT)) in text.output
 
 
 def test_cli_models_path_text_and_json() -> None:

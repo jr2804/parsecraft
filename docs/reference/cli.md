@@ -303,7 +303,7 @@ Command group over `parsecraft.assets.AssetManager`.
 
 | Subcommand | Behaviour |
 | ---------- | --------- |
-| `models list` | Descriptor catalogue joined with cache state (name, model id, revision, size, license, quant, VRAM est, cached). `--json` supported |
+| `models list` | Descriptor catalogue joined with cache state (name, model id, revision, size, license, quant, VRAM est, cached). Size is measured on disk for a cached revision, else the backend's declared estimate. `--json` supported |
 | `models install NAME` | Install a pinned asset; requires `--yes` (network opt-in) and `--accept-license` when the license requires it |
 | `models remove NAME` | Delete every cached revision of one model |
 | `models clean` | Delete every cached revision |

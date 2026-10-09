@@ -49,6 +49,11 @@ duplicated; integrity data (per-file SHA-256) lives in `AssetPin`.
   disagrees — every such case falls back to the full re-hash, so a changed file
   under an unchanged marker is still caught. It is written atomically (a torn
   marker is ignored) and excluded from `inspect`/`models list` output.
+- `inspect_cache`'s `total_bytes` aggregates the whole revision tree while
+  `CachedAsset.files` lists direct children only (its contract) — a backend may
+  nest its weights, as MinerU does into `$MINERU_HOME/models/`. `models list`
+  shows that measured size for a cached revision, the declared estimate
+  otherwise.
 
 ## Verification
 

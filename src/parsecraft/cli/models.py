@@ -72,19 +72,28 @@ def manager() -> AssetManager:
 
 
 def entries(descriptors: Sequence[BackendDescriptor], report: CacheReport) -> list[ModelEntry]:
-    """Join the descriptor catalogue with the cache snapshot, sorted by name."""
-    cached = {(asset.model_id, asset.revision) for asset in report.assets}
+    """Join the descriptor catalogue with the cache snapshot, sorted by name.
+
+    A cached revision reports the size measured on disk; an uncached one falls
+    back to the size the backend declares (``-`` when it declares none).
+    """
+    measured = {(asset.model_id, asset.revision): asset.total_bytes for asset in report.assets}
+
+    def size_of(asset: ModelAssetDescriptor) -> int | None:
+        size = measured.get((asset.model_id, asset.model_revision))
+        return asset.size_bytes if size is None else size
+
     return sorted(
         (
             ModelEntry(
                 name=name,
                 model_id=asset.model_id,
                 revision=asset.model_revision,
-                size_bytes=asset.size_bytes,
+                size_bytes=size_of(asset),
                 model_license=asset.model_license,
                 quantization=asset.quantization,
                 estimated_vram_gb=asset.estimated_vram_gb,
-                cached=(asset.model_id, asset.model_revision) in cached,
+                cached=(asset.model_id, asset.model_revision) in measured,
             )
             for name, asset in catalog(descriptors)
         ),
