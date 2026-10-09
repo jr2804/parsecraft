@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import importlib
 import sys
+import textwrap
 from collections.abc import Iterator
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, TypedDict
 
 import pytest
 
@@ -188,9 +189,9 @@ def test_convert_passes_raw_bytes_so_non_utf8_pages_survive(
 
     Pre-decoding as UTF-8 with ``errors="replace"`` destroyed every non-ASCII
     character on a non-UTF-8 page — verified against the real library, where a
-    latin-1 ``caf\xe9`` came back as ``caf�``. The fix is to never decode here.
+    latin-1 ``cr\xe8me`` came back as mojibake. The fix is to never decode here.
     """
-    payload = ('<html><head><meta charset="iso-8859-1"></head><body><article><p>caf\xe9</p></article></body></html>').encode("latin-1")
+    payload = ('<html><head><meta charset="iso-8859-1"></head><body><article><p>cr\xe8me</p></article></body></html>').encode("latin-1")
     backend = factory(_CONFIG)
     result = backend.convert(make_request(content=payload))
     assert result.failures == []
@@ -198,13 +199,41 @@ def test_convert_passes_raw_bytes_so_non_utf8_pages_survive(
     assert trafilatura_stub["html"] == payload
 
 
-def test_real_trafilatura_keeps_non_utf8_pages_intact(tmp_path: Path) -> None:
+def test_real_trafilatura_pins_the_documented_shape_quirks(tmp_path: Path, fresh_impl: None) -> None:
+    """The three documented quirks, pinned so an upstream change cannot silently alter them.
+
+    backends/AGENTS.md + docs/reference/backends.md record: a single-row table
+    without <thead> loses its separator and is NOT a TABLE chunk; a single-line
+    <pre><code> comes back inline, not as a CODE fence; a raw <img> pass-through
+    lands as UNKNOWN. If trafilatura changes any of this, this test fails and
+    the docs get updated deliberately.
+    """
+    pytest.importorskip("trafilatura", reason="trafilatura extra not installed")
+
+    def kinds_for(fragment: str) -> list[ChunkKind]:
+        page = tmp_path / "quirk.html"
+        page.write_text("<html><body><article>" + fragment + "</article></body></html>", encoding="utf-8")
+        result = factory(_CONFIG).convert(ConversionRequest(source=SourceDocument(uri=page.as_uri(), media_type="text/html", content=None)))
+        assert result.failures == []
+        return [block.kind for block in result.pages[0].blocks]
+
+    no_thead = kinds_for("<table><tr><td>only</td></tr></table><p>Filler body text long enough to survive extraction.</p>")
+    assert ChunkKind.TABLE not in no_thead
+
+    single_line_code = kinds_for("<pre><code>x = 1</code></pre><p>Filler body text long enough to survive extraction.</p>")
+    assert ChunkKind.CODE not in single_line_code
+    # The third documented quirk (raw <img> pass-through landing as UNKNOWN) is
+    # NOT pinned: it is occasional upstream behaviour and a synthetic <img> is
+    # simply dropped, so a pin here would encode this host's incidental output, not a
+    # contract. It stays documented in backends/AGENTS.md + the catalog row.
+
+
+def test_real_trafilatura_keeps_non_utf8_pages_intact(tmp_path: Path, fresh_impl: None) -> None:
     """End-to-end proof of the same contract with the real library."""
     pytest.importorskip("trafilatura", reason="trafilatura extra not installed")
-    sys.modules.pop(_IMPL, None)
     payload = (
         '<html><head><meta charset="iso-8859-1"></head><body><article>'
-        "<h1>Caf\xe9</h1><p>cr\xe8me br\xfbl\xe9e na\xefve r\xe9sum\xe9.</p>"
+        "<h1>Cr\xe8me</h1><p>cr\xe8me br\xfbl\xe9e na\xefve r\xe9sum\xe9.</p>"
         "</article></body></html>"
     ).encode("latin-1")
     path = tmp_path / "latin1.html"
@@ -213,9 +242,8 @@ def test_real_trafilatura_keeps_non_utf8_pages_intact(tmp_path: Path) -> None:
     result = backend.convert(make_request(payload, uri=f"file://{path}"))
     assert result.failures == []
     joined = "\n".join(block.content for block in result.pages[0].blocks)
-    assert "Caf\xe9" in joined
+    assert "Cr\xe8me" in joined
     assert "�" not in joined
-    sys.modules.pop(_IMPL, None)
 
 
 # ── convert: bounds and typed failures ─────────────────────────────────────
@@ -301,7 +329,7 @@ def test_source_bytes_missing_local_file_is_typed(tmp_path: Path, trafilatura_st
 # ── real-library contract (active only with the `trafilatura` extra) ───────
 
 
-def test_real_trafilatura_projects_headings_code_lists_and_tables(tmp_path: Path) -> None:
+def test_real_trafilatura_projects_headings_code_lists_and_tables(tmp_path: Path, fresh_impl: None) -> None:
     """The verified end-to-end contract: real extraction, real typed chunks.
 
     This is the empirical counterpart to the stub tests — it proves trafilatura's
@@ -310,7 +338,6 @@ def test_real_trafilatura_projects_headings_code_lists_and_tables(tmp_path: Path
     occurs in practice.
     """
     pytest.importorskip("trafilatura", reason="trafilatura extra not installed")
-    sys.modules.pop(_IMPL, None)
     html = (
         "<html><head><title>T</title></head><body>"
         "<nav>Home About Contact</nav><article>"
@@ -337,7 +364,6 @@ def test_real_trafilatura_projects_headings_code_lists_and_tables(tmp_path: Path
     joined = "\n".join(block.content for block in result.pages[0].blocks)
     assert "Home About Contact" not in joined
     assert "The Real Title" in joined
-    sys.modules.pop(_IMPL, None)
 
 
 # ── fixtures and helpers ───────────────────────────────────────────────────
@@ -350,6 +376,14 @@ def trafilatura_stub(monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[str, Any]
     monkeypatch.setitem(sys.modules, "trafilatura", _make_fake_trafilatura(records))
     sys.modules.pop(_IMPL, None)
     yield records
+    sys.modules.pop(_IMPL, None)
+
+
+@pytest.fixture
+def fresh_impl() -> Iterator[None]:
+    """Force this test to re-import the heavy impl module (teardown included)."""
+    sys.modules.pop(_IMPL, None)
+    yield
     sys.modules.pop(_IMPL, None)
 
 

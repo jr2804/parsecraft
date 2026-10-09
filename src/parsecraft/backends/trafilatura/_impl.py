@@ -64,7 +64,7 @@ class TrafilaturaBackend:
         try:
             # bytes, not str: trafilatura reads the declared charset itself, so a
             # non-UTF-8 page keeps its accents. Pre-decoding with errors="replace"
-            # destroyed them (verified: latin-1 "café" came back "caf�").
+            # destroyed them (verified: latin-1 "crème" came back "creme�").
             markdown = _extract(data)
         except Exception as exc:  # trafilatura parse boundary — typed, never raw
             detail = f"trafilatura conversion failed: {type(exc).__name__}: {exc}"

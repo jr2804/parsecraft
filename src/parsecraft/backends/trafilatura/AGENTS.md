@@ -20,8 +20,8 @@ backend registry (public entry-point API only).
 - **Raw bytes in, never a pre-decoded string.** `source_bytes` goes straight to
   `trafilatura.extract`, which reads the declared charset itself. Decoding first
   (UTF-8, `errors="replace"`) destroyed every non-ASCII character on a non-UTF-8
-  page — verified against the real library, where a latin-1 `café` came back as
-  `caf�`.
+  page — verified against the real library, where a latin-1 `crème` came back as
+  `creme�`.
 - **Three verified shape quirks, all documented, none patched.** A single-row
   `<table>` with no `<thead>` loses its `|---|` separator; a single-line
   `<pre><code>` comes back as an inline code span rather than a fence; and
