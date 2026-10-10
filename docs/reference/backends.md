@@ -6,9 +6,10 @@ A backend turns one source format into IR pages. Each tool stays isolated behind
 a `DocumentBackend`, and ParseCraft translates its result into the typed IR — the
 protocol and registry are described in [Backends](../architecture/backends.md).
 
-This page catalogs the in-package and external backends. **Extra** is the
-optional install that carries the backend; **Availability** separates what ships
-today from what is planned. Each third-party tool keeps its own licence.
+This page catalogs every registered backend. The **Backend (extra)** column names
+the optional install that carries it — a backend with no extra either ships in
+the base install or is a bring-your-own dependency. Each third-party tool keeps
+its own licence.
 
 !!! warning "Copyleft extras are opt-in"
     `native-pdf` extraction needs PyMuPDF
@@ -34,14 +35,32 @@ today from what is planned. Each third-party tool keeps its own licence.
       GGUF engine is what a default Windows install downloads, so this is not
       an exotic path.
 
-## Native (in-package)
+## All backends
 
-| Backend | Extra | Formats | Upstream / licence | Strengths | Weaknesses | Availability |
-| ------- | ----- | ------- | ------------------ | --------- | ---------- | ------------ |
-| `native-text` | — | `.txt` (`text/plain`) | in-package — MIT | Zero dependencies, fully offline, deterministic | Paragraphs only; no headings, tables, or layout | Available |
-| `native-markdown` | — | `.md` (`text/markdown`) | [`markdown-it-py`](https://github.com/executablebooks/markdown-it-py) — MIT | CommonMark token structure: headings, lists, tables, code, quotes | CommonMark only; no non-CommonMark dialects | Available |
-| `native-html` | — | `.html` (`text/html`) | in-package (stdlib `html.parser`) — MIT | Zero dependencies; headings, lists, tables, code, quotes | Simplistic parser; scripts and styles skipped; not a full HTML5 engine | Available |
-| `native-pdf` | `pdf-lite` (analysis) + `pdf` (extraction) | `.pdf` (`application/pdf`) | [`pypdf`](https://pypi.org/project/pypdf/) — BSD-3-Clause; [`pymupdf`](https://pypi.org/project/PyMuPDF/) — **AGPL-3.0-or-commercial** | Fast native text and layout extraction; monospace runs become fenced `code` chunks with recovered relative indentation and joined wrapped lines; analysis works without the AGPL extra | Extraction requires the AGPL `pdf` extra; scanned PDFs need OCR | Available |
+Formats are written extension-first with the declared MIME type in parentheses,
+because that is the vocabulary the code speaks — `supported_formats` is MIME,
+and the extension is the suffix the host layer joins onto it.
+
+| Backend (extra) | Formats | Upstream / licence | Strengths | Weaknesses |
+| --------------- | ------- | ------------------ | --------- | ---------- |
+| `native-text` — base install | `.txt` (`text/plain`) — plus every other suffix the MIME table maps to `text/plain` (`.py`, `.rst`, `.toml`, `.log`, `.tex`, …) | in-package — MIT | Zero dependencies, fully offline, deterministic | Paragraphs only; no headings, tables, or layout |
+| `native-markdown` — base install | `.md`, `.markdown` (`text/markdown`) | [`markdown-it-py`](https://github.com/executablebooks/markdown-it-py) — MIT | CommonMark token structure: headings, lists, tables, code, quotes | CommonMark only; no non-CommonMark dialects |
+| `native-html` — base install | `.html`, `.htm` (`text/html`) | in-package (stdlib `html.parser`) — MIT | Zero dependencies; headings, lists, tables, code, quotes | Simplistic parser; scripts and styles skipped; not a full HTML5 engine |
+| `native-pdf` — `parsecraft[pdf-lite]` (analysis) + `parsecraft[pdf]` (extraction) | `.pdf` (`application/pdf`) | [`pypdf`](https://pypi.org/project/pypdf/) — BSD-3-Clause; [`pymupdf`](https://pypi.org/project/PyMuPDF/) — **AGPL-3.0-or-commercial** | Fast native text and layout extraction; monospace runs become fenced `code` chunks with recovered relative indentation and joined wrapped lines; analysis works without the AGPL extra | Extraction requires the AGPL `pdf` extra; scanned PDFs need OCR |
+| `pandoc` — `parsecraft[pandoc]` (`pypandoc>=1.15`) | `.docx` (`application/vnd.openxmlformats-officedocument.wordprocessingml.document`), `.pptx` (`application/vnd.openxmlformats-officedocument.presentationml.presentation`), `.xlsx` (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, read-only), `.odt` (`application/vnd.oasis.opendocument.text`), `.rtf` (`application/rtf`), `.epub` (`application/epub+zip`) | [pandoc.org](https://pandoc.org/) — **GPL-2.0-or-later** binary, MIT wrapper | Broad office and e-book coverage through one wrapper | Needs the external **Pandoc binary**; `.ods`/`.odp` are unsupported by pandoc 3.11; copyleft gate |
+| `liteparse` — `parsecraft[liteparse]` (`liteparse>=2.14`) | `.pdf` (`application/pdf`), `.jpg`, `.jpeg` (`image/jpeg`), `.png` (`image/png`), `.tif`, `.tiff` (`image/tiff`) | [`run-llama/liteparse`](https://github.com/run-llama/liteparse) — Apache-2.0 | Broad and permissive; no copyleft gate | Office/ODF formats require a system LibreOffice; `.html` is not supported; larger extra dependency surface |
+| `docling` — `parsecraft[docling]` (`docling>=2.130`) | `.pdf` (`application/pdf`), `.html` (`text/html`), `.md` (`text/markdown`), `.txt` (`text/plain`) | [`docling`](https://pypi.org/project/docling/) — MIT | Layout, tables, and reading order | Heavy dependency graph; office/image formats are registered upstream but undeclared pending conversion verification; a 113-page PDF ran >1 h |
+| `trafilatura` — `parsecraft[trafilatura]` (`trafilatura>=2.3.1`) | `.html` (`text/html`) | [`adbar/trafilatura`](https://github.com/adbar/trafilatura) — Apache-2.0 | Readability-class main-content extraction: starts at the article H1, keeps tables as Markdown tables, drops link/image/formula syntax; **asset-free** — no weights, so no download notice and no offline carve-out | Under-extracts very long single-page specs (RFC-class counter-case below); a single-row table without `<thead>`, and a single-line `<pre><code>`, do not survive as typed blocks |
+| `pdf-inspector` — `parsecraft[pdf-inspector]` (`pdf-inspector>=1.25.2`) | `.pdf` (`application/pdf`) | [`firecrawl/pdf-inspector`](https://github.com/firecrawl/pdf-inspector) — MIT | Fastest verified text-PDF path: Rust/PyO3 extraction straight to Markdown, no ML models and no OCR runtime loaded; classifies text-based vs scanned PDFs before extraction | PDF only (no docx/pptx/xlsx path exists upstream); no OCR, so scanned pages need an OCR backend; ships as a prebuilt Rust extension wheel only for `cp38-abi3` — Linux x86_64/aarch64, macOS Intel/ARM, Windows x64 (other platforms build from source and need a Rust toolchain); not yet benchmarked |
+| `marker` — none; `marker-pdf` 2.0.0 is a **bring-your-own dependency** | `.pdf` (`application/pdf`) | [`datalab-to/marker`](https://github.com/datalab-to/marker) — Apache-2.0; model weights under OpenRAIL-M (restricted use) | High-fidelity PDF→Markdown: figures, tables, math, reading order; page-aware pagination | PDF only — DOCX/XLSX/PPTX/HTML/EPUB route through weasyprint, which needs GTK/Pango system libraries and is unverified on Windows; model weights are fetched at converter creation (network I/O); no extra is declared, so the consumer's own dependency graph installs `marker-pdf` |
+| `mineru` — `parsecraft[mineru]` (`mineru>=4.0.11,<5`); **GIL builds only**, see [Interpreter and platform availability](#interpreter-and-platform-availability) | `.pdf` (`application/pdf`) | [`opendatalab/MinerU`](https://github.com/opendatalab/MinerU) — Apache-2.0 code; weights conditional (see the warning above) | VLM layout, tables, equations, and reading order; **text PDFs run weight-free** at flash effort (no checkpoint download, no VRAM) | Heavy 55-package web stack; page-range input base is delegated downstream and post-filtered; not yet benchmarked against siblings; conditional licence |
+| `ocr-ovis` — `parsecraft[ocr-ovis]` | `.pdf` (`application/pdf`), `.jpg`, `.jpeg` (`image/jpeg`), `.png` (`image/png`) | [`ATH-MaaS/OvisOCR2`](https://huggingface.co/ATH-MaaS/OvisOCR2) — Apache-2.0 | ~0.9 B; formulas and tables; vLLM wrapper (optional `vllm` extra) | GPU required (~1 GB VRAM); not yet benchmarked |
+| `ocr-tele` — `parsecraft[ocr-tele]` | `.pdf` (`application/pdf`), `.jpg`, `.jpeg` (`image/jpeg`), `.png` (`image/png`) | [`StarDoc-AI/TeleOCR`](https://huggingface.co/StarDoc-AI/TeleOCR) — Apache-2.0 ([code](https://github.com/caipeng328/TeleOCR)) | Geometry-aware; camera captures | GPU required (~1.2 GB VRAM); not yet benchmarked |
+| `ocr-unlimited` — `parsecraft[ocr-unlimited]` | `.pdf` (`application/pdf`), `.jpg`, `.jpeg` (`image/jpeg`), `.png` (`image/png`) | [`baidu/Unlimited-OCR`](https://huggingface.co/baidu/Unlimited-OCR) — MIT | Long-horizon multi-page documents | 3 B; quantization required under an 8 GB budget; not yet benchmarked |
+| `ocr-qianfan` — `parsecraft[ocr-qianfan]` | `.pdf` (`application/pdf`), `.jpg`, `.jpeg` (`image/jpeg`), `.png` (`image/png`) | [`baidu/Qianfan-OCR`](https://huggingface.co/baidu/Qianfan-OCR) — Apache-2.0 (`Layout-as-Thought`) | Strong element, box, and reading-order control | 4 B; quantization required under an 8 GB budget; not yet benchmarked |
+| `ocr-tesseract` — base install | `.pdf` (`application/pdf`), `.jpg`, `.jpeg` (`image/jpeg`), `.png` (`image/png`), `.tif`, `.tiff` (`image/tiff`) | [`tesseract-ocr/tessdata_fast`](https://github.com/tesseract-ocr/tessdata_fast) — Apache-2.0 | No extra, no GPU, no model weights; runs anywhere the OS engine is installed | Needs the `tesseract` OS binary (parsecraft never installs it); weaker layout and formula handling than the VLM backends |
+
+## Native (in-package)
 
 The native backends are registered through
 `[project.entry-points."parsecraft.backends"]` and appear in
@@ -62,16 +81,6 @@ The two must not read identically: a no-extra shape hides the dependency from
 the installer, while an extra shape makes the terms a condition of installing.
 
 ## External converters
-
-| Backend | Extra | Formats | Upstream / licence | Strengths | Weaknesses | Availability |
-| ------- | ----- | ------- | ------------------ | --------- | ---------- | ------------ |
-| `pandoc` | `parsecraft[pandoc]` (`pypandoc` 1.17, MIT) | docx, pptx, xlsx (read-only), odt, rtf, epub — the verified MIME set | [pandoc.org](https://pandoc.org/) — **GPL-2.0-or-later** binary, MIT wrapper | Broad office and e-book coverage through one wrapper | Needs the external **Pandoc binary**; `.ods`/`.odp` are unsupported by pandoc 3.11; copyleft gate | Available |
-| `liteparse` | `parsecraft[liteparse]` (`liteparse` 2.14.7, Apache-2.0) | `application/pdf`, `image/jpeg`, `image/png`, `image/tiff` | [`run-llama/liteparse`](https://github.com/run-llama/liteparse) — Apache-2.0 | Broad and permissive; no copyleft gate | Office/ODF formats require a system LibreOffice; `.html` is not supported; larger extra dependency surface | Available |
-| `docling` | `parsecraft[docling]` (`docling` 2.130.0, MIT) | `application/pdf`, `text/html`, `text/markdown`, `text/plain` | [`docling`](https://pypi.org/project/docling/) — MIT | Layout, tables, and reading order | Heavy dependency graph; office/image formats are registered upstream but undeclared pending conversion verification; a 113-page PDF ran >1 h | Available |
-| `trafilatura` | `parsecraft[trafilatura]` (`trafilatura` 2.3.1, Apache-2.0) | `text/html` | [`adbar/trafilatura`](https://github.com/adbar/trafilatura) — Apache-2.0 | Readability-class main-content extraction: starts at the article H1, keeps tables as Markdown tables, drops link/image/formula syntax; **asset-free** — no weights, so no download notice and no offline carve-out | Under-extracts very long single-page specs (RFC-class counter-case below); a single-row table without `<thead>`, and a single-line `<pre><code>`, do not survive as typed blocks | Available |
-| `pdf-inspector` | `parsecraft[pdf-inspector]` (`pdf-inspector` 1.25.2, MIT) | `application/pdf` | [`firecrawl/pdf-inspector`](https://github.com/firecrawl/pdf-inspector) — MIT | Fastest verified text-PDF path: Rust/PyO3 extraction straight to Markdown, no ML models and no OCR runtime loaded; classifies text-based vs scanned PDFs before extraction | PDF only (no docx/pptx/xlsx path exists upstream); no OCR, so scanned pages need an OCR backend; ships as a prebuilt Rust extension wheel only for `cp38-abi3` — Linux x86_64/aarch64, macOS Intel/ARM, Windows x64 (other platforms build from source and need a Rust toolchain); not yet benchmarked | Available |
-| `marker` | none — `marker-pdf` 2.0.0 is a **bring-your-own dependency** | `application/pdf` | [`datalab-to/marker`](https://github.com/datalab-to/marker) — Apache-2.0; model weights under OpenRAIL-M (restricted use) | High-fidelity PDF→Markdown: figures, tables, math, reading order; page-aware pagination | PDF only — DOCX/XLSX/PPTX/HTML/EPUB route through weasyprint, which needs GTK/Pango system libraries and is unverified on Windows; model weights are fetched at converter creation (network I/O); no extra is declared, so the consumer's own dependency graph installs `marker-pdf` | Bring-your-own dependency |
-| `mineru` | `parsecraft[mineru]` (`mineru` 4.0.11, Apache-2.0 + conditional terms) | `application/pdf` | [`opendatalab/MinerU`](https://github.com/opendatalab/MinerU) — Apache-2.0 code; weights conditional (see the warning above) | VLM layout, tables, equations, and reading order; **text PDFs run weight-free** at flash effort (no checkpoint download, no VRAM) | Heavy 55-package web stack; page-range input base is delegated downstream and post-filtered; not yet benchmarked against siblings; conditional licence | **GIL builds only** — see [Interpreter and platform availability](#interpreter-and-platform-availability) |
 
 MinerU fetches its own weights, so its cache placement matters: `MINERU_HOME` is
 a revision directory of the managed model cache
@@ -159,14 +168,6 @@ Every backend declares `supported_formats` as **MIME types** — one
 vocabulary shared with `RoutingConstraints.formats`, which is built from the
 source's media type. The OCR backends declare `application/pdf`,
 `image/png`, and `image/jpeg` (the payloads their page-access layer accepts).
-
-| Backend | Extra | Input | Model / licence | Strengths | Weaknesses | Availability |
-| ------- | ----- | ----- | --------------- | --------- | ---------- | ------------ |
-| `ocr-ovis` | `ocr-ovis` | page images | [`ATH-MaaS/OvisOCR2`](https://huggingface.co/ATH-MaaS/OvisOCR2) — Apache-2.0 | ~0.9 B; formulas and tables; vLLM wrapper (optional `vllm` extra) | GPU required (~1 GB VRAM); not yet benchmarked | Available (adapter implemented; not yet benchmarked — GPU/weights pending) |
-| `ocr-tele` | `ocr-tele` | images, scans | [`StarDoc-AI/TeleOCR`](https://huggingface.co/StarDoc-AI/TeleOCR) — Apache-2.0 ([code](https://github.com/caipeng328/TeleOCR)) | Geometry-aware; camera captures | GPU required (~1.2 GB VRAM); not yet benchmarked | Available (adapter implemented; not yet benchmarked — GPU/weights pending) |
-| `ocr-unlimited` | `ocr-unlimited` | multi-page | [`baidu/Unlimited-OCR`](https://huggingface.co/baidu/Unlimited-OCR) — MIT | Long-horizon multi-page documents | 3 B; quantization required under an 8 GB budget; not yet benchmarked | Available (adapter implemented; not yet benchmarked — GPU/weights pending) |
-| `ocr-qianfan` | `ocr-qianfan` | images | [`baidu/Qianfan-OCR`](https://huggingface.co/baidu/Qianfan-OCR) — Apache-2.0 (`Layout-as-Thought`) | Strong element, box, and reading-order control | 4 B; quantization required under an 8 GB budget; not yet benchmarked | Available (adapter implemented; not yet benchmarked — GPU/weights pending) |
-| `ocr-tesseract` | none — in the base install | PDF pages, page images (PNG/JPEG/TIFF) | [`tesseract-ocr/tessdata_fast`](https://github.com/tesseract-ocr/tessdata_fast) — Apache-2.0 | No extra, no GPU, no model weights; runs anywhere the OS engine is installed | Needs the `tesseract` OS binary (parsecraft never installs it); weaker layout and formula handling than the VLM backends | Available wherever the engine is present — see below |
 
 Model licences apply to the weights; the ParseCraft adapter code is MIT.
 
