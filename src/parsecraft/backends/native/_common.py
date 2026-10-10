@@ -64,6 +64,10 @@ class PageTextStats(BaseModel):
     text_chars: int = Field(ge=0)
     replacement_char_ratio: float | None = Field(default=None, ge=0, le=1)
     blank: bool
+    #: Image XObjects on the page, counted WITHOUT decoding them (pc-svr).
+    #: Defaulted so a caller that does not count them is explicit rather than
+    #: silently reporting zero, which is what made a scan look blank.
+    image_count: int = Field(default=0, ge=0)
 
 
 class PdfInspection(BaseModel):

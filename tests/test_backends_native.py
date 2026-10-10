@@ -37,7 +37,7 @@ from parsecraft.backends.protocol import (
 )
 from parsecraft.backends.registry import BackendRegistry
 from parsecraft.ir.models import ChunkKind, FailureCode, PageRange, PageResult, PassKind
-from tests.fixtures.documents import document_bytes
+from tests.fixtures.documents import document_bytes, image_heavy_pdf, mixed_scanned_pdf
 
 _PDF_TEXT_MODULE = "parsecraft.backends.native.pdf_text"
 
@@ -65,6 +65,11 @@ class _FakePdfPage:
 
     def extract_text(self) -> str | None:
         return self._text
+
+    @staticmethod
+    def get(key: str, default: Any = None) -> Any:
+        """pypdf-grade resource lookup: these synthetic pages carry no image XObjects."""
+        return {} if key == "/Resources" else default
 
 
 class _FakePdfReader:
@@ -467,6 +472,38 @@ def test_pdf_analyze_blank_page_reports_no_extractable_text() -> None:
     assert [d.code for d in analysis.diagnostics] == ["pdf-no-extractable-text"]
 
 
+def test_pdf_analyze_counts_image_objects_on_a_scanned_page() -> None:
+    """pc-svr: a scanned page must report its image XObjects, not a constant 0.
+
+    The native-PDF path used to write ``image_count=0`` unconditionally, so a
+    scan read as "blank" and the image-mass routing trigger stayed dead. This
+    runs the real pypdf inspection against the repo's own scanned fixture; if
+    the counting is ever re-hardcoded to a constant, this assertion fails.
+    """
+    pytest.importorskip("pypdf", reason="pdf-lite extra absent in the light env")
+    backend = pdf_module.factory(_config("native-pdf"))
+    analysis = backend.analyze(_source(mixed_scanned_pdf()))
+    scan_page, first_text_page = analysis.signals[0], analysis.signals[1]
+    assert scan_page.image_count >= 1
+    assert scan_page.blank is True
+    assert first_text_page.image_count == 0
+
+
+def test_pdf_analyze_image_mass_counts_exactly() -> None:
+    """pc-svr: page-level image XObjects count one-for-one, pinning the >=5 cases."""
+    pytest.importorskip("pypdf", reason="pdf-lite extra absent in the light env")
+    backend = pdf_module.factory(_config("native-pdf"))
+    for count in (1, 4, 5, 8):
+        analysis = backend.analyze(_source(image_heavy_pdf(count)))
+        assert analysis.page_count == 1
+        assert analysis.signals[0].image_count == count, f"expected {count} image XObjects"
+
+
+def test_pdf_analyze_image_mass_requires_at_least_one_image() -> None:
+    with pytest.raises(ValueError, match="at least 1"):
+        image_heavy_pdf(0)
+
+
 def test_pdf_factory_raises_when_inspect_module_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     def raiser(name: str) -> ModuleType:
         if name.endswith("pdf_inspect"):
@@ -785,6 +822,7 @@ def _import_pdf_inspect(monkeypatch: pytest.MonkeyPatch, reader: _FakePdfReader)
     fake = ModuleType("pypdf")
     fake.PasswordType = _FakePasswordType  # ty: ignore[unresolved-attribute] — fake module
     fake.PdfReader = lambda stream: reader  # ty: ignore[unresolved-attribute] — fake module
+    fake.PageObject = object  # ty: ignore[unresolved-attribute] — fake module; annotation-only import
     monkeypatch.setitem(sys.modules, "pypdf", fake)
     monkeypatch.delitem(sys.modules, "parsecraft.backends.native.pdf_inspect", raising=False)
     return importlib.import_module("parsecraft.backends.native.pdf_inspect")

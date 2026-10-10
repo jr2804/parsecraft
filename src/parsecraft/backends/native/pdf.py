@@ -70,7 +70,7 @@ class PdfBackend(NativeBackendBase):
                 page_number=stats.page_number,
                 has_native_text=not stats.blank,
                 text_chars=stats.text_chars,
-                image_count=0,
+                image_count=stats.image_count,
                 blank=stats.blank,
                 replacement_char_ratio=stats.replacement_char_ratio,
             )

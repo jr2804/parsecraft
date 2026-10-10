@@ -165,14 +165,24 @@ def _ocr_unavailable_cause(backends: Sequence[BackendDescriptor], constraints: R
 def _degraded_reason(signal: PageSignal, chosen: str, cause: str) -> str:
     """Recorded when an OCR-intent page falls back to native (no OCR family).
 
-    The parenthetical says WHY native could stand in, and a blank page is not
-    the same case as a thin-text one: there is no native text to speak of, so
-    claiming "native text present" alongside ``text_chars=0`` would be a second
-    false statement in the one message whose whole purpose is to be honest about
-    why a page was not OCR'd.
+    The parenthetical says WHY native could stand in, and that is genuinely
+    three different situations, not two. A blank page has nothing to lose; a
+    SCANNED page has no text layer but a pageful of pixels to lose; and a
+    thin-text page has a little text. Collapsing the scan into "blank" made the
+    one message whose whole purpose is honesty assert something false about the
+    very pages OCR exists for (pc-svr).
     """
-    stood_in = "blank page: no text to lose" if signal.blank else f"native text present, text_chars={signal.text_chars}"
-    return f"page {signal.page_number}: OCR unavailable ({cause}); degraded to native ({stood_in}); first pass {chosen}"
+    return f"page {signal.page_number}: OCR unavailable ({cause}); degraded to native ({_what_native_kept(signal)}); first pass {chosen}"
+
+
+def _what_native_kept(signal: PageSignal) -> str:
+    """Why a native pass could serve this page instead of an OCR one."""
+    if not signal.blank:
+        return f"native text present, text_chars={signal.text_chars}"
+    if signal.image_count == 0:
+        return "blank page: no text or images to lose"
+    images = "image" if signal.image_count == 1 else "images"
+    return f"scanned page: {signal.image_count} {images}, no text layer"
 
 
 def _reason(intent: Intent, chosen: str, signal: PageSignal) -> str:

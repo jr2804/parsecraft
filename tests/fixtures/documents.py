@@ -202,6 +202,48 @@ def mixed_scanned_pdf(text_pages: Sequence[Sequence[str]] | None = None) -> byte
     return _assemble(objects)
 
 
+def image_heavy_pdf(images: int = 5) -> bytes:
+    """Build a single textless page carrying ``images`` distinct image XObjects.
+
+    A page-level resource walker must count exactly ``images`` — this is the
+    fixture for pinning the image-mass routing trigger (``HEAVY_IMAGE_COUNT``)
+    against *real* counting, not a literal. If production ever re-hardcodes
+    ``image_count`` to a constant 0, a test asserting ``image_count == images``
+    against this fixture fails.
+    """
+    if images < 1:
+        msg = "images must be at least 1"
+        raise ValueError(msg)
+    # Object numbers: 1 catalog, 2 pages, 3 the page, then the image
+    # objects (4..), and the content stream last — each XObject ref distinct.
+    content_number = 4 + images
+    image_numbers = tuple(range(4, 4 + images))
+    xobject_refs = " ".join(f"/Im{index} {number} 0 R" for index, number in enumerate(image_numbers))
+    objects: list[bytes] = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        (
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {_PDF_PAGE_WIDTH} {_PDF_PAGE_HEIGHT}] "
+            f"/Resources << /XObject << {xobject_refs} >> >> /Contents {content_number} 0 R >>"
+        ).encode("ascii"),
+    ]
+    for _ in image_numbers:
+        image_data = bytes(range(_IMAGE_SIDE * _IMAGE_SIDE))
+        objects.append(
+            (
+                f"<< /Type /XObject /Subtype /Image /Width {_IMAGE_SIDE} /Height {_IMAGE_SIDE} "
+                f"/ColorSpace /DeviceGray /BitsPerComponent 8 /Length {len(image_data)} >>"
+            ).encode("ascii")
+            + b"\nstream\n"
+            + image_data
+            + b"\nendstream"
+        )
+    draws = " ".join(f"q /Im{index} Do Q" for index in range(images))
+    content_stream = draws.encode("ascii")
+    objects.append(f"<< /Length {len(content_stream)} >>\nstream\n".encode("ascii") + content_stream + b"\nendstream")
+    return _assemble(objects)
+
+
 def code_pdf() -> bytes:
     """Build a one-page PDF with prose and a positioned monospace code block.
 

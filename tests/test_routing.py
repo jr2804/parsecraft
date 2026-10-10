@@ -290,6 +290,19 @@ def test_extract_hints_from_codes_and_image_mass() -> None:
     assert figures_by_code.figures is True
 
 
+def test_image_mass_trigger_flips_exactly_at_heavy_count() -> None:
+    """pc-svr: the figures feature is a sum-of-page-images trigger, not a constant.
+
+    Four image XObjects stay below the threshold, five cross it. If
+    ``image_count`` were a hardcoded constant 0, this boundary would not exist
+    and the image-mass trigger would be dead for the common text-layer PDF path.
+    """
+    below = extract_hints(make_analysis([make_signal(1, images=4)], 1))
+    assert below.figures is False
+    at = extract_hints(make_analysis([make_signal(1, images=5)], 1))
+    assert at.figures is True
+
+
 def test_classify_native_and_general_ocr() -> None:
     hints = extract_hints(make_analysis(good_native(), 1))
     assert classify_page(make_signal(), 1, hints) is Intent.NATIVE
@@ -755,9 +768,30 @@ def test_a_blank_page_does_not_claim_native_text_was_present() -> None:
     plan = plan_route(analysis, [make_desc("native-text")], full_constraints(formats={"text/plain"}, installed_extras=set()))
     reason = plan.pages[0].reason
 
-    assert "blank page: no text to lose" in reason
+    assert "blank page: no text or images to lose" in reason
     assert "native text present" not in reason
     assert "text_chars=0" not in reason
+
+
+def test_a_scanned_page_reason_names_the_images_not_blank() -> None:
+    """pc-svr: a textless page with image XObjects is a scan, not a blank page.
+
+    Saying there is "nothing to lose" about a page full of pixels is exactly the
+    false claim pc-svr fixes. A scanned page's honest reason names the images
+    it cannot extract; a truly blank page's does not.
+    """
+    analysis = make_analysis([make_signal(1, text_chars=0, native=False, blank=True, images=1)], 1)
+    plan = plan_route(analysis, [make_desc("native-text")], full_constraints(formats={"text/plain"}, installed_extras=set()))
+    reason = plan.pages[0].reason
+
+    assert "scanned page: 1 image, no text layer" in reason
+    assert "blank" not in reason
+
+
+def test_a_scanned_page_reason_pluralises_images() -> None:
+    analysis = make_analysis([make_signal(1, text_chars=0, native=False, blank=True, images=3)], 1)
+    plan = plan_route(analysis, [make_desc("native-text")], full_constraints(formats={"text/plain"}, installed_extras=set()))
+    assert "scanned page: 3 images, no text layer" in plan.pages[0].reason
 
 
 def test_a_missing_engine_is_named_in_the_degradation_reason() -> None:
