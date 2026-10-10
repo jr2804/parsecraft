@@ -62,10 +62,10 @@ print(result.pages[0].blocks[0].content)
 # echo page 1
 ```
 
-!!! note "Assembly is not implemented yet"
-    Backends return `BackendResult` (pages + failures + provenance). Assembling
-    a full `DocumentResult` — metadata, cross-page relations, trace — is a
-    Phase 1 deliverable. The IR types and the projection already exist.
+!!! note "Assembly ships in `parsecraft.pipeline`"
+    Backends return `BackendResult` (pages + failures + provenance);
+    `parsecraft.pipeline.execute()` assembles those pages into a full
+    `DocumentResult` — metadata, cross-page relations, and the trace.
 
 ## Next steps
 

@@ -29,11 +29,6 @@ into `PageResult` blocks. The caller assembles a `DocumentResult` — metadata,
 cross-page relations, and the processing trace — and the in-house renderer
 projects it to Markdown.
 
-!!! note "Assembly is a Phase 1 deliverable"
-    Backends and the IR exist today. The layer that assembles
-    `BackendResult` pages into a `DocumentResult` is not implemented yet; see
-    the [IR reference](ir.md) for the types it will populate.
-
 ## Layers
 
 | Layer | Module | Responsibility |
@@ -68,4 +63,3 @@ to this package is needed. See [Backends](backends.md) and the
 
 - [Intermediate representation](ir.md)
 - [Backends](backends.md)
-- [ADR-0001: Phase 0 decisions](../adr/0001-phase-0-decisions.md)

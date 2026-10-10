@@ -16,7 +16,7 @@ Both are `runtime_checkable` protocols in `parsecraft.backends.protocol`.
 The registry binds descriptor to factory internally, so descriptors serialize
 cleanly for `parsecraft backends --json`.
 
-### Format vocabulary
+## Format vocabulary
 
 `capabilities.supported_formats` lists **MIME media types** — one vocabulary
 across every backend family. It states what a backend can *parse*, not which

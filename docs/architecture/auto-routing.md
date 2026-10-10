@@ -8,9 +8,7 @@ fast complexity analysis, the deterministic rule table, and an optional
 LLM-backed seam — and produces a `RoutingPlan` before any backend runs. This
 page explains what each input contributes today and which knobs tune the
 outcome. Stage-by-stage mechanics live in
-[Routing and auto mode](routing.md); the decision record is
-[ADR-0004](../adr/0004-routing-and-auto-mode.md) (decisions 1–7 plus the
-2026-10-01 amendment A1–A7).
+[Routing and auto mode](routing.md).
 
 Status labels used below: **current** (shipped and reachable today) and
 **planned** (agreed direction, nothing built).
@@ -107,7 +105,7 @@ Each `PageSignal` (`src/parsecraft/ir/models.py`) carries:
 `page_needs_ocr()` (`src/parsecraft/routing/rules.py`) is true when the page
 is blank, has no native text, has fewer than `NATIVE_MIN_TEXT_CHARS` text
 characters, or exceeds `MAX_REPLACEMENT_RATIO` replacement characters. The
-thresholds are code-owned constants (ADR-0004 decision 2):
+thresholds are code-owned constants:
 
 | Constant | Value | Effect |
 | --- | --- | --- |
@@ -129,24 +127,23 @@ documents therefore route on text statistics and image mass alone.
 
 ### Structural classifier facts
 
-**Status:** current (gh-3 closed; beads `pc-rzm`/`pc-1ow`; seam `8858012`,
-provider `f5387a0`, CLI flags `6ace6a8`).
+**Status:** current.
 
-The second optional seam beside the judge (ADR-0004 amendment A1–A7) is
+The second optional seam beside the judge is
 `detect_pdf` from the `pdf-inspector` extra: it reports
 `pdf_type`, `confidence`, `pages_needing_ocr`, `pages_with_tables`, and
 machine-readable OCR reasons. A pure fold (`apply_classifier()` in
 `src/parsecraft/pipeline/analysis.py`) merges them at the analysis boundary;
 `plan_route` keeps its signature and stays pure.
 
-The merge is augment-only and asymmetric (A2):
+The merge is augment-only and asymmetric:
 `OCR-need = page_needs_ocr(signal) OR (signal.classifier_needs_ocr is True)`.
 The classifier may add OCR-need, never remove it — a `text_based` verdict never
 forces `NATIVE` on a page whose native text genuinely fails. With no classifier
 or on classifier error, classification is exactly today's rule table; absence
-*is* the current behavior (A3). The fold also emits a provenance diagnostic
+*is* the current behavior. The fold also emits a provenance diagnostic
 (classifier name, upstream version, `pdf_type`, confidence) and fills
-`feature:tables` from real table pages (A5, A6).
+`feature:tables` from real table pages.
 
 ### Classifier cost profile
 
@@ -155,8 +152,7 @@ milliseconds (≈20–100 ms), and loads **no models** — detection only. It ru
 inside `analyze()` before any conversion is chosen, so its cost stays
 negligible against the work it routes: native conversions cost ~ms–s and
 docling/OCR conversions s–min. A classifier that loads an ML model to decide
-whether to run an ML backend is out of contract (ADR-0004 A4; user decision
-2026-10-01), so the answer to "isn't using ML to decide about ML oversized?"
+whether to run an ML backend is out of contract, so the answer to "isn't using ML to decide about ML oversized?"
 is no — the decision is a scan, not a model.
 
 ### Language and domain slang
@@ -182,13 +178,12 @@ beyond it — no design or code exists for either.
   (`NATIVE`, `OCR_GENERAL`, `OCR_TABLES`, `OCR_VISION`).
 - **Per-page pass list.** Every `PageRoute` carries its own
   `candidates` list capped at `max_passes`, with `chosen = candidates[0]` and a
-  human-readable `reason` (ADR-0004 decision 6). `RoutingPlan.primary` is the
+  human-readable `reason`. `RoutingPlan.primary` is the
   most-chosen backend across pages, tie-broken by name.
 - **Code-owned eligibility.** Installed extras, VRAM budget, format coverage,
   `allow_ocr`, offline, language, and the intent family are filtered before any
   judge runs; a judge only re-ranks and can never widen the set — an
-  ineligible, duplicate, or empty order raises `JudgeViolationError`
-  (decisions 3–5).
+  ineligible, duplicate, or empty order raises `JudgeViolationError`.
 - **Ranking preference.** `RoutingConstraints.preference` (`speed` | `balanced`
   | `quality`, default `balanced`) is a *ranking* axis, never a filter: it
   reorders candidates inside the family the rules already chose and cannot move
@@ -219,12 +214,12 @@ fallback lists stay per page throughout.
 
 ## LLM access
 
-The user decision behind this section (ADR-0004 A7): **a no-heuristic LLM path
+The rule behind this section: **a no-heuristic LLM path
 must be configurable**, and the heuristic path remains the default whenever no
 spec is given.
 
 Neither seam is gated by `RoutingConstraints.offline`: that flag excludes
-model-asset **backends** from candidacy (decision 3) and never blocks a provider
+model-asset **backends** from candidacy and never blocks a provider
 the caller named explicitly. A judge spec is the opt-in — judges may reach the
 network (`typesafe-ai/jev-latest` does) — while classifiers stay local-only by A4. No
 provider is resolved at all unless a spec is given, so an offline-declared run
@@ -313,7 +308,7 @@ IR-1-based facts, with `pdf_type`, `confidence`, and table pages feeding the
 **Status:** current, three endpoints (`typesafe-ai/jev-latest`, `zen/<model>`,
 `ollama/<model>`); a Jev-backed classifier is not shipped.
 
-ADR-0004 decision 7 and A7 make the judge seam the integration point for a
+The judge seam is the integration point for a
 System One / Jev-backed judge. One implementation (`src/parsecraft/providers/_jev.py`)
 serves three endpoints behind the optional `systemone` extra (`typesafe-sdk`,
 MIT, pure Python) — the SDK is injected per endpoint rather than hand-rolled:
@@ -358,10 +353,8 @@ Testing is tiered: offline provider tests stub the SDK in `sys.modules`, and a
 semi-live tier drives a **real local daemon** under three machine profiles
 (this host, a 32 GB GPU host, a CPU-only host), asserting contract-valid
 orderings plus one behavioral anchor — a CPU-only host must not rank a GPU-only
-candidate first. Both live and semi-live tests are opt-in (`mise run
-test-judge`); the semi-live one additionally needs the `systemone` extra, so it
-runs in a throwaway environment:
-`uv run --isolated --extra systemone pytest -m judge --run-judge`.
+candidate first. Both live and semi-live tests are opt-in, and the semi-live one additionally
+needs the `systemone` extra.
 
 Without a configured spec the heuristic path is still the default: the
 deterministic rule table plus, where configured, a judge spec.
@@ -378,15 +371,13 @@ deterministic rule table plus, where configured, a judge spec.
 | `--cache` | `convert` | content-addressed cache keyed on source bytes + registry fingerprint + canonical constraints + judge identity, so a changed knob naturally misses the old entry |
 | `parsecraft inspect` | command | previews per-page signals, diagnostics, intent, chosen backend, candidates, and reason without converting; `--json` emits the same as JSON |
 | judge / classifier spec | `resolve_judge` / `resolve_classifier`; `--judge` / `--classifier` | swaps ordering (or OCR-need evidence) without touching the rules |
-| thresholds `40` / `0.05` / `5` | `src/parsecraft/routing/rules.py` | code-owned constants, not config keys — tuning them is a code change with tests (ADR-0004 decision 2) |
+| thresholds `40` / `0.05` / `5` | `src/parsecraft/routing/rules.py` | code-owned constants, not config keys — tuning them is a code change with tests |
 | `RoutingConstraints.language` | library callers | BCP-47 narrowing of language-declaring backends; the detector is opt-in |
 
 ## Related
 
 - [Routing and auto mode](routing.md) — stage mechanics, eligibility funnel,
   judge seam, execution details
-- [ADR-0004](../adr/0004-routing-and-auto-mode.md) — decisions 1–7 and
-  amendment A1–A7
 - [CLI reference](../reference/cli.md) — command flags and exit codes
 - [Steer the auto-backend selector](../guides/auto-backend-selector.md) — the
   task-oriented walkthrough with worked examples

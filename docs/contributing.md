@@ -2,11 +2,7 @@
 title: Contributing
 ---
 
-## Contributing
-
-Contributions are welcome! Here's how you can help.
-
-### Development Setup
+## Development setup
 
 ```bash
 # Clone the repository
@@ -20,13 +16,13 @@ uv sync --dev
 mise install
 ```
 
-### Running Tests
+## Running tests
 
 ```bash
 mise test
 ```
 
-### Code Quality
+## Code quality
 
 ```bash
 mise lint         # ruff check
@@ -36,7 +32,7 @@ mise format       # ruff format + isort + pyreorder
 mise format-check # verify the tree is canonical (what CI runs)
 ```
 
-### Pull Requests
+## Pull requests
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)

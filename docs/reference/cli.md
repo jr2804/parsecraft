@@ -353,7 +353,7 @@ package: `2026.9.9`
 
 ### `parsecraft config`
 
-Command group for the layered configuration engine (ADR-0001 §5). Sources are
+Command group for the layered configuration engine. Sources are
 merged in order `default → global → project → env → cli`. The global file is
 `platformdirs.user_config_dir("parsecraft")/config.toml`; the project file is
 `./parsecraft.toml`; settings come from `PARSECRAFT_CONFIG_*` env vars (`__`

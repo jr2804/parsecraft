@@ -5,7 +5,7 @@ title: Routing and auto mode
 `parsecraft.routing` turns per-page analysis into a routing plan: which backend
 runs on which page, and which fallbacks follow. Planning is a pure, deterministic
 function; an optional judge may re-rank eligible candidates but never change the
-rules. The decision is recorded in [ADR-0004](../adr/0004-routing-and-auto-mode.md).
+rules.
 
 ## Pipeline
 
@@ -360,7 +360,6 @@ The routing engine (`parsecraft.routing`) and the executor
 `convert --auto` (the default), `--backend`, `--preference`, `--max-passes`,
 `--no-ocr`, `--judge` and `--classifier` are all current. The judge seam ships
 three System One providers (see [Auto routing](auto-routing.md)). Still planned:
-cancellation/timeout passthrough into `ConversionRequest`. Tracking bead:
-`pc-5ub`.
+cancellation/timeout passthrough into `ConversionRequest`.
 
 Worked examples live in [Steer the auto-backend selector](../guides/auto-backend-selector.md).

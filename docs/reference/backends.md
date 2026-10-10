@@ -15,16 +15,14 @@ today from what is planned. Each third-party tool keeps its own licence.
     (**AGPL-3.0-or-commercial**, `pdf` extra), and `pandoc` needs the Pandoc
     binary (**GPL-2.0-or-later**). These are never core or dev dependencies.
     OCR PDF input does **not** need PyMuPDF — the base install rasterizes
-    through the permissive `pypdfium2` (ADR-0008), so no copyleft sits on the
+    through the permissive `pypdfium2`, so no copyleft sits on the
     default OCR path.
-    Installing one is your own licence decision; see
-    [ADR-0003](../adr/0003-optional-agpl-pymupdf.md).
+    Installing one is your own licence decision.
 
 !!! warning "MinerU is a conditional-licence opt-in"
     `parsecraft[mineru]` carries a **conditional** licence surface, not a
-    copyleft one — the distinction matters, so it gets its own statement
-    ([ADR-0007](../adr/0007-mineru-conditional-licence-optin.md)). Installing
-    the extra is your consent to these terms:
+    copyleft one — the distinction matters, so it gets its own statement.
+    Installing the extra is your consent to these terms:
     - **Code:** `LicenseRef-MinerU-Open-Source-License` — Apache-2.0 **plus**
       commercial thresholds (>100M MAU or >USD 20M revenue), an online-service
       attribution duty, and termination-without-notice.
@@ -52,10 +50,10 @@ The native backends are registered through
 ### Two distinct optional-dependency shapes
 
 `marker` and `mineru` are the two **different** ways an optional dependency can
-be offered, and the difference is the point (ADR-0006 vs ADR-0007):
+be offered, and the difference is the point:
 
 - **marker — backend + entry point, no extra.** The consumer owns the
-  dependency; parsecraft's lock never resolves it. Deferred (ADR-0006).
+  dependency; parsecraft's lock never resolves it.
 - **mineru — the extra IS the opt-in, and parsecraft owns the pin.**
   `parsecraft[mineru]` resolves the whole 55-package stack and states the
   licence terms at the point of installation.
@@ -69,11 +67,11 @@ the installer, while an extra shape makes the terms a condition of installing.
 | ------- | ----- | ------- | ------------------ | --------- | ---------- | ------------ |
 | `pandoc` | `parsecraft[pandoc]` (`pypandoc` 1.17, MIT) | docx, pptx, xlsx (read-only), odt, rtf, epub — the verified MIME set | [pandoc.org](https://pandoc.org/) — **GPL-2.0-or-later** binary, MIT wrapper | Broad office and e-book coverage through one wrapper | Needs the external **Pandoc binary**; `.ods`/`.odp` are unsupported by pandoc 3.11; copyleft gate | Available |
 | `liteparse` | `parsecraft[liteparse]` (`liteparse` 2.14.7, Apache-2.0) | `application/pdf`, `image/jpeg`, `image/png`, `image/tiff` | [`run-llama/liteparse`](https://github.com/run-llama/liteparse) — Apache-2.0 | Broad and permissive; no copyleft gate | Office/ODF formats require a system LibreOffice; `.html` is not supported; larger extra dependency surface | Available |
-| `docling` | `parsecraft[docling]` (`docling` 2.130.0, MIT) | `application/pdf`, `text/html`, `text/markdown`, `text/plain` | [`docling`](https://pypi.org/project/docling/) — MIT | Layout, tables, and reading order | Heavy dependency graph; office/image formats are registered upstream but undeclared pending conversion verification; the motivating incident ran >1 h on a 113-page PDF | Available |
+| `docling` | `parsecraft[docling]` (`docling` 2.130.0, MIT) | `application/pdf`, `text/html`, `text/markdown`, `text/plain` | [`docling`](https://pypi.org/project/docling/) — MIT | Layout, tables, and reading order | Heavy dependency graph; office/image formats are registered upstream but undeclared pending conversion verification; a 113-page PDF ran >1 h | Available |
 | `trafilatura` | `parsecraft[trafilatura]` (`trafilatura` 2.3.1, Apache-2.0) | `text/html` | [`adbar/trafilatura`](https://github.com/adbar/trafilatura) — Apache-2.0 | Readability-class main-content extraction: starts at the article H1, keeps tables as Markdown tables, drops link/image/formula syntax; **asset-free** — no weights, so no download notice and no offline carve-out | Under-extracts very long single-page specs (RFC-class counter-case below); a single-row table without `<thead>`, and a single-line `<pre><code>`, do not survive as typed blocks | Available |
-| `pdf-inspector` | `parsecraft[pdf-inspector]` (`pdf-inspector` 1.25.2, MIT) | `application/pdf` | [`firecrawl/pdf-inspector`](https://github.com/firecrawl/pdf-inspector) — MIT | Fastest verified text-PDF path: Rust/PyO3 extraction straight to Markdown, no ML models and no OCR runtime loaded; classifies text-based vs scanned PDFs before extraction | PDF only (no docx/pptx/xlsx path exists upstream); no OCR, so scanned pages need an OCR backend; ships as a prebuilt Rust extension wheel only for `cp38-abi3` — Linux x86_64/aarch64, macOS Intel/ARM, Windows x64 (other platforms build from source and need a Rust toolchain); not yet benchmarked in this repo | Available |
-| `marker` | none — `marker-pdf` 2.0.0 is a **bring-your-own dependency** (ADR-0006) | `application/pdf` | [`datalab-to/marker`](https://github.com/datalab-to/marker) — Apache-2.0; model weights under OpenRAIL-M (restricted use) | High-fidelity PDF→Markdown: figures, tables, math, reading order; page-aware pagination | PDF only — DOCX/XLSX/PPTX/HTML/EPUB route through weasyprint, which needs GTK/Pango system libraries and is unverified on Windows; model weights are fetched at converter creation (network I/O, see ADR-0006); no extra is declared, so the consumer's own dependency graph installs `marker-pdf` | Bring-your-own dependency (ADR-0006) |
-| `mineru` | `parsecraft[mineru]` (`mineru` 4.0.11, Apache-2.0 + conditional terms) | `application/pdf` | [`opendatalab/MinerU`](https://github.com/opendatalab/MinerU) — Apache-2.0 code; weights conditional (see the warning above) | VLM layout, tables, equations, and reading order; **text PDFs run weight-free** at flash effort (no checkpoint download, no VRAM) | Heavy 55-package web stack; page-range input base is delegated downstream and post-filtered; not yet benchmarked against siblings; conditional licence | **GIL builds only** — see [Interpreter / platform availability](#interpreter--platform-availability) |
+| `pdf-inspector` | `parsecraft[pdf-inspector]` (`pdf-inspector` 1.25.2, MIT) | `application/pdf` | [`firecrawl/pdf-inspector`](https://github.com/firecrawl/pdf-inspector) — MIT | Fastest verified text-PDF path: Rust/PyO3 extraction straight to Markdown, no ML models and no OCR runtime loaded; classifies text-based vs scanned PDFs before extraction | PDF only (no docx/pptx/xlsx path exists upstream); no OCR, so scanned pages need an OCR backend; ships as a prebuilt Rust extension wheel only for `cp38-abi3` — Linux x86_64/aarch64, macOS Intel/ARM, Windows x64 (other platforms build from source and need a Rust toolchain); not yet benchmarked | Available |
+| `marker` | none — `marker-pdf` 2.0.0 is a **bring-your-own dependency** | `application/pdf` | [`datalab-to/marker`](https://github.com/datalab-to/marker) — Apache-2.0; model weights under OpenRAIL-M (restricted use) | High-fidelity PDF→Markdown: figures, tables, math, reading order; page-aware pagination | PDF only — DOCX/XLSX/PPTX/HTML/EPUB route through weasyprint, which needs GTK/Pango system libraries and is unverified on Windows; model weights are fetched at converter creation (network I/O); no extra is declared, so the consumer's own dependency graph installs `marker-pdf` | Bring-your-own dependency |
+| `mineru` | `parsecraft[mineru]` (`mineru` 4.0.11, Apache-2.0 + conditional terms) | `application/pdf` | [`opendatalab/MinerU`](https://github.com/opendatalab/MinerU) — Apache-2.0 code; weights conditional (see the warning above) | VLM layout, tables, equations, and reading order; **text PDFs run weight-free** at flash effort (no checkpoint download, no VRAM) | Heavy 55-package web stack; page-range input base is delegated downstream and post-filtered; not yet benchmarked against siblings; conditional licence | **GIL builds only** — see [Interpreter and platform availability](#interpreter-and-platform-availability) |
 
 MinerU fetches its own weights, so its cache placement matters: `MINERU_HOME` is
 a revision directory of the managed model cache
@@ -117,9 +115,8 @@ once in `pyproject.toml` (the authoritative source) — plus `torch>=2.5`,
 supersedes them, and the TeleOCR/Unlimited models ship as local vendored
 modeling code so they load on the unified major.
 
-The OCR extras are **not** mutually exclusive. Every extra installs jointly, and
-`uv sync -U --all-extras --all-groups --all-packages` is expected to succeed
-(root `AGENTS.md` rule 10).
+The OCR extras are **not** mutually exclusive: every extra installs alongside
+the others.
 
 GPU `torch` needs no manual install step: `torch`/`torchvision` are pinned to
 the **PyTorch cu128 index** in `pyproject.toml` (`[tool.uv.sources]`, gated
@@ -155,7 +152,7 @@ All OCR backends accept `application/pdf`, `image/jpeg`, and `image/png`, and
 **PDF input needs no extra**: the base install carries the permissive
 [`pypdfium2`](https://pypi.org/project/pypdfium2/) raster engine (BSD-3-Clause +
 Apache-2.0) with Pillow as its image bridge, so OCR on a scanned PDF stays off
-the AGPL path (ADR-0008 decisions 10 and 14). PyMuPDF remains available behind
+the AGPL path. PyMuPDF remains available behind
 `parsecraft[pdf]` for `native-pdf` extraction.
 
 Every backend declares `supported_formats` as **MIME types** — one
@@ -184,8 +181,8 @@ typed `dependency_missing` failure naming the package for your platform
 (`apt install tesseract-ocr tesseract-ocr-eng tesseract-ocr-deu`,
 `brew install tesseract`, or choco/winget on Windows).
 
-Tesseract reads page images, so a PDF is rasterized at 300 dpi first — see
-[ADR-0008 decision 10](../adr/0008-lite-ocr-in-base-install.md). Language data
+Tesseract reads page images, so a PDF is rasterized at 300 dpi first.
+Language data
 (`eng`, `deu`) comes from your system tessdata when it is present and complete,
 and otherwise from a pinned, checksum-verified download into the managed cache.
 
@@ -196,23 +193,21 @@ and `equ` recognition is weak enough that promising it would overstate what this
 backend does. For formula-critical documents use the heavyweight `ocr-*` extras,
 which are geometry-aware.
 
-## Interpreter / platform availability
+## Interpreter and platform availability
 
-Root `AGENTS.md` rule 10 requires `uv sync -U --all-extras --all-groups
---all-packages` to succeed. The CI `extras` job verifies that on **CPython 3.13
-(GIL) on Linux and Windows only** — so an extra that cannot resolve on another
-interpreter/platform cell is a *latent* rule-10 violation: CI stays green and
-the failure reaches the user. PEP 508 has no free-threaded marker, so such a
-dependency cannot be gated out of `--all-extras`.
+Some extras cannot resolve on every interpreter and platform combination, and
+the failure reaches you rather than a build: PEP 508 has no free-threaded
+marker, so such a dependency cannot be gated out of a bulk `--all-extras`
+install.
 
 | Extra | Availability |
 | ----- | ------------ |
 | `mineru` | **GIL builds only.** `mineru` → `onnxruntime` (unconditional); onnxruntime 1.31.0 publishes `cp314t` wheels for **manylinux only** — no free-threaded macOS/Windows wheel and no sdist, so `uv sync --all-extras` fails there. |
 | any extra pulling `onnxruntime` | **Free-threaded Linux only** — same mechanism. |
-| `vllm` | Linux/WSL2 only — gated by a `sys_platform != 'win32'` marker, the existing in-repo pattern for a platform-restricted extra. |
+| `vllm` | Linux/WSL2 only — gated by a `sys_platform != 'win32'` marker. |
 
 A matrix-blocked engine that must stay installable uses a **bring-your-own
-dependency group** (ADR-0006) instead of a declared extra — no
+dependency group** instead of a declared extra — no
 `[project.optional-dependencies]` entry, so `--all-extras` never sees it. See
 [Two distinct optional-dependency shapes](#two-distinct-optional-dependency-shapes).
 
@@ -293,5 +288,4 @@ backend. An optional `RoutingJudge` may re-rank eligible candidates only;
 `DeterministicJudge` is the default, and a judge cannot override a constraint. A
 Jev / System One-backed judge is a planned optional extra.
 
-See [Routing and auto mode](../architecture/routing.md) and
-[ADR-0004](../adr/0004-routing-and-auto-mode.md). Tracking bead: `pc-5ub`.
+See [Routing and auto mode](../architecture/routing.md).

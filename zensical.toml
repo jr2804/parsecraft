@@ -34,7 +34,7 @@ nav = [
     { "API" = "reference/api.md" },
   ] },
   { "Benchmarks" = [
-    { "Phase 2 report" = "benchmarks/index.md" },
+    { "Measurement report" = "benchmarks/index.md" },
     { "CPU report (raw)" = "benchmarks/benchmark.md" },
   ] },
   { "Development" = [

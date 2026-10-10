@@ -15,8 +15,8 @@ title: Installation
 | Runtime | Support |
 | ------- | ------- |
 | CPython 3.13 | GIL-enabled build only; the free-threaded `3.13t` build is not supported |
-| CPython 3.14 | Supported, including the free-threaded `3.14t` build (CI: ubuntu, macos, windows) |
-| CPython 3.15-dev | Best-effort; CI allows this job to fail |
+| CPython 3.14 | Supported, including the free-threaded `3.14t` build (Ubuntu, macOS, Windows) |
+| CPython 3.15-dev | Best-effort |
 
 ## GPU torch
 
@@ -54,6 +54,8 @@ parsecraft backends
 
 Current version on [PyPI](https://pypi.org/project/parsecraft/).
 
+### Extras
+
 Optional features live in extras, and one of them is a shortcut:
 
 ```bash
@@ -75,19 +77,19 @@ flags themselves.
 Two extras carry licence terms you are consenting to by installing them —
 neither is a core or dev dependency, and both are opt-in:
 
-- `parsecraft[pdf]` — PyMuPDF, **AGPL-3.0-or-commercial** (ADR-0003).
+- `parsecraft[pdf]` — PyMuPDF, **AGPL-3.0-or-commercial**.
 - `parsecraft[mineru]` — MinerU's **conditional** terms: Apache-2.0 code plus
   commercial thresholds (>100M MAU or >USD 20M revenue), an online-service
   attribution duty, and termination-without-notice; the VLM checkpoint and torch
   kit are Apache-2.0; the default Windows/CPU GGUF engine and the ONNX kit
-  declare **no licence** (ADR-0007).
+  declare **no licence**.
 
 Read the full statement on the [Backends](../reference/backends.md) page before
 installing either.
 
 `parsecraft[mineru]` is additionally **GIL-builds-only** at install time — it
 pulls `onnxruntime`, which has no free-threaded macOS/Windows wheel. See
-[Interpreter / platform availability](../reference/backends.md#interpreter-platform-availability).
+[Interpreter and platform availability](../reference/backends.md#interpreter-and-platform-availability).
 
 ## From source
 
@@ -105,7 +107,7 @@ Or use mise, which also installs the pinned tool versions:
 ```bash
 git clone https://github.com/jr2804/parsecraft.git
 cd parsecraft
-mise dev      # uv sync -U --dev --all-groups --extra download --extra web --extra pdf-lite
+mise dev
 uv run parsecraft backends
 ```
 
@@ -129,15 +131,3 @@ uv pip install examples/third_party_backend
 uv run parsecraft backends
 # example-echo             cpu              text
 ```
-
-## Development install
-
-The dev group ships pytest, Zensical, mkdocstrings, and the coverage tooling.
-
-```bash
-mise test       # pytest with the 100% coverage gate
-mise lint       # ruff + ty + codespell
-mise all        # test + lint + spell + format + format-md + docs
-```
-
-See [Contributing](../contributing.md) for the full workflow.
