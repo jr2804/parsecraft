@@ -31,6 +31,9 @@ them from the **PyTorch cu128 index** automatically:
 | Windows, Linux | `download.pytorch.org/whl/cu128` | CUDA (cu128; older GPUs may need a different CUDA — override the index in your own `pyproject.toml`) |
 | macOS | PyPI (index excluded by marker) | CPU + MPS |
 
+On a GPU host the CUDA driver still has to match the wheel — the index selects
+the CUDA build, not the driver.
+
 The project's `torch` version *ranges* are unchanged by this — the index only
 provides the CUDA variant. `uv tool install`/`uvx` installs of the CLI carry no
 torch at all (torch arrives with the OCR extras), so plain CLI installs are

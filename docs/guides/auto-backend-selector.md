@@ -9,28 +9,9 @@ This page is for the runs where the defaults are not what you want.
 
 The mechanics live in [Routing and auto mode](../architecture/routing.md) and
 [Auto routing](../architecture/auto-routing.md); every flag and spec is listed in
-the [CLI reference](../reference/cli.md).
-
-```mermaid
-flowchart LR
-  A[source] --> B[analysis: per-page signals]
-  B --> C{"--classifier ?"}
-  C -->|spec| D[fold OCR-need facts]
-  C -->|none| E[rule table]
-  D --> E
-  E --> F["intent family (native or OCR)"]
-  F --> G{"--judge / --backend ?"}
-  G -->|"--judge spec"| H[provider re-ranks]
-  G -->|"--backend NAME"| I[CLI judge leads with NAME]
-  G -->|none| J[DeterministicJudge]
-  H --> K["execute in order, fall back on failure"]
-  I --> K
-  J --> K
-  K --> L[IR]
-```
-
-`--judge` and `--backend` are mutually exclusive — both choose the lead
-candidate. `--classifier` works with either, and with `--no-auto`.
+the [CLI reference](../reference/cli.md). In short: `--judge` and `--backend` are
+mutually exclusive — both choose the lead candidate — while `--classifier` works
+with either, and with `--no-auto`.
 
 ## Preview the decision
 
@@ -111,32 +92,25 @@ ollama/<model>           no credential              extra systemone (missing)   
 
 Export the credential before the run; a missing key or extra is a typed failure
 (exit `1`, `judge unavailable: …`) before any backend converts anything. The
-three shipped providers share one System One implementation and one extra
-(`systemone`, `typesafe-sdk`):
-
-| Provider | Serves | Credential |
-| -------- | ------ | ---------- |
-| `typesafe-ai/<model>` | the TypeSafe cloud (System One models) | `TYPESAFE_API_KEY` |
-| `zen/<model>` | OpenCode Zen, same wire | `OPENCODE_API_KEY` (`-free` model: no billing) |
-| `ollama/<model>` | a local Ollama daemon | none |
+three shipped providers are the TypeSafe cloud, OpenCode Zen, and a local Ollama
+daemon — [Auto routing](../architecture/auto-routing.md) covers what each one
+serves and how the request is built.
 
 `ollama/<model>` needs a scoring-capable local GGUF (`nimble`, `tev`) and
-ollama ≥ 0.35. Its tag form is unusable — `ollama/nimble:latest` parses as a
-variant — which is harmless, because a bare `nimble` resolves to `:latest`.
+ollama ≥ 0.35.
 
 ## Add OCR-need facts before routing
 
 The classifier runs during **analysis**, before any routing decision, and can
-only *add* OCR-need to a page:
+only *add* OCR-need to a page — a rule-table OCR verdict is never cleared, so it
+behaves the same in auto mode and under `--no-auto`:
 
 ```bash
 parsecraft convert scan.pdf --classifier pdfinspector/detect_pdf
 ```
 
 `pdfinspector/detect_pdf` is the shipped provider: a local, model-free
-text-layer scan (needs the `pdf-inspector` extra). It is purely augmenting — a
-rule-table OCR verdict is never cleared — and it works in auto mode and under
-`--no-auto`, because the fold happens before routing.
+text-layer scan (needs the `pdf-inspector` extra).
 
 ## Constrain the run
 
@@ -155,24 +129,18 @@ rule-table OCR verdict is never cleared — and it works in auto mode and under
 | `1` | analysis or routing failed: a missing extra, an unset credential, an unavailable `--judge`/`--classifier` provider, no eligible backend, or a page whose intent has no eligible family (an OCR page with no OCR backend that can run here) |
 | `2` | usage error: malformed spec, `--backend` combined with `--judge`, `--no-auto` without `--backend`, ineligible `--backend`, a judge that crosses the native/OCR boundary, unsupported suffix |
 
-A GPU is only usable when the *runtime* can use it: a card with a CPU-only torch
-build (`torch.cuda.is_available()` is `False`) warns once on stderr
-(`GPU detected but unusable: … — GPU-only backends are excluded`) and every
-GPU-only backend drops out of the plan, which is why an OCR page can fail with
-`no eligible backend for intent 'ocr'` on such a host.
+One exit `1` case is a host fact rather than a flag mistake: a GPU present but
+unusable by the installed runtime excludes every GPU-only backend, so an OCR
+page can fail with `no eligible backend for intent 'ocr'`. See [Auto
+routing](../architecture/auto-routing.md) for the rule.
 
 ## What the selector will not do
 
-- A judge cannot widen the candidate set: it re-ranks only what the hard
-  constraints already admitted. A name outside that set, a duplicate, or an
-  empty order is a violation (exit `2`).
-- Families are never crossed: a page the rules called **native** is never
-  silently handed to an OCR backend — not by the planner, and not by a judge
-  either (an order that promotes an OCR fallback above a native candidate is
-  rejected). If OCR is required and no native backend covers the format, routing
-  fails instead.
-- A classifier cannot remove OCR-need, and it cannot see the document as the
-  judge does — it reports per-page facts (OCR-need, tables) and a document type.
+The invariants a caller can rely on — a judge re-ranks but never widens the
+candidate set, families are never crossed, and a classifier cannot remove
+OCR-need — are defined once in [Routing and auto
+mode](../architecture/routing.md) and [Auto
+routing](../architecture/auto-routing.md).
 
 ## Related pages
 

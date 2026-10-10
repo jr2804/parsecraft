@@ -127,13 +127,10 @@ modeling code so they load on the unified major.
 The OCR extras are **not** mutually exclusive: every extra installs alongside
 the others.
 
-GPU `torch` needs no manual install step: `torch`/`torchvision` are pinned to
-the **PyTorch cu128 index** in `pyproject.toml` (`[tool.uv.sources]`, gated
-to non-macOS), so a checkout sync gets the CUDA builds on Windows/Linux
-automatically — see the [GPU torch](../getting-started/installation.md#gpu-torch)
-section for the platform matrix. On a GPU host you may still want the CUDA
-runtime's driver, and older GPUs may need a different CUDA wheel; macOS resolves
-PyPI's CPU+MPS build because the index publishes no macOS wheels.
+GPU `torch` needs no manual install step: a checkout sync resolves the CUDA
+builds on Windows/Linux automatically. See [GPU
+torch](../getting-started/installation.md#gpu-torch) for the platform matrix and
+the driver caveat.
 
 The optional `vllm` extra is **Linux/WSL2-only**: its marker
 (`vllm>=0.11 ; sys_platform != 'win32'`) keeps Windows installs resolvable, but
@@ -274,19 +271,8 @@ missing or unusable.
 
 ## Auto mode
 
-`auto` mode is decided by `parsecraft.routing`. `analyze()` produces per-page
-signals, one rule table classifies each page into an `Intent`, eligibility rules
-filter the catalog, and `plan_route()` returns a `RoutingPlan` with ordered
-fallbacks. Planning is deterministic, pure, and offline. `parsecraft.pipeline.execute()`
-runs that plan: it groups contiguous pages, converts each group with the chosen
-backend, retries fallback candidates on a typed failure, and aggregates a
-`DocumentResult`.
-
-Hard constraints stay code-owned: installed extras, VRAM budget, format
-coverage, `max_passes`, `allow_ocr`, and `offline` are enforced before any judge
-sees a candidate, and a `NATIVE` page requires at least one eligible non-OCR
-backend. An optional `RoutingJudge` may re-rank eligible candidates only;
-`DeterministicJudge` is the default, and a judge cannot override a constraint. A
-Jev / System One-backed judge is a planned optional extra.
-
-See [Routing and auto mode](../architecture/routing.md).
+A descriptor is a candidate, never a decision: `auto` mode picks the backend per
+page, and what each backend declares here — formats, GPU need, extra group,
+model asset, languages — is exactly what the eligibility funnel reads. See
+[Routing and auto mode](../architecture/routing.md) for the funnel and the judge
+seam, and [Auto routing](../architecture/auto-routing.md) for the host inputs.
