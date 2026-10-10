@@ -38,7 +38,7 @@ unaffected.
 
 ## From PyPI
 
-First release: `2026.9.2`. Add the dependency with uv:
+Add the dependency with uv:
 
 ```bash
 uv add parsecraft
