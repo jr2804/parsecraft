@@ -1,0 +1,21 @@
+/* Content width: the default .md-grid caps at 61rem (~976 px), which leaves
+   roughly half a wide screen unused and makes the wide backend tables in
+   docs/reference/backends.md wrap badly. Widen the grid only where the
+   persistent navigation exists (material's wide-screen breakpoint) so mobile
+   and tablet keep the standard behaviour. */
+@media screen and (min-width: 76.25em) {
+  .md-grid {
+    max-width: 90rem;
+  }
+}
+
+/* Wide reference tables need the full content column: give the default
+   (unclassed) table its natural width and let it scroll rather than wrap
+   inside the column. */
+@media screen and (min-width: 76.25em) {
+  .md-typeset table:not([class]) {
+    display: table;
+    width: max-content;
+    max-width: 100%;
+  }
+}

@@ -6,6 +6,7 @@ site_url = "https://jr2804.github.io/parsecraft/"
 repo_url = "https://github.com/jr2804/parsecraft"
 repo_name = "parsecraft"
 copyright = "Copyright &copy; 2026 Jan.Reimes"
+extra_css = ["stylesheets/extra.css"]
 nav = [
   { "Home" = [
     { "Overview" = "index.md" },
@@ -49,6 +50,9 @@ nav = [
       { "ADR-0003 — Optional AGPL PyMuPDF" = "adr/0003-optional-agpl-pymupdf.md" },
       { "ADR-0004 — Routing and auto mode" = "adr/0004-routing-and-auto-mode.md" },
       { "ADR-0005 — pandoc GPL system binary" = "adr/0005-pandoc-gpl-system-binary.md" },
+      { "ADR-0006 — Marker backend deferred" = "adr/0006-marker-backend-deferred.md" },
+      { "ADR-0007 — MinerU conditional-licence opt-in" = "adr/0007-mineru-conditional-licence-optin.md" },
+      { "ADR-0008 — Lite OCR in the base install" = "adr/0008-lite-ocr-in-base-install.md" },
     ] },
   ] },
 ]

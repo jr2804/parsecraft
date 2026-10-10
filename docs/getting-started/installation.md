@@ -87,7 +87,7 @@ installing either.
 
 `parsecraft[mineru]` is additionally **GIL-builds-only** at install time — it
 pulls `onnxruntime`, which has no free-threaded macOS/Windows wheel. See
-[Interpreter / platform availability](../reference/backends.md#interpreter--platform-availability).
+[Interpreter / platform availability](../reference/backends.md#interpreter-platform-availability).
 
 ## From source
 
