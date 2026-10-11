@@ -13,7 +13,7 @@
 The user ruled that parsecraft's **base** install must ship a lightweight OCR
 backend — not another heavyweight `ocr-*` extra. The need is concrete: a
 consumer that consolidates onto parsecraft and installs only
-`parsecraft[liteparse,pdf-lite,docling,pandoc]` has **no OCR engine at all**, so
+`parsecraft[liteparse,docling,pandoc]` has **no OCR engine at all** (pypdf is a core dependency since ADR-0009), so
 scanned pages degrade to the native path and produce nothing but a
 `degraded_pages` trace. Required properties: no GPU, no network at run time, and
 small enough to be a default.

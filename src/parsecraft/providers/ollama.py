@@ -9,7 +9,7 @@ daemon is contacted on the first ``rank``.
 
 The System One model is ``nimble`` (``laya-gguf`` is not scoring-capable: it
 answers ``400: use a local Nimble or Tev GGUF model``). Any local Nimble/Tev
-GGUF works. Needs the ``systemone`` extra. Shared mechanics:
+GGUF works. Needs the ``auto`` extra. Shared mechanics:
 :mod:`parsecraft.providers._jev`.
 """
 
@@ -23,7 +23,7 @@ from parsecraft.routing.models import RoutingPreference
 #: Declared provider facts — spec spelling, the open-ended model list, endpoint.
 PROFILE = JudgeProviderProfile(
     name="ollama",
-    extra="systemone",
+    extra="auto",
     model_placeholder="<model>",
     example_models=("nimble", "tev"),
     base_url="http://localhost:11434",

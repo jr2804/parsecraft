@@ -43,7 +43,7 @@ today from what is planned. Each third-party tool keeps its own licence.
 | `native-text` | — | `.txt` (`text/plain`) | in-package — MIT | Zero dependencies, fully offline, deterministic | Paragraphs only; no headings, tables, or layout | Available |
 | `native-markdown` | — | `.md` (`text/markdown`) | [`markdown-it-py`](https://github.com/executablebooks/markdown-it-py) — MIT | CommonMark token structure: headings, lists, tables, code, quotes | CommonMark only; no non-CommonMark dialects | Available |
 | `native-html` | — | `.html` (`text/html`) | in-package (stdlib `html.parser`) — MIT | Zero dependencies; headings, lists, tables, code, quotes | Simplistic parser; scripts and styles skipped; not a full HTML5 engine | Available |
-| `native-pdf` | `pdf-lite` (analysis) + `pdf` (extraction) | `.pdf` (`application/pdf`) | [`pypdf`](https://pypi.org/project/pypdf/) — BSD-3-Clause; [`pymupdf`](https://pypi.org/project/PyMuPDF/) — **AGPL-3.0-or-commercial** | Fast native text and layout extraction; monospace runs become fenced `code` chunks with recovered relative indentation and joined wrapped lines; analysis works without the AGPL extra | Extraction requires the AGPL `pdf` extra; scanned PDFs need OCR | Available |
+| `native-pdf` | pypdf (core, analysis) + `pdf` (extraction) | `.pdf` (`application/pdf`) | [`pypdf`](https://pypi.org/project/pypdf/) — BSD-3-Clause; [`pymupdf`](https://pypi.org/project/PyMuPDF/) — **AGPL-3.0-or-commercial** | Fast native text and layout extraction; monospace runs become fenced `code` chunks with recovered relative indentation and joined wrapped lines; analysis works without the AGPL extra | Extraction requires the AGPL `pdf` extra; scanned PDFs need OCR | Available |
 
 The native backends are registered through
 `[project.entry-points."parsecraft.backends"]` and appear in
@@ -109,15 +109,15 @@ Model pins and licences are recorded once in
 `src/parsecraft/backends/ocr/_models.py`. The adapters are implemented but **not
 yet benchmarked with weights** — GPU runs are pending.
 
-Each backend has its own extra (`pip install "parsecraft[ocr-ovis]"`), and all
-four share **one** `transformers` window — `transformers>=5.17,<6`, declared
-once in `pyproject.toml` (the authoritative source) — plus `torch>=2.5`,
-`torchvision`, `pillow`, and `accelerate`. The per-model card pins
-(`transformers==4.57.1` and similar) are advisory origin only: the project range
-supersedes them, and the TeleOCR/Unlimited models ship as local vendored
-modeling code so they load on the unified major.
+All four models share **one** extra — `parsecraft[ocr]` (`transformers` window
+`>=5.17,<6`, `torch>=2.5`, `torchvision`, `accelerate` and the small model-code
+helpers, declared once in `pyproject.toml`, the authoritative source). The model
+*weights* are downloaded assets, not packages, so one feature extra covers every
+model. The per-model card pins (`transformers==4.57.1` and similar) are advisory
+origin only: the project range supersedes them, and the TeleOCR/Unlimited models
+ship as local vendored modeling code so they load on the unified major.
 
-The OCR extras are **not** mutually exclusive. Every extra installs jointly, and
+Extras are never mutually exclusive. Every extra installs jointly, and
 `uv sync -U --all-extras --all-groups --all-packages` is expected to succeed
 (root `AGENTS.md` rule 10).
 
@@ -136,12 +136,11 @@ the vLLM runtime does not run there, so those backends use the default
 
 ### The `auto` convenience extra
 
-`parsecraft[auto]` is a **meta-extra**: it pulls in `parsecraft[systemone]`
-(the judge providers) and `parsecraft[pdf-inspector]` (the `--classifier`
-provider), so one install covers the whole auto-routing flags story. It adds no
-dependency of its own, and it deliberately does **not** include `pdf`/`pdf-lite`
-or any OCR backend extra — routing flags and PDF extraction are separate
-choices, and a convenience extra must not smuggle in a copyleft or GPU stack.
+`parsecraft[auto]` is the **routing-flags feature group**: `typesafe-sdk`
+(the judge providers) and `pdf-inspector` (the `--classifier` provider), so one
+install covers the whole auto-routing flags story. It deliberately does **not**
+include `pdf` or any OCR backend — routing flags and heavy extraction are
+separate install decisions (ADR-0009).
 Judge credentials still come from the environment (`TYPESAFE_API_KEY`,
 `OPENCODE_API_KEY`; the local Ollama endpoint needs none) — see
 `parsecraft judges`.
@@ -165,10 +164,10 @@ source's media type. The OCR backends declare `application/pdf`,
 
 | Backend | Extra | Input | Model / licence | Strengths | Weaknesses | Availability |
 | ------- | ----- | ----- | --------------- | --------- | ---------- | ------------ |
-| `ocr-ovis` | `ocr-ovis` | page images | [`ATH-MaaS/OvisOCR2`](https://huggingface.co/ATH-MaaS/OvisOCR2) — Apache-2.0 | ~0.9 B; formulas and tables; vLLM wrapper (optional `vllm` extra) | GPU required (~1 GB VRAM); not yet benchmarked | Available (adapter implemented; not yet benchmarked — GPU/weights pending) |
-| `ocr-tele` | `ocr-tele` | images, scans | [`StarDoc-AI/TeleOCR`](https://huggingface.co/StarDoc-AI/TeleOCR) — Apache-2.0 ([code](https://github.com/caipeng328/TeleOCR)) | Geometry-aware; camera captures | GPU required (~1.2 GB VRAM); not yet benchmarked | Available (adapter implemented; not yet benchmarked — GPU/weights pending) |
-| `ocr-unlimited` | `ocr-unlimited` | multi-page | [`baidu/Unlimited-OCR`](https://huggingface.co/baidu/Unlimited-OCR) — MIT | Long-horizon multi-page documents | 3 B; quantization required under an 8 GB budget; not yet benchmarked | Available (adapter implemented; not yet benchmarked — GPU/weights pending) |
-| `ocr-qianfan` | `ocr-qianfan` | images | [`baidu/Qianfan-OCR`](https://huggingface.co/baidu/Qianfan-OCR) — Apache-2.0 (`Layout-as-Thought`) | Strong element, box, and reading-order control | 4 B; quantization required under an 8 GB budget; not yet benchmarked | Available (adapter implemented; not yet benchmarked — GPU/weights pending) |
+| `ocr-ovis` | `ocr` | page images | [`ATH-MaaS/OvisOCR2`](https://huggingface.co/ATH-MaaS/OvisOCR2) — Apache-2.0 | ~0.9 B; formulas and tables; vLLM wrapper (optional `vllm` extra) | GPU required (~1 GB VRAM); not yet benchmarked | Available (adapter implemented; not yet benchmarked — GPU/weights pending) |
+| `ocr-tele` | `ocr` | images, scans | [`StarDoc-AI/TeleOCR`](https://huggingface.co/StarDoc-AI/TeleOCR) — Apache-2.0 ([code](https://github.com/caipeng328/TeleOCR)) | Geometry-aware; camera captures | GPU required (~1.2 GB VRAM); not yet benchmarked | Available (adapter implemented; not yet benchmarked — GPU/weights pending) |
+| `ocr-unlimited` | `ocr` | multi-page | [`baidu/Unlimited-OCR`](https://huggingface.co/baidu/Unlimited-OCR) — MIT | Long-horizon multi-page documents | 3 B; quantization required under an 8 GB budget; not yet benchmarked | Available (adapter implemented; not yet benchmarked — GPU/weights pending) |
+| `ocr-qianfan` | `ocr` | images | [`baidu/Qianfan-OCR`](https://huggingface.co/baidu/Qianfan-OCR) — Apache-2.0 (`Layout-as-Thought`) | Strong element, box, and reading-order control | 4 B; quantization required under an 8 GB budget; not yet benchmarked | Available (adapter implemented; not yet benchmarked — GPU/weights pending) |
 | `ocr-tesseract` | none — in the base install | PDF pages, page images (PNG/JPEG/TIFF) | [`tesseract-ocr/tessdata_fast`](https://github.com/tesseract-ocr/tessdata_fast) — Apache-2.0 | No extra, no GPU, no model weights; runs anywhere the OS engine is installed | Needs the `tesseract` OS binary (parsecraft never installs it); weaker layout and formula handling than the VLM backends | Available wherever the engine is present — see below |
 
 Model licences apply to the weights; the ParseCraft adapter code is MIT.

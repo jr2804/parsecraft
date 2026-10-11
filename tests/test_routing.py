@@ -74,6 +74,35 @@ _UNCOVERED_FORMATS = {"csv", "json"}  # no backend supports these yet
 # ── models ─────────────────────────────────────────────────────────────────
 
 
+def test_native_pages_prefer_the_native_family_over_extra_backed_parsers() -> None:
+    """Name order must not hand plain text to a heavyweight parser.
+
+    Every parser claims ``text/plain``-family MIME, and the deterministic judge
+    ranks the NATIVE intent by execution tier — dependency-free native family
+    first, extra-backed parsers after — or a heavyweight engine wins by
+    alphabetical accident the moment it is installed.
+    """
+
+    def _descriptor(name: str, group: str | None) -> BackendDescriptor:
+        return BackendDescriptor(
+            name=name,
+            version="1.0.0",
+            capabilities=BackendCapabilities(
+                supported_formats=["text/plain"],
+                optional_dependency_group=group,
+            ),
+        )
+
+    candidates = [
+        _descriptor("docling", "docling"),
+        _descriptor("liteparse", "liteparse"),
+        _descriptor("native-text", None),
+    ]
+    ranked = DeterministicJudge().rank(Intent.NATIVE, candidates)
+    assert ranked[0] == "native-text"
+    assert set(ranked[1:]) == {"docling", "liteparse"}
+
+
 def test_intent_values() -> None:
     assert [intent.value for intent in Intent] == ["native", "ocr", "ocr-tables", "ocr-vision"]
 

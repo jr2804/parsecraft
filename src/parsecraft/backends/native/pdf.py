@@ -115,20 +115,16 @@ class _PdfFactory:
             supported_formats=SUPPORTED_FORMATS,
             supports_page_ranges=True,
             supports_multi_page=True,
-            optional_dependency_group="pdf-lite",
         ),
     )
 
     def __call__(self, config: BackendConfig) -> DocumentBackend:
-        _inspect_impl()  # fail fast when the pdf-lite extra is missing
+        _inspect_impl()  # fail fast if the install is broken
         return PdfBackend(config, self.descriptor.capabilities)
 
 
 def _inspect_impl() -> _PdfInspectImpl:
-    try:
-        return cast(_PdfInspectImpl, import_module(_PDF_INSPECT_MODULE))
-    except ImportError as exc:
-        raise DependencyUnavailableError(_PDF_INSPECT_MODULE, "pdf-lite") from exc
+    return cast(_PdfInspectImpl, import_module(_PDF_INSPECT_MODULE))
 
 
 def _extract_pdf(source: SourceDocument, data: bytes) -> list[PageResult]:

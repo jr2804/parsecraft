@@ -23,7 +23,7 @@ TRAFILATURA_BACKEND_VERSION = "0.1.0"
 #: Conversion-verified MIME inputs (trafilatura 2.3.1, 2026-10-09).
 TRAFILATURA_FORMATS: tuple[str, ...] = ("text/html",)
 
-_EXTRA = "trafilatura"
+_EXTRA = "web"
 _IMPL_MODULE = "parsecraft.backends.trafilatura._impl"
 
 CAPABILITIES = BackendCapabilities(

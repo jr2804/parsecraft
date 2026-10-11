@@ -81,7 +81,7 @@ by `routing/judge_providers.py` (each turns a `JudgeSpec` into a
   `JudgeProviderUnavailableError` naming the extra to install, never as a
   silent `None`.
 - A judge credential is resolved once at `load_judge`, never mid-conversion:
-  an unset `TYPESAFE_API_KEY`/`OPENCODE_API_KEY` (or a missing `systemone`
+  an unset `TYPESAFE_API_KEY`/`OPENCODE_API_KEY` (or a missing `auto`
   extra) raises `JudgeProviderUnavailableError`, so the CLI reports
   `judge unavailable: …` before any backend runs. A local endpoint reads no
   credential at all (the shared loader sends the SDK's local sentinel), and one
@@ -99,7 +99,7 @@ indexing test skips without the extra), and the System One family:
 `tests/test_providers_typesafe_ai.py` + `tests/test_providers_jev_endpoints.py`
 (offline SDK stub from `tests/fixtures/jev_sdk.py`; the semi-live Ollama tier
 needs the extra, so it skips in the canonical venv and runs with
-`uv run --isolated --extra systemone pytest -m judge --run-judge`).
+`uv run --isolated --extra auto pytest -m judge --run-judge`).
 
 ## Child DOX Index
 

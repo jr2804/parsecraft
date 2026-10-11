@@ -1,4 +1,4 @@
-"""pypdf-based PDF inspection (``pdf-lite`` extra) — analysis, no extraction.
+"""pypdf-based PDF inspection (core) — analysis, no extraction.
 
 Covers page count, encryption detection, per-page text statistics, and a
 non-decoding image count so ``analyze()`` can distinguish a blank page from a

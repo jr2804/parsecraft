@@ -23,19 +23,19 @@ OVIS_NAME = "ocr-ovis"
 OVIS_MODEL_ID = "ATH-MaaS/OvisOCR2"
 OVIS_REVISION = "1fc9221b7823a371d6e97f92d527cc847e24e107"
 OVIS_VRAM_GB = 1.0
-OVIS_EXTRA = "ocr-ovis"
+OVIS_EXTRA = "ocr"
 
 TELE_NAME = "ocr-tele"
 TELE_MODEL_ID = "StarDoc-AI/TeleOCR"
 TELE_REVISION = "a61433186527cb53958bf354e34ae673c19cec4b"
 TELE_VRAM_GB = 1.2
-TELE_EXTRA = "ocr-tele"
+TELE_EXTRA = "ocr"
 
 UNLIMITED_NAME = "ocr-unlimited"
 UNLIMITED_MODEL_ID = "baidu/Unlimited-OCR"
 UNLIMITED_REVISION = "07dea832e22aefee32ad281d4b80551282e1c168"
 UNLIMITED_VRAM_GB = 3.0
-UNLIMITED_EXTRA = "ocr-unlimited"
+UNLIMITED_EXTRA = "ocr"
 #: ``infer_multi()`` batch size: plan default is deliberately small.
 UNLIMITED_MAX_PAGES_PER_CALL = 4
 
@@ -43,7 +43,7 @@ QIANFAN_NAME = "ocr-qianfan"
 QIANFAN_MODEL_ID = "baidu/Qianfan-OCR"
 QIANFAN_REVISION = "623bf5d20d446abdb36606aa4547cd0c18886fe5"
 QIANFAN_VRAM_GB = 4.0
-QIANFAN_EXTRA = "ocr-qianfan"
+QIANFAN_EXTRA = "ocr"
 
 #: One MIME vocabulary for eligibility (native backends declare MIME too):
 #: `RoutingConstraints.formats` carries the source's media type, so extensions

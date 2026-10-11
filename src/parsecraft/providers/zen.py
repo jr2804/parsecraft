@@ -7,7 +7,7 @@ vendored SDK uses — so this endpoint is *injected* into the SDK rather than
 hand-rolled: ``base_url`` is the Zen host and the SDK adds ``/v1/systemone``.
 
 Models: ``jev-1.13`` and ``jev-1.13-free`` (the free one is the sensible choice
-for tests and demos — no billing side effect). Needs the ``systemone`` extra and
+for tests and demos — no billing side effect). Needs the ``auto`` extra and
 ``OPENCODE_API_KEY``, which is checked at resolution so the CLI reports
 ``judge unavailable: …`` before any backend runs. Shared mechanics:
 :mod:`parsecraft.providers._jev`.
@@ -23,7 +23,7 @@ from parsecraft.routing.models import RoutingPreference
 #: Declared provider facts — spec spelling, model tokens, credential, endpoint.
 PROFILE = JudgeProviderProfile(
     name="zen",
-    extra="systemone",
+    extra="auto",
     models=("jev-1.13", "jev-1.13-free"),
     api_key_env="OPENCODE_API_KEY",
     base_url="https://opencode.ai/zen",

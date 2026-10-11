@@ -37,13 +37,13 @@ tests, and keep the 100% coverage gate green.
 - `test_providers_typesafe_ai.py` — the System One judge family against the
   offline SDK stub: spec/credential/extra failures, endpoint injection, the
   distribution-as-ranking contract, the `(intent, candidates)` memo, machine
-  state, and a live tier gated on the `systemone` extra plus
+  state, and a live tier gated on the `auto` extra plus
   `TYPESAFE_API_KEY`.
 - `test_providers_jev_endpoints.py` — the Zen and Ollama endpoints (key
   requirement vs none, base URLs, the raised local timeout) plus the
   semi-live tier: a real local Ollama daemon under three machine profiles,
   with one behavioral anchor (a CPU-only host must not rank a GPU-only
-  candidate first). Semi-live tests skip unless the `systemone` extra and the
+  candidate first). Semi-live tests skip unless the `auto` extra and the
   daemon are both present.
 - `test_cli_judges.py` — the `judges` catalog command (human + JSON output,
   extra/credential availability, and the docs-table check).

@@ -52,7 +52,7 @@ class RoutingJudge(Protocol):
 
 
 class DeterministicJudge(RoutingJudge):
-    """Cheapest sufficient, family first: preferred model → native before OCR → VRAM → name.
+    """Cheapest sufficient, family first: preferred model → native family (dependency-free first, extra-backed parsers after) → OCR → VRAM → name.
 
     ``preference`` turns the VRAM tiebreak inside one family: ``SPEED`` and
     ``BALANCED`` (the default) take the smallest declared
@@ -182,7 +182,16 @@ def _sort_key(descriptor: BackendDescriptor, intent: Intent, preference: Routing
     preferred = PREFERRED_BACKENDS[intent]
     ocr = is_ocr(descriptor)
     if intent is Intent.NATIVE:
-        family_rank = 1 if ocr else 0
+        # Execution tier: the dependency-free native family leads, extra-backed
+        # parsers (liteparse, docling, ...) follow, OCR is the last resort.
+        # Name order alone would hand plain text to a heavyweight engine just
+        # because it sorts earlier.
+        if ocr:
+            family_rank = 2
+        elif descriptor.capabilities.optional_dependency_group is not None:
+            family_rank = 1
+        else:
+            family_rank = 0
     elif preferred is not None:
         family_rank = 0 if descriptor.name == preferred else (1 if ocr else 2)
     else:

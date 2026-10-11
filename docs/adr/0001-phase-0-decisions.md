@@ -114,6 +114,9 @@ capability at import time; enforced by an offline import test.
 | `auto-jev` | optional TypeSafe/Jev integration |
 | `all` | intentionally heavy convenience profile |
 
+This table is historical — today's feature-oriented extras are in ADR-0009
+(single `ocr` extra; pypdf/huggingface-hub in core; no meta-extras).
+
 Base install never pulls: model weights, CUDA, vLLM, SGLang, Docling, OCR
 checkpoints.
 

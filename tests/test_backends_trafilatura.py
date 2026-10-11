@@ -42,7 +42,7 @@ def test_descriptor_declares_the_verified_formats() -> None:
     assert capabilities.supports_page_ranges is False
     assert capabilities.supports_multi_page is False
     assert capabilities.estimated_vram_gb is None  # CPU-only
-    assert capabilities.optional_dependency_group == "trafilatura"
+    assert capabilities.optional_dependency_group == "web"
     # asset-free: the whole dependency tree is text extraction, no weights
     assert capabilities.model_asset is None
 
@@ -58,7 +58,7 @@ def test_factory_missing_extra_is_typed(monkeypatch: pytest.MonkeyPatch) -> None
     with pytest.raises(DependencyUnavailableError) as exc_info:
         factory(_CONFIG)
     assert exc_info.value.module == "trafilatura"
-    assert exc_info.value.extra == "trafilatura"
+    assert exc_info.value.extra == "web"
 
 
 def test_factory_rejects_impl_without_create(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -27,7 +27,7 @@ from parsecraft.backends.registry import default_registry
 from parsecraft.environment import probe as probe_module
 from parsecraft.environment.constraints import constraints_from_environment
 from parsecraft.environment.models import EnvironmentInfo
-from parsecraft.environment.probe import EXTRA_IMPORTS, META_EXTRAS, probe_environment
+from parsecraft.environment.probe import EXTRA_IMPORTS, probe_environment
 from parsecraft.routing.models import RoutingConstraints, RoutingPreference
 from parsecraft.routing.rules import is_hard_eligible
 
@@ -243,8 +243,8 @@ def test_probe_lists_backends_sorted_from_the_entry_point_group(
 @pytest.mark.parametrize(
     ("group", "available_modules", "expected_present"),
     [
-        ("ocr-ovis", {"transformers"}, True),
-        ("ocr-ovis", set(), False),
+        ("ocr", {"transformers"}, True),
+        ("ocr", set(), False),
         ("pdf", {"pymupdf"}, True),
         ("pdf", set(), False),
     ],
@@ -284,7 +284,7 @@ def test_probe_skips_descriptors_without_a_dependency_group(
 
 
 def test_extra_imports_map_covers_the_declared_ocr_and_pdf_groups() -> None:
-    for group in ("liteparse", "ocr-ovis", "ocr-tele", "ocr-unlimited", "ocr-qianfan", "pdf", "pdf-inspector", "pdf-lite"):
+    for group in ("liteparse", "ocr", "pdf", "auto"):
         assert group in EXTRA_IMPORTS
         assert EXTRA_IMPORTS[group]
 
@@ -329,7 +329,7 @@ def test_probe_omits_a_required_engine_the_host_lacks(monkeypatch: pytest.Monkey
 
 def test_probe_asks_about_no_engine_when_no_backend_requires_one(monkeypatch: pytest.MonkeyPatch) -> None:
     """The fact is probed on demand only: nothing declares one, nothing is looked up."""
-    _patch_entry_points(monkeypatch, [_descriptor("native-text"), _descriptor("native-pdf", "pdf-lite")])
+    _patch_entry_points(monkeypatch, [_descriptor("native-text"), _descriptor("native-pdf")])
     asked = _patch_engine_discovery(monkeypatch, {"tesseract"}, found="/usr/bin/tesseract")
 
     assert probe_environment().engines == frozenset()
@@ -365,20 +365,19 @@ def test_probe_reports_each_required_engine_once(monkeypatch: pytest.MonkeyPatch
     assert asked == ["tesseract"]
 
 
-def test_every_declared_extra_is_detectable_or_explicitly_meta() -> None:
+def test_every_declared_extra_is_detectable() -> None:
     """The extras contract, in both directions and against pyproject itself.
 
-    A declared extra in neither map is undetectable — the planner would never
-    see it installed — and a stale ``META_EXTRAS`` name would hide that. The
-    converse is intentionally softer: an ``EXTRA_IMPORTS`` key outside
-    ``pyproject`` is a *bring-your-own dependency group* (pc-u4g: ``marker``),
-    declared by a backend descriptor instead of an installable extra, and must
-    name a group some registered descriptor actually declares.
+    A declared extra with no import map is undetectable — the planner would
+    never see it installed. The converse is intentionally softer: an
+    ``EXTRA_IMPORTS`` key outside ``pyproject`` is a *bring-your-own
+    dependency group* (pc-u4g: ``marker``), declared by a backend descriptor
+    instead of an installable extra, and must name a group some registered
+    descriptor actually declares.
     """
     declared = set(_declared_extras())
     assert declared, "pyproject declares no extras — the reader is wrong"
-    assert declared <= set(EXTRA_IMPORTS) | META_EXTRAS
-    assert not set(EXTRA_IMPORTS) & META_EXTRAS  # a meta extra imports nothing
+    assert declared <= set(EXTRA_IMPORTS)
     assert all(EXTRA_IMPORTS[group] for group in EXTRA_IMPORTS)  # every map entry is useful
     undeclared = set(EXTRA_IMPORTS) - declared
     descriptor_groups = {
@@ -414,7 +413,7 @@ def test_offline_defaults_to_false(monkeypatch: pytest.MonkeyPatch, value: str) 
 
 
 def test_probe_is_deterministic_for_identical_inputs(monkeypatch: pytest.MonkeyPatch) -> None:
-    _patch_entry_points(monkeypatch, [_descriptor("ocr-ovis", "ocr-ovis")])
+    _patch_entry_points(monkeypatch, [_descriptor("ocr", "ocr-ovis")])
     _patch_find_spec(monkeypatch, {"transformers"})
     _patch_smi(monkeypatch, stdout="8192 MiB\n")
     monkeypatch.setenv("PARSECRAFT_OFFLINE", "1")
@@ -483,7 +482,7 @@ def test_environment_info_is_frozen() -> None:
 def test_constraints_fill_every_field_from_detected_facts() -> None:
     constraints = constraints_from_environment(_environment())
     assert isinstance(constraints, RoutingConstraints)
-    assert constraints.installed_extras == {"ocr-ovis", "pdf-lite"}
+    assert constraints.installed_extras == {"ocr", "pdf"}
     assert constraints.vram_budget_gb == 8.0
     assert constraints.offline is True
     assert constraints.allow_ocr is True  # derived: an OCR extra is detected
@@ -512,7 +511,7 @@ def test_constraints_default_to_the_balanced_preference() -> None:
 
 def test_allow_ocr_derivation_and_override() -> None:
     """An explicit value always wins over the derivation (both directions)."""
-    no_ocr = _environment(installed_extras=frozenset({"pdf-lite"}), engines=frozenset())
+    no_ocr = _environment(installed_extras=frozenset(set()), engines=frozenset())
     assert constraints_from_environment(no_ocr).allow_ocr is False
     assert constraints_from_environment(no_ocr, allow_ocr=True).allow_ocr is True
     ocr_present = _environment(installed_extras=frozenset({"ocr-tele"}))
@@ -526,11 +525,11 @@ def test_a_usable_engine_permits_ocr_without_any_ocr_extra() -> None:
     for exactly the hosts decision 1 exists for — a consumer with no ``ocr-*``
     extra and a working engine had nothing to OCR with.
     """
-    base_only = _environment(installed_extras=frozenset({"pdf-lite"}), engines=frozenset({"tesseract"}))
+    base_only = _environment(installed_extras=frozenset(set()), engines=frozenset({"tesseract"}))
 
     assert constraints_from_environment(base_only).allow_ocr is True
     # ...and the same host with no engine is back to the honest answer:
-    assert constraints_from_environment(_environment(installed_extras=frozenset({"pdf-lite"}), engines=frozenset())).allow_ocr is False
+    assert constraints_from_environment(_environment(installed_extras=frozenset(set()), engines=frozenset())).allow_ocr is False
 
 
 def test_an_explicit_allow_ocr_still_overrides_the_engine_fact() -> None:
@@ -549,7 +548,7 @@ def test_permitting_ocr_cannot_admit_a_backend_whose_engine_is_missing() -> None
     cannot run. This test pins that composition, since the two rules live in
     different modules.
     """
-    host = _environment(installed_extras=frozenset({"pdf-lite"}), engines=frozenset({"some-other-engine"}))
+    host = _environment(installed_extras=frozenset(set()), engines=frozenset({"some-other-engine"}))
     constraints = constraints_from_environment(host)
     backend = BackendDescriptor(
         name="ocr-tesseract",
@@ -680,7 +679,7 @@ def test_constraints_reject_invalid_plan_inputs() -> None:
 def _environment(**overrides: object) -> EnvironmentInfo:
     base: dict[str, object] = {
         "backends": ("ocr-ovis",),
-        "installed_extras": frozenset({"ocr-ovis", "pdf-lite"}),
+        "installed_extras": frozenset({"ocr", "pdf"}),
         "vram_budget_gb": 8.0,
         "offline": True,
         "engines": frozenset({"tesseract"}),

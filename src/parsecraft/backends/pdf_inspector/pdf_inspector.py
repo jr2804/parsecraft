@@ -33,7 +33,7 @@ PDF_INSPECTOR_BACKEND_VERSION = "0.1.0"
 #: Conversion-verified MIME inputs (pdf-inspector 1.25.2, 2026-10-01).
 PDF_INSPECTOR_FORMATS: tuple[str, ...] = ("application/pdf",)
 
-_EXTRA = "pdf-inspector"
+_EXTRA = "auto"
 _IMPL_MODULE = "parsecraft.backends.pdf_inspector._impl"
 
 CAPABILITIES = BackendCapabilities(

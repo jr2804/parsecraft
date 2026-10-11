@@ -2,7 +2,7 @@
 
 The vendored ``typesafe-sdk`` against the TypeSafe cloud (the SDK's own default
 base URL; ``TYPESAFE_BASE_URL`` can point it elsewhere). Needs the
-``systemone`` extra (``typesafe-sdk``, MIT, pure Python; surface verified
+``auto`` extra (``typesafe-sdk``, MIT, pure Python; surface verified
 against 0.7.2) and ``TYPESAFE_API_KEY``, which is checked at resolution so the
 CLI reports ``judge unavailable: …`` before any backend runs.
 
@@ -24,7 +24,7 @@ from parsecraft.routing.models import RoutingPreference
 #: Declared provider facts — spec spelling, model tokens, credential, extra.
 PROFILE = JudgeProviderProfile(
     name="typesafe-ai",
-    extra="systemone",
+    extra="auto",
     models=("jev-latest", "jev-preview"),
     api_key_env="TYPESAFE_API_KEY",
 )

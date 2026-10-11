@@ -39,7 +39,7 @@ def downloader_for(source: ModelSource) -> Downloader:
 
 
 def default_downloader() -> Downloader:
-    """Lazily load the Hugging Face adapter (requires the ``download`` extra)."""
+    """Lazily load the Hugging Face adapter (``huggingface_hub`` is a core dependency)."""
     try:
         module = import_module(_HUGGINGFACE_MODULE)
     except ImportError as exc:

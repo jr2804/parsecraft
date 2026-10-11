@@ -26,13 +26,13 @@ harness measures every backend that is eligible for each document
 (`is_hard_eligible` + the document's media type), one conversion per cell.
 
 Environment: Windows laptop, CPython 3.13, CPU only for the table below;
-light extras (`download`, `web`, `pdf-lite`, `pdf`, `liteparse`) installed.
+the light set installed (pypdf and huggingface-hub are core; `web`, `pdf`, `liteparse` as needed).
 No GPU work is included in this snapshot — see [Gaps](#honest-gaps).
 
 ## Reproduce
 
 ```bash
-uv run --extra pdf --extra liteparse --extra download --extra web --extra pdf-lite \
+uv run --extra pdf --extra liteparse --extra web \
   parsecraft benchmark tests/downloads/*.html tests/downloads/*.md \
     tests/downloads/*.pdf tests/downloads/*.txt \
   -o docs/benchmarks/
@@ -141,8 +141,7 @@ overwrites the committed CPU report; `--extra pdf` is required for PDF
 rasterisation (PyMuPDF, AGPL — ADR-0003).
 
 ```bash
-uv run --project .venv-gpu --extra ocr-ovis --extra ocr-qianfan \
-  --extra ocr-tele --extra ocr-unlimited --extra pdf --extra download \
+uv run --project .venv-gpu --extra ocr --extra pdf \
   parsecraft benchmark tests/downloads/itu-t-p863.pdf \
     tests/downloads/etsi-ts-103558.pdf tests/downloads/nist-sp-800-53r5.pdf \
   --json > docs/benchmarks/benchmark-ocr-full.json
@@ -153,7 +152,7 @@ uv run --project .venv-gpu --extra ocr-ovis --extra ocr-qianfan \
 Resumable: each `(document, backend)` pair is persisted as it finishes.
 
 ```bash
-uv run --extra docling --extra pdf --extra pdf-lite \
+uv run --extra docling --extra pdf \
   python scripts/bench_docling.py tests/downloads/*.pdf --backends docling
 ```
 
@@ -229,7 +228,7 @@ mise run bench-docling
 The equivalent explicit command:
 
 ```bash
-uv run --extra docling --extra pdf --extra pdf-lite \
+uv run --extra docling --extra pdf \
   python scripts/bench_docling.py .tmp/docling-bench/*.pdf
 ```
 

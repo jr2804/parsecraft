@@ -20,7 +20,7 @@ image extraction. `pypdf` is permissive but materially weaker as a parser;
 2. Core stays MIT and import-clean: the `pdf` extra is not installed by
    `mise dev` or CI, and the backend loads PyMuPDF only at instantiation
    (module boundary + `importlib`).
-3. **`pdf-lite` (pypdf, BSD-3-Clause) remains** the permissive dependency for
+3. ~~`pdf-lite` (pypdf, BSD-3-Clause) remains~~ **Amended (ADR-0009):** pypdf is now a **core** dependency — the permissive path for
    cheap, always-available inspection — page count, encryption, text-density
    and other difficulty signals used by `analyze()` — so routing works without
    the AGPL extra.
@@ -33,6 +33,6 @@ image extraction. `pypdf` is permissive but materially weaker as a parser;
   distribution or the `all` convenience profile without the same explicit
   acknowledgement.
 - `native-pdf` extraction requires `parsecraft[pdf]`; `native-pdf` analysis
-  works with `parsecraft[pdf-lite]` alone.
+  works on the core install alone.
 - Any future copyleft dependency follows this same pattern: optional extra +
   addendum + no core/dev install.

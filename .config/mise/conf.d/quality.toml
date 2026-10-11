@@ -14,7 +14,7 @@ run = ".venv-gpu/bin/python -m pytest tests/test_backends_ocr_gpu.py -m gpu --ru
 run_windows = ".venv-gpu/Scripts/python -m pytest tests/test_backends_ocr_gpu.py -m gpu --run-gpu"
 
 [tasks.test-judge]
-description = "Judge tier: live systemone/jev-latest (TYPESAFE_API_KEY), zen/<model> (OPENCODE_API_KEY), or the semi-live local ollama/<model> (needs the systemone extra: uv run --isolated --extra systemone pytest -m judge --run-judge)"
+description = "Judge tier: live systemone/jev-latest (TYPESAFE_API_KEY), zen/<model> (OPENCODE_API_KEY), or the semi-live local ollama/<model> (needs the auto extra: uv run --isolated --extra auto pytest -m judge --run-judge)"
 run = "uv run pytest -m judge --run-judge"
 
 [tasks.test-network]
@@ -23,7 +23,7 @@ run = "uv run pytest -m network --run-downloads"
 
 [tasks.bench-docling]
 description = "Docling vs native-pdf measurement (on-demand, NOT part of the gate; full corpus may take hours)"
-run = "uv run --extra docling --extra pdf --extra pdf-lite python scripts/bench_docling.py .tmp/docling-bench/*.pdf"
+run = "uv run --extra docling --extra pdf python scripts/bench_docling.py .tmp/docling-bench/*.pdf"
 
 [tasks.all]
 description = "Run all quality checks (format-check gates the tree; nothing rewrites it)"

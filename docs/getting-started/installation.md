@@ -63,7 +63,7 @@ parsecraft judges                     # provider tokens, credentials, extras
 
 `auto` is a meta-extra that pulls in `parsecraft[systemone]` and
 `parsecraft[pdf-inspector]` for the `--judge` and `--classifier` flags. It does
-not include `pdf`/`pdf-lite` or any OCR backend, so pick those separately when
+not include `pdf` or any OCR/HTML backend, so pick those separately when
 you need PDF extraction. Judge credentials come from the environment
 (`TYPESAFE_API_KEY`, `OPENCODE_API_KEY`) — see
 [Backends](../reference/backends.md) for the full extras list and
@@ -105,7 +105,7 @@ Or use mise, which also installs the pinned tool versions:
 ```bash
 git clone https://github.com/jr2804/parsecraft.git
 cd parsecraft
-mise dev      # uv sync -U --dev --all-groups --extra download --extra web --extra pdf-lite
+mise dev      # uv sync -U --dev --all-groups --extra web --extra auto
 uv run parsecraft backends
 ```
 
