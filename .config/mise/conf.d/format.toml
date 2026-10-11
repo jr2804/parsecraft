@@ -12,7 +12,14 @@ run = [
 
 [tasks.format-md]
 description = "Lint and reformat Markdown files with rumdl; NOT part of `mise all`"
-run = "rumdl fmt --config .config/rumdl.toml src/ docs/ tests/ examples/ scripts/ ./"
+# MD056 is disabled HERE ONLY because its autofix is destructive: on a row with
+# more cells than the header, `rumdl fmt` deletes the overflow cells, prints
+# "Fixed: N/N", and exits 0 (measured 2026-10-11). Detection stays fully armed
+# in `format-check`, whose `rumdl check` reports "Table row has N cells, but
+# expected M" without touching the file — so the gate still fails loud; the
+# fixer just never gets to destroy content. Re-entry: when upstream makes
+# MD056's fix non-destructive (or check-only), drop this flag.
+run = "rumdl fmt --config .config/rumdl.toml --extend-disable MD056 src/ docs/ tests/ examples/ scripts/ ./"
 
 [tasks.format-check]
 description = "Verify the working tree is formatter-canonical (pyreorder, rumdl, ruff) - never rewrites"
