@@ -617,6 +617,19 @@ def test_downloader_for_github_needs_no_download_extra() -> None:
     assert "huggingface_hub" not in sys.modules
 
 
+def test_github_downloader_rejects_a_non_https_url(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The downloader refuses a non-https URL even if one slipped past the URL builder."""
+    from parsecraft.assets.errors import AssetError
+
+    monkeypatch.setattr(
+        "parsecraft.assets.github._build_release_url",
+        lambda *_: "http://example.com/asset.bin",
+    )
+
+    with pytest.raises(AssetError, match="refusing non-https URL"):
+        GitHubDownloader.download("acme/repo", "r1", "asset.bin", str(tmp_path))
+
+
 def test_downloader_for_keeps_the_hub_as_the_default(monkeypatch: pytest.MonkeyPatch) -> None:
     module = import_huggingface(monkeypatch)
 

@@ -259,7 +259,7 @@ def transcribe_page(page_number: int, request: ConversionRequest, tessdata_dir: 
         if tessdata_dir is not None:
             argv += ["--tessdata-dir", tessdata_dir]
         try:
-            completed = run(  # noqa: S603 — resolved engine path, list argv, shell=False (probe.py precedent)
+            completed = run(  # noqa: S603 — argv is a list, shell=False
                 argv,
                 capture_output=True,
                 text=True,
