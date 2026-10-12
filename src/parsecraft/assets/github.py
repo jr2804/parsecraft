@@ -11,6 +11,7 @@ installed without the ``download`` extra.
 from __future__ import annotations
 
 import os
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from urllib.parse import quote
