@@ -66,6 +66,89 @@ The native backends are registered through
 `[project.entry-points."parsecraft.backends"]` and appear in
 `parsecraft backends`.
 
+### What the `native-` prefix means — and a proposal to retire it
+
+`native-` began as "no third-party runtime dependency". That is no longer what
+the word communicates, and it stopped being true the moment `native-pdf`
+spent its life carrying PyMuPDF: the family now holds exactly
+`native-text`, `native-markdown`, and `native-html`, all three of which are
+**first-party** — the parsing rules are parsecraft's own code (in-package, or
+stdlib `html.parser`), with no upstream parser delegated to. A reader sees
+the word and reasonably asks which native platform, or which native code.
+
+A more precise name for the category is **builtin**:
+
+| Candidate | Reads as | Problem |
+| --------- | -------- | ------- |
+| `native-` (current) | platform- or language-native | ambiguous; users ask "native to what?" |
+| `builtin-` | ships inside parsecraft | none found |
+| `first-party-` | our own code, our licence | accurate but long for a CLI token |
+| `internal-` | private implementation detail | implies not-for-use, which is wrong |
+
+`builtin-text`, `builtin-markdown`, `builtin-html` state the property that the
+remaining three actually share, and match the "base install" promise the docs
+already make elsewhere. `ocr-tesseract` is **base install** but not builtin
+(it drives an OS binary), which is the distinction the word should carry.
+
+The rename is deliberately **not** done in this document's current tree: it is
+a name change with its own cost (entry points, tests, every doc, and operator
+muscle memory), and it deserves its own change rather than riding along with a
+docs update. The proposal is recorded here so the decision is either taken or
+declined on its merits.
+
+### What each backend actually extracts
+
+Typed structure in the IR is narrower than "the document had a table in it".
+A capability is only marked **typed** when the converter emits a structured
+chunk with machine-readable content — `TABLE` chunks carrying `rows`
+(tuples of cell texts, separator row excluded), `FIGURE` chunks carrying image
+metadata, and so on. Content that survives only as prose or as Markdown text is
+marked **text**, and an empty cell means the backend drops it during
+conversion. This distinction matters for the router: only typed `rows` can be
+counted, filtered or projected without re-parsing text.
+
+| Backend | Tables | Figures / images | Equations |
+| ------- | ------ | ---------------- | --------- |
+| `native-text` | — | — | — |
+| `native-markdown` | typed | — | — |
+| `native-html` | typed | — | — |
+| `pymupdf` | — | — | — |
+| `pandoc` | text | text | text |
+| `liteparse` | unverified | unverified | unverified |
+| `docling` | typed | unverified | unverified |
+| `trafilatura` | typed | — (image syntax dropped) | — (formula syntax dropped) |
+| `pdf-inspector` | unverified | — | — |
+| `marker` | text | text | text |
+| `mineru` | typed (kind only) | unverified | unverified |
+| `ocr-ovis` … `ocr-qianfan` | — | — | — |
+| `ocr-tesseract` | — | — | — |
+
+**No backend extracts equations as typed chunks.** There is no `EQUATION`
+chunk kind in the IR, so equation markup reaching any backend survives only as
+text inside a paragraph. If typed equations matter to a downstream consumer,
+that is a missing IR feature, not a backend choice — see
+`src/parsecraft/ir/models.py` for the chunk vocabulary.
+
+`native-markdown`/`native-html`/`trafilatura` tables are typed through the
+shared Markdown projection, which is also where their one shared limit lives:
+a table row whose cells are present but whose separator row is missing does
+not become a `TABLE` chunk (see the trafilatura quirks below).
+
+`mineru` emits `TABLE` chunks but the structured `rows` are not pinned by a
+test yet, so the cell says "kind only". `docling` is the strongest typed-table
+case: rows are built from the vendor's own cell grid and a test pins cell
+agreement with the Markdown content.
+
+`pandoc` and `marker` pass their structure through as Markdown, so tables,
+figures and equations all survive **as text** in that projection — visible in
+the output, but not typed in the IR.
+
+**Unverified is not a claim.** Those cells are the honest state of the test
+suite, not a measurement of the upstream library: `liteparse`,
+`pdf-inspector`, `marker` and `docling` all handle more structure than their
+cells show, but no test pins a typed chunk for it. Closing an unverified cell
+means adding a test that asserts the typed chunk, not asserting a datasheet.
+
 ### Two distinct optional-dependency shapes
 
 `marker` and `mineru` are the two **different** ways an optional dependency can
@@ -250,6 +333,38 @@ The projection is the *declared* answer. GPU/VRAM/`--no-ocr` eligibility remains
 `routing.rules.is_hard_eligible`'s job — it needs a probed host — so a host that
 wants full eligibility joins this projection with that funnel rather than
 re-implementing it.
+
+## External benchmarks
+
+parsecraft ships its own benchmark runner (`parsecraft benchmark`) over its own
+fixture corpus, which measures **this** codebase but cannot answer "are we
+competitive?". These are the public benchmarks a reader can check independently
+— and, because each of them publishes a dataset and a scoring script, the ones
+most likely to feed a decision model later.
+
+| Benchmark | Publisher | What it measures | Notes for a parsecraft reader |
+| --------- | --------- | ---------------- | ----------------------------- |
+| [olmOCR-Bench](https://github.com/allenai/olmocr/tree/main/olmocr/bench) | AllenAI | ~7,000 machine-checkable test cases over 1,400 documents across 7 categories (ArXiv, old scans, math, tables, headers/footers, multi-column, long tiny text) | Unit-test-style assertions rather than edit distance, so a reordered-but-correct parse is not penalised; the authors explicitly reject soft metrics. Results are reproduced in-house except those marked `*`, which are reported by the model's own authors. |
+| [OmniDocBench](https://github.com/opendatalab/OmniDocBench) | OpenDataLab (CVPR 2025) | Fine-grained document parsing across 9 page sources and 19 layout categories | The benchmark MinerU's own numbers are usually reported against, so it is the natural comparison for the `mineru` row. |
+| [Docling benchmarks](https://docling.ai/benchmarks) | Docling project | Layout, tables and reading order over an 89-PDF / 4,008-page dataset with 1,842 tables and 4,676 pictures | Worth reading for its **reproducibility policy** even if the numbers age: dataset, release, configuration, hardware, metric, throughput, baselines, limitations, and a script that regenerates the table. That is the shape parsecraft's own benchmark output should eventually match. |
+| [parser-bench](https://github.com/SeanLikesData/parser-bench) | Third-party | Extraction **quality** across 11 real-world documents: content accuracy, reading order, table fidelity, column handling, watermark separation, numeric precision | Compares PyMuPDF, pdfplumber, pypdf and liteparse — the same "cheap deterministic parser" family parsecraft's `pymupdf` backend sits in. |
+| **opendataloader-bench** · **ParseBench** | OpenDataLab · third-party | Two further public scores for model-free PDF→Markdown pipelines | Names retained without links: the only reference located for these two was liteparse's own release announcement, which is not an independent source. Treat any number quoted against them as vendor-reported until the dataset is located at a first-party URL. |
+
+**How to read any of these before trusting them.** A benchmark is only as
+strong as the boundary between what it measured and what it claims:
+
+1. **Who ran the numbers.** A vendor reporting its own score (`*` above) is
+   weaker evidence than an in-house reproduction.
+2. **Which version.** Marker 1.10.1's olmOCR-bench score is not marker's
+   current score; the library moves.
+3. **Metric family.** Machine-checkable assertions survive a correct reordering;
+   edit distance penalises it. They answer different questions.
+4. **Hardware and effort.** CPU vs GPU, and whether OCR was enabled, changes
+   throughput by an order of magnitude — parsecraft's own measurements record
+   `fast`/`balanced` effort for the same reason.
+
+Nothing in this table is a parsecraft result. It is where a reader goes to
+check one.
 
 ## Choosing a backend
 
