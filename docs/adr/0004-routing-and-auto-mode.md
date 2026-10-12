@@ -206,6 +206,9 @@ moving any rail:
   preference) are constant per plan and stay out of it (machine/preference
   precedent).
 
+> Superseded for the "no context for NATIVE" half by the A9 pc-86l widening
+> below: every intent now carries a page context.
+
 ### Alternatives considered (classifier attachment)
 
 - **Enrich `pymupdf.analyze()` with the classifier.** Rejected: the same
@@ -325,10 +328,21 @@ a memoized judge never shares a verdict between two pages that differ only by
 density (the knox-1 corpus spans a 17× range, 121–6066 chars/page — the
 resolution the ≥40 binary used to throw away).
 
-**Scope.** The fact rides the existing A8 gate: only OCR-intent pages carry a
-context, NATIVE pages still get `None` (ranking native is an ordering
-question). The field defaults to `0.0` — the honest "no text signal" for a
-context constructed without a page behind it.
+**Scope (widened 2026-10-12, pc-86l — user ruling (b) "expand now").** The
+original landing rode the existing A8 gate: only OCR-intent pages carried a
+context. That scope was narrower than gh#6's evidence — the corpus table is
+**all-NATIVE** (sparse 121–623 chars/page → docling, dense 4894–6200 →
+mineru), so the very pages the issue measured got no context at all.
+`page_context()` now returns a context for **every** intent: NATIVE pages
+carry `needs_ocr=False` plus the same `blank`/`hints`/`density`. A8's
+"no context for NATIVE" rule is superseded for the page-class fact; the
+deterministic fallback judge still ignores the context (a pure function of
+family and preference), and `plan_route`'s NATIVE-lead guard still enforces
+native-before-OCR. The wire state (`providers/_jev.py` `request_state`) sends
+`page{needs_ocr, blank, density}` for both intents, and the `instructions()`
+prose names `density` so the prompt and the state agree. The field defaults
+to `0.0` — the honest "no text signal" for a context constructed without a
+page behind it.
 
 **Encoding consult (System One/Jev, bead pc-bzz).** Asked whether a float or a
 delivered `sparse/medium/dense` label is the better A8 fact, the model

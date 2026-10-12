@@ -44,9 +44,11 @@ DENSITY_REFERENCE_CHARS = 1000
 class RoutingJudge(Protocol):
     """Orders eligible candidates best-first; returns backend names.
 
-    ``context`` (A8) is the bounded page context for a page the rules called
-    OCR-needy, and ``None`` for a native one — where ranking is a native-ordering
-    question and the judge sees exactly what it saw before.
+    ``context`` (A8) is the bounded page class for **every** page the planner
+    ranks — a NATIVE page carries one too, with ``needs_ocr`` false (A9's
+    pc-86l widening: gh#6's corpus is all-NATIVE, so the judge must
+    discriminate sparse from dense native pages as well). ``None`` means the
+    caller had no page to offer, not "this page is native".
     """
 
     def rank(
@@ -190,22 +192,23 @@ class JudgeProviderLoader(Protocol):
     ) -> RoutingJudge: ...
 
 
-def page_context(intent: Intent, signal: PageSignal, hints: FeatureHints) -> PageContext | None:
-    """Bounded judge context for a page, or ``None`` when ranking needs none.
+def page_context(intent: Intent, signal: PageSignal, hints: FeatureHints) -> PageContext:
+    """Bounded judge context for a page — every intent gets one.
 
-    Only an OCR route gets one: for a ``NATIVE`` intent — including a page
-    degraded to native because no OCR family was available — ranking is a
-    native-ordering question, so the judge state and the memo key stay exactly
-    what they were. An OCR intent implies :func:`page_needs_ocr`, so this gate
-    and "the page needs OCR" agree by construction. The context carries the
-    page's normalized text density (A9): ``text_chars`` over
-    :data:`DENSITY_REFERENCE_CHARS`, saturated to ``[0.0, 1.0]`` — a typed
-    fact, no bucket; the bucket is the model's call.
+    The original A8 rule returned ``None`` for a ``NATIVE`` intent (ranking
+    native was "a native-ordering question", so the judge state and the memo
+    key stayed what they were). **Superseded** (gh#6, pc-86l): gh#6's corpus
+    is all-NATIVE — sparse pages (121–623 chars) want a different lead than
+    dense ones (4894–6200) — so a native page now carries its class too:
+    ``needs_ocr`` is true only for OCR intents (an OCR intent implies
+    :func:`page_needs_ocr`, so this gate and "the page needs OCR" still agree
+    by construction), plus ``blank``, ``hints``, and the normalized
+    ``density`` (A9): ``text_chars`` over :data:`DENSITY_REFERENCE_CHARS`,
+    saturated to ``[0.0, 1.0]`` — a typed fact, no bucket; the bucket is the
+    model's call.
     """
-    if intent is Intent.NATIVE:
-        return None
     return PageContext(
-        needs_ocr=True,
+        needs_ocr=intent is not Intent.NATIVE,
         blank=signal.blank,
         hints=hints,
         density=min(signal.text_chars / DENSITY_REFERENCE_CHARS, 1.0),

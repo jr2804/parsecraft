@@ -513,8 +513,8 @@ def test_deterministic_judge_ignores_the_page_context() -> None:
     )
 
 
-def test_plan_hands_a_context_to_ocr_pages_only() -> None:
-    """A judge sees bounded page facts for an OCR page and nothing extra for a native one (A8)."""
+def test_plan_hands_a_context_to_every_page() -> None:
+    """Every page carries bounded facts — native ones too (A8 widened by A9/pc-86l)."""
     seen: list[tuple[str, PageContext | None]] = []
 
     class RecordingJudge:
@@ -533,18 +533,21 @@ def test_plan_hands_a_context_to_ocr_pages_only() -> None:
     assert [intent for intent, _ in seen] == ["native", "ocr"]
     native_context = seen[0][1]
     ocr_context = seen[1][1]
-    assert native_context is None  # a native ordering question carries no page facts
+    assert native_context is not None  # a native page carries its class too (pc-86l)
+    assert native_context.needs_ocr is False
+    assert native_context.density == pytest.approx(0.5)  # good_native carries 500 chars
     assert ocr_context is not None
     assert ocr_context.needs_ocr is True
     assert ocr_context.blank is False
     assert ocr_context.hints == extract_hints(analysis)
+    assert native_context.memo_key() != ocr_context.memo_key()  # needs_ocr differs
     # hints are document-level hence plan-constant, so they stay out of the memo key;
     # density is per-page-variable and joined it (A9) — garbled() carries 90 chars → 0.09
     assert ocr_context.memo_key() == (True, False, 0.09)
 
 
-def test_page_context_is_none_for_pages_degraded_to_native() -> None:
-    """A page degraded to native is ranked as a native page — no context, no memo churn."""
+def test_degraded_pages_carry_the_native_page_context() -> None:
+    """A page degraded to native is ranked as a native page — needs_ocr false, density present."""
     seen: list[Any] = []
 
     class RecordingJudge:
@@ -560,7 +563,10 @@ def test_page_context_is_none_for_pages_degraded_to_native() -> None:
         full_constraints(formats=set(), allow_ocr=False, max_passes=1),
         RecordingJudge(),
     )
-    assert seen == [None]  # degraded: ranked as native, so the judge sees what it always saw
+    assert len(seen) == 1  # one ranking call for the one page
+    assert seen[0] is not None  # pc-86l: a degraded page carries its class too
+    assert seen[0].needs_ocr is False  # ranked as native
+    assert seen[0].density == pytest.approx(0.09)  # garbled() carries 90 chars
 
 
 def test_plan_respects_injected_judge() -> None:
@@ -1151,7 +1157,21 @@ def test_density_field_in_page_context() -> None:
     context = page_context(Intent.OCR_GENERAL, signal, hints)
     assert context is not None
     assert context.density == pytest.approx(0.5)
-    assert page_context(Intent.NATIVE, make_signal(1), hints) is None  # A8 gate unchanged
+    native = page_context(Intent.NATIVE, make_signal(1), hints)  # pc-86l: no None arm anymore
+    assert native.needs_ocr is False
+    assert native.density == pytest.approx(0.5)
+
+
+def test_native_pages_get_distinct_memo_keys_by_density() -> None:
+    """gh#6's NATIVE discrimination: sparse and dense native pages never share a verdict."""
+    hints = FeatureHints()
+    sparse = page_context(Intent.NATIVE, make_signal(1, text_chars=100), hints)
+    dense = page_context(Intent.NATIVE, make_signal(1, text_chars=6000), hints)
+    assert sparse.memo_key() != dense.memo_key()  # differ only by density
+
+    # A native page and an OCR page with the same text stay distinct: needs_ocr differs
+    ocr = page_context(Intent.OCR_GENERAL, make_signal(1, text_chars=6000), hints)
+    assert ocr.memo_key() != dense.memo_key()
 
 
 def test_density_normalized_to_reference() -> None:
@@ -1222,6 +1242,36 @@ def test_end_to_end_stub_judge_uses_density() -> None:
     assert sparse_chosen == "ocr-tele"
     assert dense_seen == [pytest.approx(0.9)]
     assert dense_chosen == "ocr-ovis"
+
+
+def test_end_to_end_stub_judge_sees_native_density() -> None:
+    """pc-86l: a NATIVE page's density reaches the judge too (needs_ocr false)."""
+
+    class _NativeDensityStubJudge(RoutingJudge):
+        """Prefers native-markdown for dense native pages, native-text for sparse ones."""
+
+        def __init__(self) -> None:
+            self.seen: list[PageContext | None] = []
+
+        def rank(
+            self,
+            intent: Intent,
+            candidates: Sequence[BackendDescriptor],
+            context: PageContext | None = None,
+        ) -> Sequence[str]:
+            self.seen.append(context)
+            assert context is not None  # pc-86l: native pages carry a context
+            return ["native-markdown", "native-text"] if context.density >= 0.3 else ["native-text", "native-markdown"]
+
+    def _chosen(chars: int) -> str:
+        stub = _NativeDensityStubJudge()
+        analysis = make_analysis([make_signal(1, native=True, text_chars=chars)], 1)
+        backends = [make_desc("native-text"), make_desc("native-markdown")]
+        plan = plan_route(analysis, backends, full_constraints(formats={"text/plain"}), stub)
+        return plan.pages[0].chosen
+
+    assert _chosen(100) == "native-text"  # sparse
+    assert _chosen(6000) == "native-markdown"  # dense
 
 
 def full_constraints(**overrides: Any) -> RoutingConstraints:

@@ -172,20 +172,21 @@ def test_rank_sends_one_bounded_choice_question(jev_sdk: StubSdk, ts_key: str) -
     }
 
 
-def test_state_carries_the_page_class_and_hints_only_for_an_ocr_page(jev_sdk: StubSdk, ts_key: str) -> None:
-    """A8: bounded page context for OCR pages, and a native page's state unchanged."""
+def test_state_carries_the_page_class_and_hints_for_every_page(jev_sdk: StubSdk, ts_key: str) -> None:
+    """A8 (widened, pc-86l): the page class — with density — rides the state for BOTH intents."""
     judge = provider.load_judge(JudgeSpec(provider=provider.PROVIDER_NAME, model=_MODEL))
-    judge.rank(Intent.OCR_TABLES, [_OCR, _NATIVE], _page_context(blank=False, tables=True))
+    judge.rank(Intent.OCR_TABLES, [_OCR, _NATIVE], _page_context(blank=False, tables=True, density=0.25))
     state, _questions = jev_sdk.calls[0]
-    assert state["page"] == {"needs_ocr": True, "blank": False}
+    assert state["page"] == {"needs_ocr": True, "blank": False, "density": 0.25}
     assert state["hints"] == {"tables": True, "equations": False, "figures": False}
     instructions, _criteria = jev_sdk.choices[0]
     assert "`state.page`" in instructions  # the model is told to weigh it
+    assert "`density`" in instructions  # ...and the prose names the density fact
 
-    judge.rank(Intent.NATIVE, [_OCR, _NATIVE])
+    judge.rank(Intent.NATIVE, [_OCR, _NATIVE], _page_context(needs_ocr=False, density=1.0))
     native_state, _questions = jev_sdk.calls[1]
-    assert "page" not in native_state
-    assert "hints" not in native_state
+    assert native_state["page"] == {"needs_ocr": False, "blank": False, "density": 1.0}  # pc-86l: native too
+    assert "hints" in native_state
 
 
 def test_memo_shares_a_verdict_only_within_one_page_class(jev_sdk: StubSdk, ts_key: str) -> None:
@@ -216,14 +217,16 @@ def _page_context(
     *,
     needs_ocr: bool = True,
     blank: bool = False,
+    density: float = 0.0,
     tables: bool = False,
     equations: bool = False,
     figures: bool = False,
 ) -> PageContext:
-    """A bounded page context as the planner builds it for an OCR page."""
+    """A bounded page context as the planner builds it (density defaults to no-text)."""
     return PageContext(
         needs_ocr=needs_ocr,
         blank=blank,
+        density=density,
         hints=FeatureHints(tables=tables, equations=equations, figures=figures),
     )
 

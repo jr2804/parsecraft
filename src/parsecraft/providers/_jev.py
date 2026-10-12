@@ -230,8 +230,11 @@ def instructions(preference: RoutingPreference) -> str:
         "only a fallback: never rank one above a native-capable candidate. Treat `state.machine` as the "
         "truth about this host: a candidate with `gpu_requirement` 1.0 cannot lead where `gpu_usable` is "
         "false, and one whose `estimated_vram_gb` exceeds `vram_budget_gb` does not fit. When "
-        "`state.page` is present the page needs OCR: `blank` says it carried no text at all, and "
-        "`state.hints` names the document's structure - prefer a candidate whose flavor covers a hinted "
+        "`state.page` is present it is the page's class: `needs_ocr` says whether the rules called "
+        "the page OCR-needy, `blank` says it carried no text at all, and `density` is its normalized "
+        "text density in [0, 1] - near 0 a sparse page, near 1 a dense one; weigh it when the parsers "
+        "differ in how well or how cheaply they handle text-heavy pages. `state.hints` names the "
+        "document's structure - prefer a candidate whose flavor covers a hinted "
         "feature (a table-capable backend for `tables`) when it is otherwise competitive."
     )
 
@@ -302,10 +305,12 @@ def request_state(
 
     Never document content: the model sees which candidates exist, what they
     declare, how much VRAM this machine has, which axis the caller asked to
-    optimise, and — for a page the rules called OCR-needy — that page's class
-    (``needs_ocr``, ``blank``) plus the document's structural ``hints``. An
-    unknown host contributes no ``machine`` key at all rather than a misleading
-    zero, and a native page contributes no ``page``/``hints`` keys at all.
+    optimise, and every page's class (``needs_ocr``, ``blank``, ``density``)
+    plus the document's structural ``hints`` — including NATIVE pages, which
+    carry ``needs_ocr=False`` (A9's pc-86l widening; gh#6's corpus is
+    all-NATIVE). An unknown host contributes no ``machine`` key at all rather
+    than a misleading zero, and a caller without a page contributes no
+    ``page``/``hints`` keys at all.
     """
     state: dict[str, object] = {
         "intent": intent.value,
@@ -315,7 +320,7 @@ def request_state(
     if machine is not None:
         state["machine"] = {"vram_budget_gb": machine.vram_budget_gb, "gpu_usable": machine.gpu_usable}
     if context is not None:
-        state["page"] = {"needs_ocr": context.needs_ocr, "blank": context.blank}
+        state["page"] = {"needs_ocr": context.needs_ocr, "blank": context.blank, "density": context.density}
         state["hints"] = context.hints.model_dump(mode="json")
     return state
 
