@@ -1013,6 +1013,114 @@ def good_native(signals_count: int = 1) -> list[PageSignal]:
     return [make_signal(index) for index in range(1, signals_count + 1)]
 
 
+# ── A10: the NATIVE tier is host-fact aware (pc-9tr) ──────────────────────
+
+
+def test_native_pdf_is_demoted_when_pdf_extra_absent() -> None:
+    """A host without ``parsecraft[pdf]`` must not be led by ``native-pdf``.
+
+    knox-1 measured the cost this removes: on the 2026.10.3 tier model,
+    ``native-pdf`` led every ``application/pdf`` NATIVE page because its
+    ``analyze()`` runs on core pypdf, while its ``convert()`` needs PyMuPDF —
+    so each document paid one failed lead attempt before falling through.
+    A10 demotes it into the extra-backed tier for exactly that host.
+    """
+    candidates = [
+        make_desc("native-pdf", ("application/pdf",), convert_extra="pdf"),
+        make_desc("docling", ("application/pdf",), group="docling"),
+        make_desc("liteparse", ("application/pdf",), group="liteparse"),
+        make_desc("mineru", ("application/pdf",), group="mineru"),
+        make_desc("ocr-ovis", ("application/pdf",), gpu=True, vram=6.0, group="ocr"),
+    ]
+    judge = DeterministicJudge(installed_extras=frozenset({"docling", "liteparse", "mineru", "ocr"}))
+
+    order = list(judge.rank(Intent.NATIVE, candidates))
+
+    assert order[0] == "docling"  # the first installed extra-backed parser, alphabetical
+    assert order.index("native-pdf") > order.index("mineru")  # demoted into tier 1, behind the installed parsers
+    assert order[-1] == "ocr-ovis"  # OCR stays the last resort
+
+
+def test_native_pdf_leads_when_pdf_extra_installed() -> None:
+    """Regression (2026.10.3): with ``[pdf]`` installed native-pdf is dependency-free and leads."""
+    candidates = [
+        make_desc("native-pdf", ("application/pdf",), convert_extra="pdf"),
+        make_desc("docling", ("application/pdf",), group="docling"),
+        make_desc("ocr-ovis", ("application/pdf",), gpu=True, vram=6.0, group="ocr"),
+    ]
+    judge = DeterministicJudge(installed_extras=frozenset({"pdf", "docling", "ocr"}))
+
+    assert list(judge.rank(Intent.NATIVE, candidates))[0] == "native-pdf"
+
+
+def test_every_base_install_native_backend_is_always_eligible() -> None:
+    """The native text family never depends on an extra, whatever the host has.
+
+    ``native-text``/``-markdown``/``-html`` declare no ``convert_extra`` and no
+    group, so a base install (empty extras) still ranks them tier 0 — and
+    ``native-pdf`` joins them the moment its extra is present.
+    """
+    candidates = [
+        make_desc("native-markdown"),
+        make_desc("native-text"),
+        make_desc("native-pdf", ("application/pdf",), convert_extra="pdf"),
+        make_desc("docling", ("text/plain", "application/pdf"), group="docling"),
+    ]
+    base = DeterministicJudge(installed_extras=frozenset())
+    with_pdf = DeterministicJudge(installed_extras=frozenset({"pdf", "docling"}))
+
+    assert list(base.rank(Intent.NATIVE, candidates))[:2] == ["native-markdown", "native-text"]
+    assert list(with_pdf.rank(Intent.NATIVE, candidates))[0] == "native-markdown"  # tier 0 alphabetical; native-pdf is tier 0 too
+
+
+def test_empty_candidate_set_yields_typed_planner_error() -> None:
+    """A host with no PDF-capable backend at all fails typed, not silently."""
+    analysis = make_analysis([make_signal(1, native=True)], 1)
+    backends = [make_desc("native-text"), make_desc("native-markdown")]
+
+    with pytest.raises(NoEligibleBackendError):
+        plan_route(analysis, backends, full_constraints(formats={"application/pdf"}))
+
+
+def test_existing_tier_ordering_preserved_when_all_convert_extras_satisfied() -> None:
+    """Regression (2026.10.3): a fully-satisfied host keeps the tier model."""
+    candidates = [
+        make_desc("native-pdf", ("application/pdf",), convert_extra="pdf"),
+        make_desc("docling", ("application/pdf",), group="docling"),
+        make_desc("liteparse", ("application/pdf",), group="liteparse"),
+        make_desc("ocr-ovis", ("application/pdf",), gpu=True, vram=6.0, group="ocr"),
+    ]
+    judge = DeterministicJudge(installed_extras=frozenset({"pdf", "docling", "liteparse", "ocr"}))
+
+    assert list(judge.rank(Intent.NATIVE, candidates)) == ["native-pdf", "docling", "liteparse", "ocr-ovis"]
+
+
+def test_max_passes_1_does_not_waste_a_native_pdf_lead_on_knox_config() -> None:
+    """The knox-1 shape, offline: one pass, no ``[pdf]`` — the lead is deliverable.
+
+    knox-1 ran ``[auto,docling,liteparse,mineru,ocr,pandoc,web]`` (licence-
+    consciously omitting ``[pdf]``) and every PDF paid the failed ``native-pdf``
+    lead before ``mineru`` converted it. With A10 the single pass goes straight
+    to the first installed extra-backed parser.
+    """
+    analysis = make_analysis([make_signal(1, native=True)], 1)
+    backends = [
+        make_desc("native-pdf", ("application/pdf",), convert_extra="pdf"),
+        make_desc("docling", ("application/pdf",), group="docling"),
+        make_desc("liteparse", ("application/pdf",), group="liteparse"),
+        make_desc("mineru", ("application/pdf",), group="mineru"),
+    ]
+
+    plan = plan_route(
+        analysis,
+        backends,
+        full_constraints(formats={"application/pdf"}, installed_extras={"docling", "liteparse", "mineru"}, max_passes=1),
+    )
+
+    assert plan.pages[0].candidates == ["docling"]  # exactly one pass, no native-pdf waste
+    assert plan.pages[0].chosen == "docling"
+
+
 def full_constraints(**overrides: Any) -> RoutingConstraints:
     base: dict[str, Any] = {
         "installed_extras": set(OCR_EXTRAS),
@@ -1040,6 +1148,7 @@ def make_desc(
     group: str | None = None,
     with_asset: bool = False,
     required_engine: str | None = None,
+    convert_extra: str | None = None,
 ) -> BackendDescriptor:
     asset = (
         ModelAssetDescriptor(
@@ -1061,6 +1170,7 @@ def make_desc(
             optional_dependency_group=group,
             model_asset=asset,
             required_engine=required_engine,
+            convert_extra=convert_extra,
         ),
     )
 

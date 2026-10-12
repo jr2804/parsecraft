@@ -43,6 +43,7 @@ CAPABILITIES = BackendCapabilities(
     supports_multi_page=True,
     estimated_vram_gb=None,
     optional_dependency_group=_EXTRA,
+    convert_extra=_EXTRA,
     model_asset=None,  # models download at converter creation (ADR-0006)
 )
 

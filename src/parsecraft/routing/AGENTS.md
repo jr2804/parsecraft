@@ -51,7 +51,9 @@ identical plan.
   `feature:tables` / `feature:equations` / `feature:figures` (or
   `image_count` mass ≥ `HEAVY_IMAGE_COUNT`); backends/tests emit them.
 - The judge is an injectable seam: `DeterministicJudge` is the default
-  (preferred model → native before OCR → VRAM direction → name). Shipped judge
+  (preferred model → native before OCR → VRAM direction → name; the NATIVE tier
+  is host-fact aware per ADR-0004 A10 — `convert_extra` absent on the host
+  ranks as extra-backed). Shipped judge
   providers live in `parsecraft.providers` (the three System One endpoints
   `typesafe-ai`/`zen`/`ollama` sharing `providers/_jev.py`); this
   package must never import one.

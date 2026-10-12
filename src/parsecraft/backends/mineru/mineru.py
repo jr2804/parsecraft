@@ -83,6 +83,7 @@ CAPABILITIES = BackendCapabilities(
     gpu_requirement=GPU_OPTIONAL,
     estimated_vram_gb=0.0,
     optional_dependency_group=_EXTRA,
+    convert_extra=_EXTRA,
     model_asset=MINERU_ASSET,
 )
 

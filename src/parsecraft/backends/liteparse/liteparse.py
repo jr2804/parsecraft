@@ -42,6 +42,7 @@ CAPABILITIES = BackendCapabilities(
     supports_multi_page=True,
     estimated_vram_gb=None,
     optional_dependency_group=_EXTRA,
+    convert_extra=_EXTRA,
     model_asset=None,  # local library — no model weights to pin
 )
 

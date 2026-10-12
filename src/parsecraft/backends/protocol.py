@@ -99,6 +99,13 @@ class BackendCapabilities(BaseModel):
     gpu_requirement: float = Field(default=GPU_NOT_NEEDED, ge=0.0, le=1.0)
     estimated_vram_gb: float | None = Field(default=None, ge=0)
     optional_dependency_group: str | None = None
+    #: The optional extra whose import boundary the CONVERT path crosses — its
+    #: absence makes conversion un-deliverable on this host (``native-pdf``
+    #: analyzes on core pypdf but converts via ``parsecraft[pdf]``/PyMuPDF).
+    #: ``None`` means convert needs nothing beyond core/base deps. This is the
+    #: convert path's import boundary, not every import: analyze()-only imports
+    #: never appear here (ADR-0004 A10).
+    convert_extra: str | None = None
     model_asset: ModelAssetDescriptor | None = None
     #: BCP-47 tags this backend declares support for; empty = language-agnostic.
     languages: tuple[str, ...] = ()

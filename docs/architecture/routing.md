@@ -293,7 +293,11 @@ by:
 2. On the `NATIVE` intent, execution tier: the dependency-free native family
    first, extra-backed parsers (`liteparse`, `docling`, …) after, OCR last —
    name order alone would hand plain text to a heavyweight engine that merely
-   sorts earlier (ADR-0009).
+   sorts earlier (ADR-0009). Dependency-free is a fact about **this host**
+   (ADR-0004 A10): a candidate whose declared `convert_extra` is absent from
+   the host's installed extras ranks with the extra-backed parsers — demoted,
+   never hidden (`native-pdf` without `parsecraft[pdf]` never leads while a
+   deliverable parser exists).
 3. Lowest `estimated_vram_gb` (`None` last).
 4. Name, ascending.
 
@@ -331,7 +335,7 @@ never probes the machine. Host reality is *detected* once, in
 | Fact | Declared — descriptor `capabilities` | Detected — `parsecraft.environment` |
 | ---- | ------------------------------------ | ----------------------------------- |
 | Backends present | — | `EnvironmentInfo.backends` |
-| Installed extras | `optional_dependency_group` | `EnvironmentInfo.installed_extras` |
+| Installed extras | `optional_dependency_group`, `convert_extra` | `EnvironmentInfo.installed_extras` |
 | GPU need and VRAM | `gpu_requirement` (0.0–1.0), `estimated_vram_gb` | `EnvironmentInfo.vram_budget_gb` — measured; `EnvironmentInfo.gpu_usable` — runtime can use it |
 | Formats | `supported_formats` | — |
 | Model assets | `model_asset` | — |

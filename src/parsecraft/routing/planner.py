@@ -40,13 +40,14 @@ def plan_route(
     :class:`NoEligibleBackendError`; an analysis without signals raises
     :class:`RoutingError`.
 
-    The judge the planner builds itself honours ``constraints.preference``; an
-    injected judge carries its own ranking policy (the caller resolves it with
-    the same preference — see ``cli/convert.py``).
+    The judge the planner builds itself honours ``constraints.preference`` and
+    carries the host's ``installed_extras`` (A10: the NATIVE tier is host-fact
+    aware); an injected judge carries its own ranking policy (the caller
+    resolves it with the same preference — see ``cli/convert.py``).
     """
     if not analysis.signals:
         raise RoutingError("analysis carries no page signals to route")
-    active_judge: RoutingJudge = judge if judge is not None else DeterministicJudge(constraints.preference)
+    active_judge: RoutingJudge = judge if judge is not None else DeterministicJudge(constraints.preference, frozenset(constraints.installed_extras))
     eligible = [descriptor for descriptor in sorted(backends, key=lambda d: d.name) if is_hard_eligible(descriptor, constraints)]
     if not eligible:
         raise NoEligibleBackendError(None, "no backend satisfies the hard constraints")

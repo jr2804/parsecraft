@@ -284,6 +284,7 @@ def test_backends_json_capability_schema_is_exact(monkeypatch: pytest.MonkeyPatc
         "gpu_requirement",
         "estimated_vram_gb",
         "optional_dependency_group",
+        "convert_extra",
         "model_asset",
         "languages",
         "required_engine",

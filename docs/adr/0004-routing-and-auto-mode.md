@@ -259,3 +259,52 @@ as a routing bug. Weights verified in the managed cache are not a download.
 **Consequence to expect.** With a warm verified cache an offline-declared plan
 may now lead with MinerU or an OCR VLM backend; clear the cache and they are
 excluded again — which is the behaviour the rule was always meant to express.
+
+## Amendment (2026-10-12): A10 — the NATIVE tier is host-fact aware
+
+**Decision (user ruling, shape B, bead `pc-9tr`):** on `Intent.NATIVE`,
+dependency-free means dependency-free **for this host** — both `analyze()` AND
+`convert()` must work without an extra on this host. A backend whose
+`convert_extra` is absent on the host is treated as extra-backed for that host:
+**demoted to tier 1, never hidden.** The candidate set is still complete (no
+backend is dropped from candidacy), but the lead is honest.
+
+**Why a new field.** `optional_dependency_group` is ambiguous about *which
+path* needs the group (knox-1's structural finding): `native-pdf` declares no
+group because its analysis is core, yet its convert path crosses
+`parsecraft[pdf]`/PyMuPDF. The new `BackendCapabilities.convert_extra` records
+exactly the convert path's import boundary — **not every import**;
+analyze()-only imports never appear there. `None` (the default) means convert
+needs nothing beyond core/base dependencies.
+
+**Mechanism.** `DeterministicJudge` carries `installed_extras` (default empty —
+the honest shape for a caller with no host facts); `plan_route` passes
+`constraints.installed_extras` to the judge it builds. In `_sort_key`'s NATIVE
+branch, a candidate whose `convert_extra` is set and absent from that set takes
+tier 1 alongside the declared extra-backed parsers (both sort by the existing
+VRAM proxy → name). `is_hard_eligible` is untouched: eligibility never changes,
+only ranking. `max_passes` semantics are unchanged; with `max_passes=1` on a
+host without `[pdf]` the lead is simply the first installed extra-backed
+parser, so knox-1's wasted failed lead attempt is gone.
+
+**Descriptor mapping (scored by System One/Jev, verified against source;
+bead pc-9tr).** `native-text`/`-markdown`/`-html` and `ocr-tesseract` (engine-
+gated, not import-gated): `None`. `native-pdf` → `pdf`. `docling` → `docling`,
+`liteparse` → `liteparse`, `marker` → `marker` (bring-your-own group, ADR-0006),
+`mineru` → `mineru`, `pandoc` → `pandoc`, `pdf-inspector` → `auto`,
+`trafilatura` → `web`, and the four OCR VLM backends (`ovis`, `tele`,
+`unlimited`, `qianfan`) → `ocr`.
+
+**installed_extras surface (System One/Jev consult, bead pc-9tr).** The
+existing import-surface probe (`EXTRA_IMPORTS` + `find_spec`, all-of markers)
+is **direct and sufficient** — no transitive closure over extras: detection
+keys on the package import itself, so a package arriving transitively still
+flips its own extra's detector. Known corner: `auto` requires both
+`pdf_inspector` and `typesafe_sdk` (all-of), so a hand-installed
+`pdf_inspector` alone leaves `pdf-inspector` demoted — over-demotion is the
+safe direction under this amendment (tier 1, still a candidate).
+
+**Provider judges unchanged.** A resolved provider judge (System One, Zen,
+Ollama) re-ranks the same complete candidate set with the host facts A8 already
+carries; `_validate_native_fallbacks` still enforces native-before-OCR on its
+orders.

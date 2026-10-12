@@ -116,6 +116,7 @@ class _PdfFactory:
             supported_formats=SUPPORTED_FORMATS,
             supports_page_ranges=True,
             supports_multi_page=True,
+            convert_extra="pdf",
         ),
     )
 

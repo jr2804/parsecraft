@@ -66,10 +66,21 @@ class DeterministicJudge(RoutingJudge):
     Preference never reorders across families: for ``Intent.NATIVE`` a
     native-capable candidate stays ahead of every OCR one however large that
     model is, and a preferred backend for an OCR flavor stays first.
+
+    ``installed_extras`` (A10) makes the NATIVE tier host-fact aware: a
+    candidate whose declared ``convert_extra`` is absent from this set is
+    demoted to the extra-backed tier for this host — demoted, never hidden.
+    The default empty set is the honest shape for a caller with no host facts:
+    every extra-gated convert is then ranked as extra-backed.
     """
 
-    def __init__(self, preference: RoutingPreference = RoutingPreference.BALANCED) -> None:
+    def __init__(
+        self,
+        preference: RoutingPreference = RoutingPreference.BALANCED,
+        installed_extras: frozenset[str] = frozenset(),
+    ) -> None:
         self._preference = preference
+        self._installed_extras = installed_extras
 
     @override
     def rank(
@@ -84,7 +95,7 @@ class DeterministicJudge(RoutingJudge):
         preference, so the page context a provider judge weighs cannot change
         what happens when no provider is configured (A8).
         """
-        ordered = sorted(candidates, key=lambda descriptor: _sort_key(descriptor, intent, self._preference))
+        ordered = sorted(candidates, key=lambda descriptor: _sort_key(descriptor, intent, self._preference, self._installed_extras))
         return [descriptor.name for descriptor in ordered]
 
 
@@ -178,16 +189,27 @@ def page_context(intent: Intent, signal: PageSignal, hints: FeatureHints) -> Pag
     return PageContext(needs_ocr=True, blank=signal.blank, hints=hints)
 
 
-def _sort_key(descriptor: BackendDescriptor, intent: Intent, preference: RoutingPreference) -> tuple[int, float, str]:
+def _sort_key(
+    descriptor: BackendDescriptor,
+    intent: Intent,
+    preference: RoutingPreference,
+    installed_extras: frozenset[str] = frozenset(),
+) -> tuple[int, float, str]:
     preferred = PREFERRED_BACKENDS[intent]
     ocr = is_ocr(descriptor)
     if intent is Intent.NATIVE:
         # Execution tier: the dependency-free native family leads, extra-backed
         # parsers (liteparse, docling, ...) follow, OCR is the last resort.
         # Name order alone would hand plain text to a heavyweight engine just
-        # because it sorts earlier.
+        # because it sorts earlier. A10: "dependency-free" is a fact about THIS
+        # host — a backend whose convert extra is absent here behaves like an
+        # extra-backed parser for that host (tier 1), so it never leads while a
+        # deliverable alternative exists, yet stays a candidate (demote, never
+        # hide).
         if ocr:
             family_rank = 2
+        elif descriptor.capabilities.convert_extra is not None and descriptor.capabilities.convert_extra not in installed_extras:
+            family_rank = 1  # extra-backed for THIS host
         elif descriptor.capabilities.optional_dependency_group is not None:
             family_rank = 1
         else:

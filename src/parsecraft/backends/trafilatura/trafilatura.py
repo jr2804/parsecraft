@@ -32,6 +32,7 @@ CAPABILITIES = BackendCapabilities(
     supports_multi_page=False,
     estimated_vram_gb=None,
     optional_dependency_group=_EXTRA,
+    convert_extra=_EXTRA,
     model_asset=None,  # asset-free: no weights to fetch (ADR-0006 does not apply)
 )
 

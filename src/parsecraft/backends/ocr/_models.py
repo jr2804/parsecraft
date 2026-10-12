@@ -194,6 +194,7 @@ def ocr_capabilities(
     *,
     asset: ModelAssetDescriptor | None,
     optional_dependency_group: str | None,
+    convert_extra: str | None = None,
     gpu_requirement: float = GPU_REQUIRED,
     supports_multi_page: bool,
     estimated_vram_gb: float | None,
@@ -224,6 +225,7 @@ def ocr_capabilities(
         gpu_requirement=gpu_requirement,
         estimated_vram_gb=estimated_vram_gb,
         optional_dependency_group=optional_dependency_group,
+        convert_extra=convert_extra,
         model_asset=asset,
         languages=languages,
         required_engine=required_engine,
@@ -233,6 +235,7 @@ def ocr_capabilities(
 OVIS_CAPABILITIES = ocr_capabilities(
     asset=OVIS_ASSET,
     optional_dependency_group=OVIS_EXTRA,
+    convert_extra=OVIS_EXTRA,
     supports_multi_page=False,
     estimated_vram_gb=OVIS_VRAM_GB,
 )
@@ -240,6 +243,7 @@ OVIS_CAPABILITIES = ocr_capabilities(
 TELE_CAPABILITIES = ocr_capabilities(
     asset=TELE_ASSET,
     optional_dependency_group=TELE_EXTRA,
+    convert_extra=TELE_EXTRA,
     supports_multi_page=False,
     estimated_vram_gb=TELE_VRAM_GB,
     # TeleOCR's HF card declares exactly zh + en (cardData.language, 2026-09-27):
@@ -249,6 +253,7 @@ TELE_CAPABILITIES = ocr_capabilities(
 UNLIMITED_CAPABILITIES = ocr_capabilities(
     asset=UNLIMITED_ASSET,
     optional_dependency_group=UNLIMITED_EXTRA,
+    convert_extra=UNLIMITED_EXTRA,
     supports_multi_page=True,
     estimated_vram_gb=UNLIMITED_VRAM_GB,
 )
@@ -256,6 +261,7 @@ UNLIMITED_CAPABILITIES = ocr_capabilities(
 QIANFAN_CAPABILITIES = ocr_capabilities(
     asset=QIANFAN_ASSET,
     optional_dependency_group=QIANFAN_EXTRA,
+    convert_extra=QIANFAN_EXTRA,
     supports_multi_page=False,
     estimated_vram_gb=QIANFAN_VRAM_GB,
 )
