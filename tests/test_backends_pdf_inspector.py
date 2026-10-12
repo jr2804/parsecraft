@@ -79,7 +79,7 @@ class _Stub:
 class _FallbackBackend:
     """Minimal native-shaped candidate used as the second eligible backend."""
 
-    name = "zzz-native"
+    name = "zzz-parser"
     capabilities = BackendCapabilities(supported_formats=["application/pdf"])
 
     def convert(self, request: ConversionRequest) -> BackendResult:
@@ -112,9 +112,9 @@ class _FallbackBackend:
 
 class _FallbackFactory:
     descriptor = BackendDescriptor(
-        name="zzz-native",
+        name="zzz-parser",
         version="0.1.0",
-        capabilities=_FallbackBackend.capabilities,
+        capabilities=_FallbackBackend.capabilities.model_copy(update={"optional_dependency_group": "auto"}),
     )
 
     def __call__(self, config: BackendConfig) -> DocumentBackend:
@@ -132,7 +132,7 @@ def test_descriptor_declares_only_verified_formats_and_stays_cpu_only() -> None:
     capabilities = descriptor.capabilities
     # Verified against pdf-inspector 1.25.2 — the library is PDF-only:
     assert capabilities.supported_formats == ["application/pdf"]
-    assert capabilities.optional_dependency_group == "pdf-inspector"
+    assert capabilities.optional_dependency_group == "auto"
     assert capabilities.supports_page_ranges is True
     assert capabilities.supports_multi_page is True
     assert capabilities.gpu_requirement == 0.0
@@ -156,10 +156,10 @@ def test_factory_reports_the_missing_extra(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(importlib, "import_module", _raise)
     with pytest.raises(
         DependencyUnavailableError,
-        match=re.escape("backend dependency 'pdf_inspector' is not installed — install the 'pdf-inspector' extra"),
+        match=re.escape("backend dependency 'pdf_inspector' is not installed — install the 'auto' extra"),
     ) as excinfo:
         backend_module.factory(BackendConfig(name="pdf-inspector"))
-    assert (excinfo.value.module, excinfo.value.extra) == ("pdf_inspector", "pdf-inspector")
+    assert (excinfo.value.module, excinfo.value.extra) == ("pdf_inspector", "auto")
     assert isinstance(excinfo.value, BackendError)
 
 
@@ -372,8 +372,8 @@ def test_pipeline_falls_back_when_pdf_inspector_rejects_the_source(pdf_inspector
     pdf_inspector_stub.extract_error = ValueError("Not a PDF: file is empty")
     result = execute(analysis, registry, _constraints(), _PDF_SOURCE, produced_at=_PRODUCED)
     group = result.groups[0]
-    assert group.winner == "zzz-native"
-    assert [attempt.backend for attempt in group.attempts] == ["pdf-inspector", "zzz-native"]
+    assert group.winner == "zzz-parser"
+    assert [attempt.backend for attempt in group.attempts] == ["pdf-inspector", "zzz-parser"]
     assert group.attempts[0].failure is not None
     assert group.attempts[0].failure.code is FailureCode.INVALID_INPUT
     assert [page.blocks[0].content for page in result.document.pages] == ["fallback content 1"]
@@ -421,14 +421,14 @@ def _register_pdf_inspector(registry: BackendRegistry) -> None:
 
 
 def _add_fallback(registry: BackendRegistry) -> None:
-    """A name sorting after ``pdf-inspector`` so the plan prefers the real backend."""
-    registry.register("zzz-native", _FallbackFactory())
+    """An extra-backed parser sorting after ``pdf-inspector`` (same tier, later name)."""
+    registry.register("zzz-parser", _FallbackFactory())
 
 
 def _constraints() -> RoutingConstraints:
     return RoutingConstraints(
         formats={"application/pdf"},
-        installed_extras={"pdf-inspector"},
+        installed_extras={"auto"},
         vram_budget_gb=8.0,
         max_passes=3,
     )

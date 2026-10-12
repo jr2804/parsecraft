@@ -290,7 +290,10 @@ by:
 
 1. Preferred model for the intent (`OCR_TABLES` → `ocr-unlimited`,
    `OCR_VISION` → `ocr-ovis`).
-2. Native before OCR on the `NATIVE` intent.
+2. On the `NATIVE` intent, execution tier: the dependency-free native family
+   first, extra-backed parsers (`liteparse`, `docling`, …) after, OCR last —
+   name order alone would hand plain text to a heavyweight engine that merely
+   sorts earlier (ADR-0009).
 3. Lowest `estimated_vram_gb` (`None` last).
 4. Name, ascending.
 

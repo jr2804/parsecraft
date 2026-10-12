@@ -259,7 +259,7 @@ provider that cannot be loaded exits `1`.
 
 **Status:** current.
 
-1. Install parsecraft with the provider extra — `systemone` (the System One
+1. Install parsecraft with the provider extra — `auto` (the System One
    scoring stack, `typesafe-sdk`); all three providers ride it (the cloud, Zen
    and the local daemon reach the wire through the same SDK).
 2. Export the credential of the endpoint you named: `TYPESAFE_API_KEY`
@@ -310,7 +310,7 @@ IR-1-based facts, with `pdf_type`, `confidence`, and table pages feeding the
 
 The judge seam is the integration point for a
 System One / Jev-backed judge. One implementation (`src/parsecraft/providers/_jev.py`)
-serves three endpoints behind the optional `systemone` extra (`typesafe-sdk`,
+serves three endpoints behind the optional `auto` extra (`typesafe-sdk`,
 MIT, pure Python) — the SDK is injected per endpoint rather than hand-rolled:
 `typesafe-ai/<model>` is the TypeSafe cloud (SDK default base URL,
 `TYPESAFE_API_KEY`), `zen/<model>` is OpenCode Zen (`base_url`
@@ -354,7 +354,7 @@ semi-live tier drives a **real local daemon** under three machine profiles
 (this host, a 32 GB GPU host, a CPU-only host), asserting contract-valid
 orderings plus one behavioral anchor — a CPU-only host must not rank a GPU-only
 candidate first. Both live and semi-live tests are opt-in, and the semi-live one additionally
-needs the `systemone` extra.
+needs the `auto` extra.
 
 Without a configured spec the heuristic path is still the default: the
 deterministic rule table plus, where configured, a judge spec.

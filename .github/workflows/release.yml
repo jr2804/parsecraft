@@ -155,7 +155,7 @@ jobs:
         } > prompt.txt
 
         python3 - <<'PY' > ai-notes.md
-        import json, os, urllib.request
+        import json, os, urllib.request, urllib.error
 
         request = urllib.request.Request(
             "https://openrouter.ai/api/v1/chat/completions",
@@ -168,8 +168,14 @@ jobs:
                 "Content-Type": "application/json",
             },
         )
-        with urllib.request.urlopen(request, timeout=120) as response:
-            payload = json.load(response)
+        try:
+            with urllib.request.urlopen(request, timeout=120) as response:
+                payload = json.load(response)
+        except urllib.error.HTTPError as exc:
+            # Surface the API's own message (bad model slug, key limit, ...) —
+            # a bare 'HTTP Error 404' is undiagnosable in the job log.
+            detail = exc.read().decode("utf-8", "replace")[:500]
+            raise SystemExit(f"OpenRouter returned {exc.code}: {detail}") from exc
         print(payload["choices"][0]["message"]["content"])
         PY
 

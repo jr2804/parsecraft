@@ -30,32 +30,17 @@ _ABSENT_CUDA_VALUES = frozenset({"None", "''", '""'})
 
 #: Declared map: extra name -> import packages whose presence proves it installed.
 EXTRA_IMPORTS: dict[str, tuple[str, ...]] = {
+    "auto": ("pdf_inspector", "typesafe_sdk"),
     "docling": ("docling",),
-    "download": ("huggingface_hub",),
     "liteparse": ("liteparse",),
     "marker": ("marker",),  # bring-your-own dependency (ADR-0006): no declared extra
     "mineru": ("mineru",),
-    "ocr-ovis": ("transformers",),
-    "ocr-qianfan": ("transformers",),
-    "ocr-tele": ("transformers",),
-    "ocr-unlimited": ("transformers",),
+    "ocr": ("transformers",),
     "pandoc": ("pypandoc",),
     "pdf": ("pymupdf",),
-    "pdf-inspector": ("pdf_inspector",),
-    "pdf-lite": ("pypdf",),
-    "systemone": ("typesafe_sdk",),
-    "trafilatura": ("trafilatura",),
     "vllm": ("vllm",),
-    "web": ("httpx",),
+    "web": ("httpx", "trafilatura"),
 }
-
-#: Extras with nothing to import: they exist to pull other extras in (a
-#: self-referential *meta* extra). Detectability is not a property of them —
-#: installing one installs the extras it names, and those are detected
-#: individually — so they must never appear in ``EXTRA_IMPORTS``. Declared here
-#: so the "every declared extra is either import-detectable or explicitly meta"
-#: contract stays checkable (``tests/test_environment.py``).
-META_EXTRAS: frozenset[str] = frozenset({"auto"})
 
 #: Engine name -> the environment variable that DECLARES it. A declaration is
 #: honoured verbatim and never probed (ADR-0008 decision 2): an operator who

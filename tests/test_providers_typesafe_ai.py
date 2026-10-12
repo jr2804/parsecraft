@@ -103,7 +103,7 @@ def test_missing_extra_names_the_extra(monkeypatch: pytest.MonkeyPatch) -> None:
         raise ImportError("typesafe_sdk")
 
     monkeypatch.setattr(_jev, "import_module", _raise)
-    with pytest.raises(JudgeProviderUnavailableError, match="'systemone' extra") as excinfo:
+    with pytest.raises(JudgeProviderUnavailableError, match="'auto' extra") as excinfo:
         provider.load_judge(JudgeSpec(provider="typesafe-ai", model=_MODEL))
     assert (excinfo.value.provider, excinfo.value.module_name) == ("typesafe-ai", "typesafe_sdk")
 
@@ -378,7 +378,7 @@ def ts_key(monkeypatch: pytest.MonkeyPatch) -> str:
 def test_live_typesafe_ranks_real_candidates() -> None:
     """Ground truth for the Choice-as-ranking contract, against the live API.
 
-    Skips without the `systemone` extra or `TYPESAFE_API_KEY`; run with
+    Skips without the `auto` extra or `TYPESAFE_API_KEY`; run with
     `mise run test-judge`.
     """
     pytest.importorskip("typesafe_sdk")

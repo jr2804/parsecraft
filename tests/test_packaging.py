@@ -47,20 +47,15 @@ def test_wheel_metadata_declares_core_dependencies_only(wheel_path: Path) -> Non
     assert "Requires-Python: >=3.13" in metadata
 
 
-def test_auto_meta_extra_carries_the_judge_and_classifier_extras() -> None:
-    """``parsecraft[auto]`` is exactly the two routing-seam extras (pc-dbu).
+def test_auto_extra_carries_the_routing_seam_dependencies() -> None:
+    """``parsecraft[auto]`` is exactly the two routing-seam dependencies (pc-dbu).
 
-    Self-referential by design: it adds no dependency of its own, and widening it
-    with `pdf`/`pdf-lite` or an OCR backend would smuggle a copyleft or GPU stack
-    into a convenience install. Both referenced extras must exist, so a rename
-    cannot leave a dangling self-reference.
+    A direct feature group, not a meta-extra: licence-isolated stacks (`pdf`,
+    pandoc, OCR) are deliberately not included — routing flags and heavy
+    extraction are separate install decisions (ADR-0009).
     """
     extras = _declared_extras()
-    assert set(extras["auto"]) == {"parsecraft[systemone]", "parsecraft[pdf-inspector]"}
-    for requirement in extras["auto"]:
-        referenced = requirement.removeprefix("parsecraft[").removesuffix("]")
-        assert referenced in extras, f"auto references undeclared extra {referenced!r}"
-        assert referenced != "auto"  # no self-reference
+    assert set(extras["auto"]) == {"pdf-inspector>=1.25.2", "typesafe-sdk>=0.7.2"}
 
 
 def _declared_extras() -> dict[str, list[str]]:

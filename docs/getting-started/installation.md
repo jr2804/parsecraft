@@ -66,9 +66,9 @@ pip install "parsecraft[auto]"        # the judge providers + the classifier pro
 parsecraft judges                     # provider tokens, credentials, extras
 ```
 
-`auto` is a meta-extra that pulls in `parsecraft[systemone]` and
+`auto` is a meta-extra that pulls in `typesafe-sdk` and
 `parsecraft[pdf-inspector]` for the `--judge` and `--classifier` flags. It does
-not include `pdf`/`pdf-lite` or any OCR backend, so pick those separately when
+not include `pdf` or any OCR/HTML backend, so pick those separately when
 you need PDF extraction. Judge credentials come from the environment
 (`TYPESAFE_API_KEY`, `OPENCODE_API_KEY`) — see
 [Backends](../reference/backends.md) for the full extras list and

@@ -51,7 +51,7 @@ class _StubBackend(NativeBackendBase):
     name = "native-stub"
 
 
-# ── pdf_inspect coverage without the pdf-lite extra (fake pypdf) ───────────
+# ── pdf_inspect coverage (fake pypdf; real pypdf is a core dependency) ──────
 
 
 class _FakePasswordType:
@@ -424,11 +424,10 @@ def test_pdf_descriptor_contract() -> None:
     assert descriptor.capabilities.supported_formats == ["application/pdf"]
     assert descriptor.capabilities.supports_page_ranges is True
     assert descriptor.capabilities.supports_multi_page is True
-    assert descriptor.capabilities.optional_dependency_group == "pdf-lite"
+    assert descriptor.capabilities.optional_dependency_group is None
 
 
 def test_pdf_factory_and_analyze_with_real_pypdf() -> None:
-    pytest.importorskip("pypdf", reason="pdf-lite extra absent in the light env")
     backend = pdf_module.factory(_config("native-pdf"))
     data = document_bytes("pdf", pages=[["page one text"], ["page two text", "more"]])
     analysis = backend.analyze(_source(data))
@@ -452,7 +451,7 @@ def test_pdf_analyze_encrypted_pdf_reports_warning() -> None:
 
 
 def _encrypted_pdf(data: bytes) -> bytes:
-    pypdf = pytest.importorskip("pypdf", reason="pdf-lite extra absent in the light env")
+    pypdf = importlib.import_module("pypdf")
     writer = pypdf.PdfWriter()
     writer.append(io.BytesIO(data))
     writer.encrypt("secret")
@@ -462,7 +461,6 @@ def _encrypted_pdf(data: bytes) -> bytes:
 
 
 def test_pdf_analyze_blank_page_reports_no_extractable_text() -> None:
-    pytest.importorskip("pypdf", reason="pdf-lite extra absent in the light env")
     backend = pdf_module.factory(_config("native-pdf"))
     data = document_bytes("pdf", pages=[[]])
     analysis = backend.analyze(_source(data))
@@ -480,7 +478,6 @@ def test_pdf_analyze_counts_image_objects_on_a_scanned_page() -> None:
     runs the real pypdf inspection against the repo's own scanned fixture; if
     the counting is ever re-hardcoded to a constant, this assertion fails.
     """
-    pytest.importorskip("pypdf", reason="pdf-lite extra absent in the light env")
     backend = pdf_module.factory(_config("native-pdf"))
     analysis = backend.analyze(_source(mixed_scanned_pdf()))
     scan_page, first_text_page = analysis.signals[0], analysis.signals[1]
@@ -491,7 +488,6 @@ def test_pdf_analyze_counts_image_objects_on_a_scanned_page() -> None:
 
 def test_pdf_analyze_image_mass_counts_exactly() -> None:
     """pc-svr: page-level image XObjects count one-for-one, pinning the >=5 cases."""
-    pytest.importorskip("pypdf", reason="pdf-lite extra absent in the light env")
     backend = pdf_module.factory(_config("native-pdf"))
     for count in (1, 4, 5, 8):
         analysis = backend.analyze(_source(image_heavy_pdf(count)))
@@ -511,7 +507,7 @@ def test_pdf_factory_raises_when_inspect_module_missing(monkeypatch: pytest.Monk
         return importlib.import_module(name)
 
     monkeypatch.setattr("parsecraft.backends.native.pdf.import_module", raiser)
-    with pytest.raises(DependencyUnavailableError, match="pdf-lite"):
+    with pytest.raises(ImportError, match="pdf_inspect"):
         pdf_module.factory(_config("native-pdf"))
 
 
@@ -625,8 +621,13 @@ def test_pdf_text_impl_module_loads_with_fake_pymupdf(monkeypatch: pytest.Monkey
 
     monkeypatch.setitem(sys.modules, "pymupdf", FakePymupdf)
     monkeypatch.delitem(sys.modules, "parsecraft.backends.native.pdf_text", raising=False)
-    impl = cast(Any, importlib.import_module("parsecraft.backends.native.pdf_text"))
-    layouts = impl.page_layouts(b"%PDF-fake")
+    try:
+        impl = cast(Any, importlib.import_module("parsecraft.backends.native.pdf_text"))
+        layouts = impl.page_layouts(b"%PDF-fake")
+    finally:
+        # The module was imported against the FAKE pymupdf; drop it again so
+        # later tests re-import against the real library (full-env gates).
+        sys.modules.pop("parsecraft.backends.native.pdf_text", None)
     assert [line.text for page in layouts for line in page.lines] == ["alpha", "beta"]
     assert closed == [True]
 

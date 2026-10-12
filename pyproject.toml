@@ -17,82 +17,41 @@ classifiers = [
 ]
 dependencies = [
     "charset-normalizer>=3.4",
+    "huggingface-hub>=0.34",
     "markdown-it-py>=4.2",
     "pillow>=10.4",
     "pydantic>=2.13",
     "pydantic-settings>=2.15",
     "platformdirs>=4.3",
+    "pypdf>=5",
     "pypdfium2>=5.14",
     "tomlkit>=0.13",
     "typer>=0.12.0",
 ]
 
+# Feature-oriented extras (ADR-0009): core is comprehensive; extras exist only
+# for heavyweight or licence-isolated functionality. One line each — rationale
+# lives in the ADRs, not here.
 [project.optional-dependencies]
-download = ["huggingface-hub>=0.34"]
-web = ["httpx>=0.27"]
-pdf-lite = ["pypdf>=5"]
-pdf = ["pymupdf>=1.24"]
-liteparse = ["liteparse>=2.14"]
-# GPL-2.0-or-later pandoc BINARY behind the MIT pypandoc wrapper — the
-# user's licence decision (ADR-0005); never installed by `mise dev`/CI.
-pandoc = ["pypandoc>=1.15"]
+auto = ["pdf-inspector>=1.25.2", "typesafe-sdk>=0.7.2"]
 docling = ["docling>=2.130"]
-# HTML readability extraction (library-named extra, the docling pattern). Its
-# dependency tree is MIT/Apache/BSD with no weights, so no licence carve-out
-# applies (ADR-0006 n/a) and it is asset-free: no download notice, no offline
-# carve-out. Opt-in only — native-html stays the deterministic lead.
-trafilatura = ["trafilatura>=2.3.1"]
-# MinerU 4.x: layout-aware PDF parsing with its OWN weight downloads (see
-# ADR-0007 and the docs statement — mixed licences, incl. undeclared weights on
-# the Windows-default engine). The 2.x line cannot install on Python 3.14.
-mineru = [
-    "mineru>=4.0.11,<5",
-]
-# PDF-only Rust/PyO3 extractor: prebuilt abi3 wheels, no Python deps, no OCR runtime.
-pdf-inspector = ["pdf-inspector>=1.25.2"]
-# The vLLM path is Linux/WSL2-only (runtime AND install): the marker keeps
-# Windows resolvable with every extra enabled at once.
-vllm = ["vllm>=0.11 ; sys_platform != 'win32'"]
-# OCR extras intentionally exclude PyMuPDF (AGPL): PDF input additionally needs
-# `parsecraft[pdf]`, keeping the copyleft choice explicit (ADR-0003).
-#
-# ONE transformers window for all four OCR models — `uv sync -U --all-extras`
-# must always resolve (root AGENTS.md rule 10; extras are never mutually
-# exclusive). 5.17.0 is the verified member of the window; a runtime guard
-# names it (`backends/ocr/_common.py`). GPU torch comes from the pinned
-# PyTorch cu128 index (see [tool.uv.index] below) — no manual CUDA install.
-# The same window is enforced at runtime as TRANSFORMERS_RANGE in backends/ocr/_models.py.
-ocr-ovis = ["transformers>=5.17,<6", "torch>=2.5", "torchvision", "pillow>=10.4", "accelerate>=0.34"]
-ocr-qianfan = ["transformers>=5.17,<6", "torch>=2.5", "torchvision", "pillow>=10.4", "accelerate>=0.34"]
-ocr-tele = ["transformers>=5.17,<6", "torch>=2.5", "torchvision", "pillow>=10.4", "accelerate>=0.34"]
-ocr-unlimited = [
-    "transformers>=5.17,<6",
-    "torch>=2.5",
-    "torchvision",
-    "pillow>=10.4",
+liteparse = ["liteparse>=2.14"]
+mineru = ["mineru>=4.0.11,<5"]  # mixed licences incl. weights: ADR-0007
+ocr = [
     "accelerate>=0.34",
-    "einops",
     "addict",
     "easydict",
+    "einops",
     "matplotlib",
     "requests",
+    "torch>=2.5",
+    "transformers>=5.17,<6",
+    "torchvision",
 ]
-# TypeSafe System One judge providers (typesafe cloud, OpenCode Zen, local
-# Ollama): one pure-Python MIT SDK (typesafe-sdk) behind the optional
-# `systemone` routing extra, injected per endpoint via base_url/api_key.
-# `load_judge` imports it via importlib, so it stays out of the core import path
-# and out of the dev/CI venv.
-systemone = ["typesafe-sdk>=0.7.2"]
-# Meta-extra: one install for the whole auto-routing flags story — the classifier
-# (`--classifier pdfinspector/detect_pdf`) and the judge providers (`--judge
-# typesafe-ai|zen|ollama`). Self-referential by design: it pulls in extras this
-# package already declares, so the parts stay independently installable and this
-# adds no dependency of its own. Deliberately NOT widened with `pdf`/`pdf-lite`
-# (or any OCR backend extra): routing flags and PDF extraction are separate
-# decisions, and a meta-extra must never smuggle in a copyleft or GPU stack.
-# Nothing imports it, so it has no `EXTRA_IMPORTS` entry — `META_EXTRAS` in
-# `environment/probe.py` records that distinction.
-auto = ["parsecraft[systemone]", "parsecraft[pdf-inspector]"]
+pandoc = ["pypandoc>=1.15"]  # GPL-2.0-or-later binary: ADR-0005
+pdf = ["pymupdf>=1.24"]  # AGPL: ADR-0003
+vllm = ["vllm>=0.11 ; sys_platform != 'win32'"]  # Linux/WSL2 accelerator
+web = ["httpx>=0.27", "trafilatura>=2.3.1"]
 
 [project.entry-points."parsecraft.backends"]
 native-text = "parsecraft.backends.native.text:factory"

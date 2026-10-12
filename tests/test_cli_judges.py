@@ -39,7 +39,7 @@ def test_human_output_reports_availability(monkeypatch: pytest.MonkeyPatch, stas
     result = _runner.invoke(app, ["judges"])
     assert result.exit_code == 0
     assert "TYPESAFE_API_KEY (unset)" in result.output
-    assert "extra systemone (missing)" in result.output
+    assert "extra auto (missing)" in result.output
 
 
 def test_human_output_reports_a_present_credential_and_extra(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -47,7 +47,7 @@ def test_human_output_reports_a_present_credential_and_extra(monkeypatch: pytest
     assert all(entry.extra_installed for entry in entries)
     lines = judges_module.render_entries(entries)
     assert "TYPESAFE_API_KEY (set)" in "\n".join(lines)
-    assert "extra systemone (installed)" in "\n".join(lines)
+    assert "extra auto (installed)" in "\n".join(lines)
 
 
 def _entries(monkeypatch: pytest.MonkeyPatch, *, credential: str | None = None, extra: bool = False) -> list[judges_module.JudgeEntry]:
@@ -66,7 +66,7 @@ def test_json_payload_carries_the_profile_and_the_specs(monkeypatch: pytest.Monk
     typesafe = payload[0]
     assert typesafe["specs"] == ["typesafe-ai/jev-latest", "typesafe-ai/jev-preview"]
     assert typesafe["api_key_env"] == "TYPESAFE_API_KEY"
-    assert typesafe["extra"] == "systemone"
+    assert typesafe["extra"] == "auto"
     assert typesafe["credential_set"] is False
     assert isinstance(typesafe["extra_installed"], bool)
     ollama = payload[-1]
@@ -87,7 +87,7 @@ def stash(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_entries_cover_every_declared_provider() -> None:
     assert [entry.name for entry in judges_module.entries()] == list(BUILTIN_JUDGE_PROVIDERS)
-    assert all(entry.extra == "systemone" for entry in judges_module.entries())
+    assert all(entry.extra == "auto" for entry in judges_module.entries())
 
 
 def test_the_docs_table_matches_the_declared_profiles() -> None:

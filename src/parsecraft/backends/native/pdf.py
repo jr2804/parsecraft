@@ -1,12 +1,13 @@
-"""Native PDF backend — pypdf inspection, PyMuPDF extraction (ADR-0003).
+"""Native PDF backend — pypdf inspection, PyMuPDF extraction (ADR-0003, ADR-0009).
 
-``analyze()`` uses pypdf (``pdf-lite`` extra, permissive) so structure
+``analyze()`` uses pypdf (core dependency since ADR-0009) so structure
 analysis, encryption detection, and difficulty signals work without the
 AGPL PyMuPDF extra. ``convert()`` extracts text with PyMuPDF (``pdf``
 extra), loaded via ``import_module`` at conversion time; a missing extra
 yields a typed ``DEPENDENCY_MISSING`` pass failure, never an import crash.
-Descriptor carries ``optional_dependency_group="pdf-lite"`` (the light
-prerequisite).
+The descriptor is base-install — registered without an
+``optional_dependency_group`` — because analysis is core; extraction
+requires ``parsecraft[pdf]`` and surfaces a typed failure if it is absent.
 """
 
 from __future__ import annotations
@@ -115,20 +116,16 @@ class _PdfFactory:
             supported_formats=SUPPORTED_FORMATS,
             supports_page_ranges=True,
             supports_multi_page=True,
-            optional_dependency_group="pdf-lite",
         ),
     )
 
     def __call__(self, config: BackendConfig) -> DocumentBackend:
-        _inspect_impl()  # fail fast when the pdf-lite extra is missing
+        _inspect_impl()  # fail fast if the install is broken
         return PdfBackend(config, self.descriptor.capabilities)
 
 
 def _inspect_impl() -> _PdfInspectImpl:
-    try:
-        return cast(_PdfInspectImpl, import_module(_PDF_INSPECT_MODULE))
-    except ImportError as exc:
-        raise DependencyUnavailableError(_PDF_INSPECT_MODULE, "pdf-lite") from exc
+    return cast(_PdfInspectImpl, import_module(_PDF_INSPECT_MODULE))
 
 
 def _extract_pdf(source: SourceDocument, data: bytes) -> list[PageResult]:

@@ -47,7 +47,7 @@ _MODULE_NAME = "typesafe_sdk"
 #: Extra that declares the SDK; all three endpoints share it (root AGENTS.md rule 10).
 #: The extra is named for the System One scoring stack, NOT for a provider token
 #: (`typesafe-ai`/`zen`/`ollama` are the providers), so the hint must use it.
-_EXTRA = "systemone"
+_EXTRA = "auto"
 #: Credential sent when an endpoint needs none: the SDK rejects an empty key, and
 #: a local daemon ignores the header entirely.
 LOCAL_API_KEY = "local"

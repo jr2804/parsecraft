@@ -57,10 +57,10 @@ _PDF_SOURCE = SourceDocument(uri="file:///doc.pdf", content=_PDF_MAGIC)
 
 
 _FACTORY_MODULES: tuple[tuple[FactoryModule, str, str, float, bool], ...] = (
-    (ovis, "ocr-ovis", "ocr-ovis", 1.0, False),
-    (tele, "ocr-tele", "ocr-tele", 1.2, False),
-    (unlimited, "ocr-unlimited", "ocr-unlimited", 3.0, True),
-    (qianfan, "ocr-qianfan", "ocr-qianfan", 4.0, False),
+    (ovis, "ocr-ovis", "ocr", 1.0, False),
+    (tele, "ocr-tele", "ocr", 1.2, False),
+    (unlimited, "ocr-unlimited", "ocr", 3.0, True),
+    (qianfan, "ocr-qianfan", "ocr", 4.0, False),
 )
 
 _ASSETS: tuple[tuple[FactoryModule, ModelAssetDescriptor, str, str], ...] = (
@@ -546,13 +546,12 @@ def test_transformers_range_guard_rejects_unparseable_versions(monkeypatch: pyte
 
 
 def test_transformers_range_matches_the_pyproject_extras() -> None:
-    """One window everywhere: the runtime guard and all four OCR extras agree."""
+    """One window everywhere: the runtime guard and the unified ocr extra agree."""
     pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
     data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
     extras = data["project"]["optional-dependencies"]
     expected = f"transformers{_models.TRANSFORMERS_RANGE}"
-    for name in ("ocr-ovis", "ocr-qianfan", "ocr-tele", "ocr-unlimited"):
-        assert expected in extras[name], f"{name} missing unified range {expected!r}"
+    assert expected in extras["ocr"], f"ocr extra missing unified range {expected!r}"
 
 
 def test_unpinned_tele_descriptor_keeps_the_hub_revision(

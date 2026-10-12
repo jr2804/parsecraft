@@ -41,9 +41,8 @@ capabilities in `backends/` descriptors.
 - A group missing from `EXTRA_IMPORTS` is not detectable, so the planner never
   sees it installed: extend the map when a new extra lands in `pyproject.toml`.
   `tests/test_environment.py` enforces the contract both ways — every declared
-  extra is in `EXTRA_IMPORTS` **or** in `META_EXTRAS`, the two sets are
+  extra is in `EXTRA_IMPORTS` (every declared extra is import-detectable; there are no meta extras since ADR-0009) —
   disjoint, and no stale name survives in either.
-- `META_EXTRAS` holds the extras that exist only to pull other extras in
   (`auto`). They import nothing, so they must never get an `EXTRA_IMPORTS`
   entry: installing one installs the extras it names, and those are detected
   individually. A meta extra is a packaging convenience, never a capability.

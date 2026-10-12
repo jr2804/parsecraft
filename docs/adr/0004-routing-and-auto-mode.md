@@ -56,7 +56,8 @@ def rank(self, intent: Intent, candidates: Sequence[BackendDescriptor]) -> Seque
 
 It receives only eligible candidates and returns backend names, best first. It
 may re-rank or drop candidates; it may not add one. The default is
-`DeterministicJudge` (preferred model first, native before OCR on `NATIVE`,
+`DeterministicJudge` (preferred model first; on `NATIVE` the dependency-free
+native family leads, extra-backed parsers follow, OCR last,
 then lowest estimated VRAM, then name). When `judge=None`, the deterministic
 ordering is used, so routing works with no judge installed.
 

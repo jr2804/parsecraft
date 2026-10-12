@@ -11,14 +11,14 @@ Four entry-point backends, each a light `factory` (descriptor + `__call__`):
 | `native-text` | `text.py` | `text/plain` | — |
 | `native-markdown` | `markdown.py` | `text/markdown` | — |
 | `native-html` | `html.py` | `text/html` | — |
-| `native-pdf` | `pdf.py` | `application/pdf` | `pdf-lite` (analyze), `pdf` (extract) |
+| `native-pdf` | `pdf.py` | `application/pdf` | pypdf (core, analyze), `pdf` (extract) |
 
 ## Ownership
 
 - `_common.py` — `NativeBackendBase` (analyze/convert flow: page range,
   cancellation, budgets, timeout, typed `PassFailure`s), `source_bytes`,
   paragraph helpers, `PdfInspection`/`PageTextStats`, typed errors.
-- `pdf_inspect.py` — pypdf inspection (`pdf-lite`).
+- `pdf_inspect.py` — pypdf inspection (core).
 - `pdf_text.py` — PyMuPDF extraction (`pdf`, AGPL — ADR-0003): maps each page's
 dictionary into typed positioned lines, nothing else.
 - `code_layout.py` — layout recovery v1 (pc-0uv): every rule that turns positioned
@@ -37,8 +37,8 @@ AGPL extra absent; `pdf_text` only hands it geometry.
   `pdf_text` at conversion time (missing extra → typed
   `DEPENDENCY_MISSING` pass failure, never an import crash). No inline
   imports (`pyreorder` hoists them).
-- `analyze()` must work with only `pdf-lite` installed; the descriptor
-  carries `optional_dependency_group="pdf-lite"`.
+- `analyze()` works on the core install; the descriptor carries no
+  `optional_dependency_group` (pypdf is a core dependency).
 - Descriptors set `version=NATIVE_BACKEND_VERSION` (feeds
   `registry.fingerprint()`); `BackendRef` uses the same constant.
 - `native-pdf` extraction NEVER uses pypdf; inspection NEVER uses PyMuPDF.
@@ -77,4 +77,4 @@ AGPL extra absent; `pdf_text` only hands it geometry.
 `tests/test_native_code_layout.py` (100% coverage gate applies). The two
 integration tests in the latter need the AGPL `pdf` extra and therefore skip in
 the canonical light env; run them with
-`uv run --isolated --extra pdf --extra pdf-lite pytest -k code_block_is_fenced`.
+`uv run --isolated --extra pdf pytest -k code_block_is_fenced`.
