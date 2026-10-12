@@ -128,9 +128,9 @@ tier for one engine's packaging gap.
     One raster engine, always present, is the honest design; unreachable branches
     are removed rather than kept behind a condition nobody can take.
 
-    The AGPL `pdf` extra survives and is not orphaned: `native/pdf_text.py`,
-    `native/pdf.py` and `native/code_layout.py` import PyMuPDF directly for
-    native-PDF text extraction. Its raster-related wording is what changed —
+    The AGPL `pdf` extra survives and is not orphaned: `pymupdf/_convert.py`,
+    `pymupdf/__init__.py` and `pymupdf/code_layout.py` import PyMuPDF directly for
+    pymupdf text extraction. Its raster-related wording is what changed —
     OCR no longer needs it, and the old "pip install 'parsecraft[pdf]'" failure
     path disappears with the fallback.
 
