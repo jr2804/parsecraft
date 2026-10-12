@@ -55,7 +55,7 @@ backend registry (public entry-point API only).
 
 ## Verification
 
-- `tests/test_backends_trafilatura.py` — offline-stubbed (the trafilatura
+- `tests/backends/test_trafilatura.py` — offline-stubbed (the trafilatura
   import is stubbed; no network), covering the knox call shape, the TXT
   fallback, typed-chunk projection, the dependency/format/failure boundaries
   and the raw-bytes charset contract. The real-library tests

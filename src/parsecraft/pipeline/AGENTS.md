@@ -61,5 +61,5 @@ a `DocumentResult` with `TraceEntry` records — no silent drops.
 
 ## Verification
 
-`mise test` — `tests/test_pipeline.py` (100% coverage gate applies; tests
+`mise test` — `tests/pipeline/test_pipeline.py` (100% coverage gate applies; tests
 are fully offline with stub factories/backends).

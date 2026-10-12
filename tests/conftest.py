@@ -10,7 +10,6 @@ from typing import NoReturn, Protocol, cast
 import pytest
 
 from tests.fixtures.documents import DocumentFactory
-from tests.fixtures.jev_sdk import StubSdk
 
 _NETWORK_MARKER = "network"
 _CORPUS_MARKER = "corpus"
@@ -105,23 +104,6 @@ def _offline_tripwire(request: pytest.FixtureRequest, monkeypatch: pytest.Monkey
 def _may_reach_network(item: _HasKeywords) -> bool:
     """Whether ``item`` carries an opt-in tier marker (keyed on the marker alone)."""
     return any(marker in item.keywords for marker in _NETWORK_EXEMPT_MARKERS)
-
-
-@pytest.fixture
-def jev_sdk(monkeypatch: pytest.MonkeyPatch) -> StubSdk:
-    """A fake ``typesafe_sdk`` module installed in ``sys.modules``.
-
-    The System One providers import their SDK through ``importlib`` at
-    ``load_judge`` time, so installing this stub exercises the real provider
-    code offline (see ``tests/fixtures/jev_sdk.py``).
-    """
-    return StubSdk().install(monkeypatch)
-
-
-@pytest.fixture(scope="session")
-def data_dir() -> Path:
-    """Return the path to the test data directory."""
-    return _test_dir / "data"
 
 
 @pytest.fixture(scope="session")

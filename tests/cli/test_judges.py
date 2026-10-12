@@ -19,7 +19,7 @@ from parsecraft.cli import judges as judges_module
 from parsecraft.cli.app import app
 from parsecraft.providers import BUILTIN_JUDGE_PROVIDERS
 
-_DOCS = Path(__file__).resolve().parents[1] / "docs" / "reference" / "cli.md"
+_DOCS = Path(__file__).resolve().parents[2] / "docs" / "reference" / "cli.md"
 
 _runner = CliRunner()
 

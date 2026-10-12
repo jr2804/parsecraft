@@ -20,7 +20,7 @@ file adds only what is local to `docs/`.
   (`index.md`) plus committed harness artifacts (`benchmark.json`,
   `benchmark.md`, GPU-pass JSONs); regenerating artifacts is
   `parsecraft benchmark … -o docs/benchmarks/`, schema guarded by
-  `tests/test_benchmark_report.py`.
+  `tests/benchmark/test_report.py`.
 - `adr/` — architecture decision records; **reserved for pc-1** — do not edit.
 - Top-level pages — `index.md`, `credits.md`, `license.md`,
   `contributing.md`, `code_of_conduct.md`.

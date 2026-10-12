@@ -44,5 +44,5 @@ diff-clean reports via `to_json`/`to_markdown` (+ `write_json`/`write_markdown`)
 
 ## Verification
 
-`mise test` — `tests/test_benchmark.py` (100% coverage gate; tests use stub
+`mise test` — `tests/benchmark/test_benchmark.py` (100% coverage gate; tests use stub
 backends and `tmp_path` documents — fully offline/CPU).

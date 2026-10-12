@@ -259,12 +259,13 @@ def transcribe_page(page_number: int, request: ConversionRequest, tessdata_dir: 
         if tessdata_dir is not None:
             argv += ["--tessdata-dir", tessdata_dir]
         try:
-            completed = run(  # noqa: S603 - fixed argv, no shell
+            completed = run(
                 argv,
                 capture_output=True,
                 text=True,
                 timeout=_ENGINE_TIMEOUT_S,
                 check=False,
+                shell=False,
                 stdin=DEVNULL,
             )
         except TimeoutExpired as exc:

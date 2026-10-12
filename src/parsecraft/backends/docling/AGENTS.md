@@ -66,8 +66,8 @@ plus a bound-checked `convert()` that maps docling items to typed IR chunks.
 
 ## Verification
 
-`mise test` — `tests/test_backends_docling.py` (offline; the heavy import is a
-stub in `sys.modules`) and `tests/test_backends_docling_libreoffice.py` (pure
+`mise test` — `tests/backends/test_docling.py` (offline; the heavy import is a
+stub in `sys.modules`) and `tests/backends/test_docling_libreoffice.py` (pure
 stdlib, no extra needed). Live smoke: `uv run --isolated --extra docling
 parsecraft convert FIXTURE` in a throwaway environment — dependencies are never
 installed with `uv pip install`, the project routes dependency changes through

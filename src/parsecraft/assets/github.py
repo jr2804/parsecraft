@@ -56,6 +56,11 @@ class GitHubDownloader:
         target.parent.mkdir(parents=True, exist_ok=True)
         temporary = target.with_name(f"{target.name}.part")
         try:
+            # The URL is built from a pinned release URL earlier (always https://release-assets...),
+            # but ruff S310 wants the scheme visible at the open call.
+            parsed = urllib.parse.urlparse(url)
+            if parsed.scheme != "https":
+                raise AssetError(model_id, revision, f"refusing non-https URL: {url}")
             with urllib.request.urlopen(url, timeout=_SOCKET_TIMEOUT_S) as response:  # noqa: S310 - https fixed above
                 temporary.write_bytes(response.read())
             os.replace(temporary, target)

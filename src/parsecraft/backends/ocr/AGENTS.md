@@ -37,7 +37,7 @@ scanned pages and page images, which no native backend can read.
   ~227 dpi, A0 at ~161 dpi — still above the ~150 floor. The cap emits **no
   diagnostic**: there is no convert-time per-page channel for a success-path
   fact, and it is a memory guard, not a routing decision.
-  `tests/test_backends_ocr.py` pins the true rendered pixels of A4 against the
+  `tests/backends/test_ocr.py` pins the true rendered pixels of A4 against the
   **real** engine, so an engine swap cannot silently change the resolution.
 - **`supported_formats` is a capability claim, never an aspiration.** Only list
   what conversion verified against the real runtime. That is why TIFF is in the
@@ -87,9 +87,9 @@ scanned pages and page images, which no native backend can read.
 ## Verification
 
 `mise all` — green, 100% coverage. The family's own suites are
-`tests/test_backends_ocr.py` (the VLM adapters and the shared raster surface;
+`tests/backends/test_ocr.py` (the VLM adapters and the shared raster surface;
 the heavy imports are stub modules in `sys.modules`) and
-`tests/test_backends_tesseract.py` (discovery, engine invocation, tessdata
+`tests/backends/test_tesseract.py` (discovery, engine invocation, tessdata
 resolution — the engine is never actually executed).
 
 Engine discovery is tested against a **synthetic host** (a temporary tree plus

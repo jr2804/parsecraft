@@ -55,7 +55,7 @@ the library's own per-page OCR verdict as planner signals.
 
 ## Verification
 
-`mise test` — `tests/test_backends_pdf_inspector.py` (offline; the heavy
+`mise test` — `tests/backends/test_pdf_inspector.py` (offline; the heavy
 extension is a stub in `sys.modules`), 100% coverage gate. Live smoke:
 `uv add --optional pdf-inspector "pdf-inspector>=1.25.2"` in a throwaway
 checkout, then convert a text-based PDF.

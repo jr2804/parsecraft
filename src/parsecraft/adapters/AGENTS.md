@@ -47,6 +47,6 @@ the single source of truth (ADR-0001 §11, `parsecraft.ir.AGENTS.md`).
 
 ## Verification
 
-`mise test` — `tests/test_adapters_markdown.py`,
-`tests/test_adapters_encoding.py`, `tests/test_adapters_http.py`
+`mise test` — `tests/adapters/test_markdown.py`,
+`tests/adapters/test_encoding.py`, `tests/adapters/test_http.py`
 (100% coverage gate applies).

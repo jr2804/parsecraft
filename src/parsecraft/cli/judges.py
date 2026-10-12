@@ -7,7 +7,7 @@ credential exported?), so the command answers the same on every machine.
 
 The facts come from each provider module's ``PROFILE`` — one declaration per
 provider, shared with the loader and checked against the docs table by
-``tests/test_cli_judges.py``.
+``tests/cli/test_judges.py``.
 """
 
 from __future__ import annotations

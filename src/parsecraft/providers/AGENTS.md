@@ -94,9 +94,9 @@ by `routing/judge_providers.py` (each turns a `JudgeSpec` into a
 
 ## Verification
 
-`mise test` — `tests/test_cli_judges.py` (the catalog command), `tests/test_providers_pdfinspector.py` (offline `sys.modules` stub; one live
+`mise test` — `tests/cli/test_judges.py` (the catalog command), `tests/providers/test_pdfinspector.py` (offline `sys.modules` stub; one live
 indexing test skips without the extra), and the System One family:
-`tests/test_providers_typesafe_ai.py` + `tests/test_providers_jev_endpoints.py`
+`tests/providers/test_typesafe_ai.py` + `tests/providers/test_jev_endpoints.py`
 (offline SDK stub from `tests/fixtures/jev_sdk.py`; the semi-live Ollama tier
 needs the extra, so it skips in the canonical venv and runs with
 `uv run --isolated --extra auto pytest -m judge --run-judge`).

@@ -171,7 +171,7 @@ _COLLECTION_SCRIPT = textwrap.dedent(
 
     violations = {}
     errors = {}
-    paths = sorted(pathlib.Path("tests").glob("test_*.py"))
+    paths = sorted(pathlib.Path("tests").rglob("test_*.py"))
     for path in paths:
         before = len(imported)
         spec = importlib.util.spec_from_file_location(f"_collection_safety_{path.stem}", path)
@@ -233,5 +233,5 @@ def test_every_test_module_collects_without_heavy_packages() -> None:
     marker = next((line for line in proc.stdout.splitlines() if line.startswith("COLLECTION_OK")), None)
     assert marker is not None, f"no COLLECTION_OK marker: {proc.stdout}"
     checked = int(marker.split()[1])
-    expected = len(list(Path(__file__).parent.glob("test_*.py")))
+    expected = len(list(Path(__file__).parent.rglob("test_*.py")))
     assert checked == expected, f"sweep checked {checked} of {expected} test modules — it did not see them all"

@@ -45,7 +45,7 @@ document, format, model, or pipeline concepts.
 
 ## Verification
 
-`mise test` — `tests/test_config.py`. 100% coverage is enforced; new branches
+`mise test` — `tests/config/test_config.py`. 100% coverage is enforced; new branches
 need tests. `mise lint` and `mise typecheck` must stay clean.
 
 ## Child DOX Index

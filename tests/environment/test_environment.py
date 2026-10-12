@@ -390,7 +390,7 @@ def test_every_declared_extra_is_detectable() -> None:
 
 def _declared_extras() -> tuple[str, ...]:
     """Extra names from pyproject.toml (the single source of truth)."""
-    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
     data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
     return tuple(data["project"]["optional-dependencies"])
 

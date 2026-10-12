@@ -120,5 +120,5 @@ identical plan.
 
 ## Verification
 
-`mise test` — `tests/test_routing.py` (100% coverage gate applies; tests
+`mise test` — `tests/routing/test_routing.py` (100% coverage gate applies; tests
 build synthetic analyses from `tests/fixtures/sources.toml` expectations).

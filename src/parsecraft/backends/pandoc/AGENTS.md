@@ -34,6 +34,6 @@ user's licence decision — never core, never `mise dev`/CI).
 
 ## Verification
 
-`mise test` — `tests/test_backends_pandoc.py` (offline, `pypandoc` stubbed;
+`mise test` — `tests/backends/test_pandoc.py` (offline, `pypandoc` stubbed;
 one real docx round-trip test skips unless the extra is installed), 100%
 coverage gate.

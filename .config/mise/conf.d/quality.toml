@@ -10,8 +10,8 @@ run = "uv run pytest -m corpus --run-corpus --run-downloads"
 
 [tasks.test-gpu]
 description = "GPU tier: OCR adapters on real weights (opt-in; needs an isolated .venv-gpu)"
-run = ".venv-gpu/bin/python -m pytest tests/test_backends_ocr_gpu.py -m gpu --run-gpu"
-run_windows = ".venv-gpu/Scripts/python -m pytest tests/test_backends_ocr_gpu.py -m gpu --run-gpu"
+run = ".venv-gpu/bin/python -m pytest tests/backends/test_ocr_gpu.py -m gpu --run-gpu"
+run_windows = ".venv-gpu/Scripts/python -m pytest tests/backends/test_ocr_gpu.py -m gpu --run-gpu"
 
 [tasks.test-judge]
 description = "Judge tier: live systemone/jev-latest (TYPESAFE_API_KEY), zen/<model> (OPENCODE_API_KEY), or the semi-live local ollama/<model> (needs the auto extra: uv run --isolated --extra auto pytest -m judge --run-judge)"

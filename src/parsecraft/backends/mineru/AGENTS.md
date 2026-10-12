@@ -58,7 +58,7 @@ items to typed IR chunks.
   `__main__` as `__mp_main__`. An unguarded module body therefore re-executes
   the whole workload inside every render worker. The backend's own module body
   is import-safe (no top-level executable code), and
-  `tests/test_backends_mineru.py::test_console_script_spawn_guard_survives_docvortex`
+  `tests/backends/test_mineru.py::test_console_script_spawn_guard_survives_docvortex`
   pins it end to end with a negative control.
 - Bounds are honored: cancellation, `timeout_s` (checked after the single
   blocking pass), and `max_output_chars`. Failures stay typed (`CANCELLED`,
@@ -77,7 +77,7 @@ items to typed IR chunks.
 ## Verification
 
 `mise all` — green (1163 passed, 100% coverage, 2026-10-09). The
-backend's own suite is `tests/test_backends_mineru.py` (offline; the heavy
+backend's own suite is `tests/backends/test_mineru.py` (offline; the heavy
 imports are stub modules in `sys.modules`). The spawn test is extra-gated: it
 skips unless `mineru` and `pypdf` are both importable, because it needs a real
 render pass.

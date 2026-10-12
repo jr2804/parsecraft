@@ -41,5 +41,5 @@ return identical IR without dispatching any backend.
 
 ## Verification
 
-`mise test` — `tests/test_cache.py` plus the seam tests in
-`tests/test_pipeline.py` (100% coverage gate; tmp dirs only, offline).
+`mise test` — `tests/cache/test_cache.py` plus the seam tests in
+`tests/pipeline/test_pipeline.py` (100% coverage gate; tmp dirs only, offline).

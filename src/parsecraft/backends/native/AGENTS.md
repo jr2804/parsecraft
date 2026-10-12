@@ -73,8 +73,8 @@ AGPL extra absent; `pdf_text` only hands it geometry.
 
 ## Verification
 
-`mise test` — `tests/test_backends_native.py` and
-`tests/test_native_code_layout.py` (100% coverage gate applies). The two
+`mise test` — `tests/backends/test_native.py` and
+`tests/backends/test_native_code_layout.py` (100% coverage gate applies). The two
 integration tests in the latter need the AGPL `pdf` extra and therefore skip in
 the canonical light env; run them with
 `uv run --isolated --extra pdf pytest -k code_block_is_fenced`.

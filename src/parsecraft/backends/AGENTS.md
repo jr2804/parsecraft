@@ -89,7 +89,7 @@ distribution, entry point declared in its own `pyproject.toml`).
 
 ## Verification
 
-`mise test` — `tests/test_backends_registry.py`,
+`mise test` — `tests/backends/test_registry.py`,
 `tests/test_example_backend.py`, `tests/test_offline_import.py`.
 
 ## Child DOX Index

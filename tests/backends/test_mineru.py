@@ -595,7 +595,7 @@ def test_console_script_spawn_guard_survives_docvortex(tmp_path: Path) -> None:
 
 def _run_spawn_worker(tmp_path: Path, script: str, name: str) -> list[str]:
     """Run a worker script as a real subprocess; return its ``RESULT`` lines."""
-    source = script.replace("__SRC__", str(Path(__file__).resolve().parents[1] / "src"))
+    source = script.replace("__SRC__", str(Path(__file__).resolve().parents[2] / "src"))
     source = source.replace("__PAGES__", str(_SPAWN_PAGES))
     script_path = tmp_path / name
     script_path.write_text(source, encoding="utf-8")

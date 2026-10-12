@@ -547,7 +547,7 @@ def test_transformers_range_guard_rejects_unparseable_versions(monkeypatch: pyte
 
 def test_transformers_range_matches_the_pyproject_extras() -> None:
     """One window everywhere: the runtime guard and the unified ocr extra agree."""
-    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
     data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
     extras = data["project"]["optional-dependencies"]
     expected = f"transformers{_models.TRANSFORMERS_RANGE}"

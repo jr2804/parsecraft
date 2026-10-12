@@ -8,7 +8,7 @@ from pathlib import Path
 from parsecraft.benchmark import BenchmarkMetrics, BenchmarkReport, to_json, to_markdown
 from parsecraft.ir.models import ChunkKind
 
-_ARTIFACTS = Path(__file__).parent.parent / "docs" / "benchmarks"
+_ARTIFACTS = Path(__file__).resolve().parents[2] / "docs" / "benchmarks"
 _JSON_PATH = _ARTIFACTS / "benchmark.json"
 _MD_PATH = _ARTIFACTS / "benchmark.md"
 

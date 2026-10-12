@@ -58,4 +58,4 @@ duplicated; integrity data (per-file SHA-256) lives in `AssetPin`.
 
 ## Verification
 
-`mise test` — `tests/test_assets.py` (100% coverage gate applies).
+`mise test` — `tests/assets/test_assets.py` (100% coverage gate applies).

@@ -227,7 +227,7 @@ defines `LanguageDetector` (`detect_language(text) -> str | None`); the core
 never imports an implementation, and none ships — a caller implements the
 protocol (or sets `RoutingConstraints.language` directly from configuration)
 and hands the detector to the analysis. Pinned by
-`tests/test_routing_language.py`: importing `parsecraft.routing` pulls no
+`tests/routing/test_language.py`: importing `parsecraft.routing` pulls no
 provider module.
 
 ## Plan

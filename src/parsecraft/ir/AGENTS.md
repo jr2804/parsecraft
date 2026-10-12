@@ -41,5 +41,5 @@ from them.
 
 ## Verification
 
-`mise test` — `tests/test_ir.py`, `tests/test_markdown_projection.py`,
+`mise test` — `tests/ir/test_ir.py`, `tests/ir/test_markdown_projection.py`,
 `tests/typing_consumer.py` (ty-checked).
