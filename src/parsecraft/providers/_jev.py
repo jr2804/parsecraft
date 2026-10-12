@@ -176,7 +176,7 @@ class JevJudge:
         self._endpoint = endpoint
         self._machine = machine
         self._preference = preference
-        self._memo: dict[tuple[str, tuple[str, ...], tuple[bool, bool] | None], list[str]] = {}
+        self._memo: dict[tuple[str, tuple[str, ...], tuple[bool, bool, float] | None], list[str]] = {}
 
     def rank(
         self,

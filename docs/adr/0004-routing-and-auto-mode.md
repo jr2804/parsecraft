@@ -308,3 +308,33 @@ safe direction under this amendment (tier 1, still a candidate).
 Ollama) re-ranks the same complete candidate set with the host facts A8 already
 carries; `_validate_native_fallbacks` still enforces native-before-OCR on its
 orders.
+
+## Amendment (2026-10-12): A9 — the judge receives a normalized density fact
+
+**Decision (user ruling, shape B "trust the model", bead `pc-bzz`; design
+lineage gh#6/knox-1):** the A8 page context grows a `density` field — a
+normalized `float` in `[0.0, 1.0]`, `text_chars` over the new
+`DENSITY_REFERENCE_CHARS` (1000, deliberately separate from
+`NATIVE_MIN_TEXT_CHARS = 40` so the classification's ≥-chars binary is
+untouched), saturated. **No bucket: the bucket is the model's call.**
+Classification is unchanged. The reason prose stays audit-only — it gains no
+`density=` field; the typed fact is what the model reads.
+
+**Memo key.** `memo_key()` grows the field: `(needs_ocr, blank, density)`, so
+a memoized judge never shares a verdict between two pages that differ only by
+density (the knox-1 corpus spans a 17× range, 121–6066 chars/page — the
+resolution the ≥40 binary used to throw away).
+
+**Scope.** The fact rides the existing A8 gate: only OCR-intent pages carry a
+context, NATIVE pages still get `None` (ranking native is an ordering
+question). The field defaults to `0.0` — the honest "no text signal" for a
+context constructed without a page behind it.
+
+**Encoding consult (System One/Jev, bead pc-bzz).** Asked whether a float or a
+delivered `sparse/medium/dense` label is the better A8 fact, the model
+preferred the label but with no extractable confidence — the dispatch's
+low-confidence branch. Shipped the float (also the semantically right call:
+a delivered label would re-introduce exactly the pre-bucketing the shape-B
+ruling rejected). A future ruling can add a label at the provider layer
+without touching this contract. Reference value 1000 endorsed by the same
+consult.

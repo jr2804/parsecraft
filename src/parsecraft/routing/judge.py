@@ -31,6 +31,14 @@ PREFERRED_BACKENDS: dict[Intent, str | None] = {
     Intent.OCR_VISION: "ocr-ovis",
 }
 
+#: Chars/page at which the A9 density fact saturates to 1.0. Deliberately NOT
+#: ``NATIVE_MIN_TEXT_CHARS`` (40) — that constant is the classification's
+#: ≥-chars binary and must not move. Calibrated on the knox-1 corpus range
+#: (121 sparse median … 6066 dense max, a 17× range): 1000 ≈ one full typeset
+#: page of prose, so sparse pages land ≈0.12 and only genuinely dense pages
+#: saturate. May be re-calibrated when the 2026.10.3 corpus rerun lands.
+DENSITY_REFERENCE_CHARS = 1000
+
 
 @runtime_checkable
 class RoutingJudge(Protocol):
@@ -119,17 +127,24 @@ class PageContext(BaseModel):
     blank: bool
     #: Document-level structural hints (``FeatureHints``).
     hints: FeatureHints
+    #: Normalized text density of the page, ``[0.0, 1.0]`` — ``text_chars``
+    #: over :data:`DENSITY_REFERENCE_CHARS`, saturated (A9). No bucket: the
+    #: model buckets it itself; classification stays the ≥40-char binary.
+    #: The default ``0.0`` is the honest "no text signal" for callers that
+    #: construct a context without a page behind it.
+    density: float = Field(default=0.0, ge=0.0, le=1.0)
 
     model_config = {"frozen": True}
 
-    def memo_key(self) -> tuple[bool, bool]:
+    def memo_key(self) -> tuple[bool, bool, float]:
         """The per-page-variable slice of this context, for a judge's memo key.
 
         Two calls may share a stored verdict only when it matches; plan-constant
         facts (``hints`` here, ``machine``/``preference`` on the judge) never
-        enter it, so they cannot fragment the memo.
+        enter it, so they cannot fragment the memo. Density is per-page-variable
+        (A9), so two pages that differ only by density never share a verdict.
         """
-        return (self.needs_ocr, self.blank)
+        return (self.needs_ocr, self.blank, self.density)
 
 
 class JudgeSpec(BaseModel):
@@ -182,11 +197,19 @@ def page_context(intent: Intent, signal: PageSignal, hints: FeatureHints) -> Pag
     degraded to native because no OCR family was available — ranking is a
     native-ordering question, so the judge state and the memo key stay exactly
     what they were. An OCR intent implies :func:`page_needs_ocr`, so this gate
-    and "the page needs OCR" agree by construction.
+    and "the page needs OCR" agree by construction. The context carries the
+    page's normalized text density (A9): ``text_chars`` over
+    :data:`DENSITY_REFERENCE_CHARS`, saturated to ``[0.0, 1.0]`` — a typed
+    fact, no bucket; the bucket is the model's call.
     """
     if intent is Intent.NATIVE:
         return None
-    return PageContext(needs_ocr=True, blank=signal.blank, hints=hints)
+    return PageContext(
+        needs_ocr=True,
+        blank=signal.blank,
+        hints=hints,
+        density=min(signal.text_chars / DENSITY_REFERENCE_CHARS, 1.0),
+    )
 
 
 def _sort_key(

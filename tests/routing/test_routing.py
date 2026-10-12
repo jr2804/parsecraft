@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import tomllib
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +30,7 @@ from parsecraft.routing import (
     RoutingPreference,
     plan_route,
 )
-from parsecraft.routing.judge import PREFERRED_BACKENDS, RoutingJudge
+from parsecraft.routing.judge import DENSITY_REFERENCE_CHARS, PREFERRED_BACKENDS, RoutingJudge, page_context
 from parsecraft.routing.rules import (
     FEATURE_EQUATIONS_CODE,
     FEATURE_FIGURES_CODE,
@@ -534,8 +534,9 @@ def test_plan_hands_a_context_to_ocr_pages_only() -> None:
     assert ocr_context.needs_ocr is True
     assert ocr_context.blank is False
     assert ocr_context.hints == extract_hints(analysis)
-    # hints are document-level hence plan-constant, so they stay out of the memo key
-    assert ocr_context.memo_key() == (True, False)
+    # hints are document-level hence plan-constant, so they stay out of the memo key;
+    # density is per-page-variable and joined it (A9) — garbled() carries 90 chars → 0.09
+    assert ocr_context.memo_key() == (True, False, 0.09)
 
 
 def test_page_context_is_none_for_pages_degraded_to_native() -> None:
@@ -1119,6 +1120,96 @@ def test_max_passes_1_does_not_waste_a_native_pdf_lead_on_knox_config() -> None:
 
     assert plan.pages[0].candidates == ["docling"]  # exactly one pass, no native-pdf waste
     assert plan.pages[0].chosen == "docling"
+
+
+# ── A9: the judge context carries a normalized density fact (pc-bzz) ───────
+
+
+def test_density_field_in_page_context() -> None:
+    """A8's memo key grows the density: pages differing only by density never share a verdict."""
+    hints = FeatureHints()
+    sparse = PageContext(needs_ocr=True, blank=False, hints=hints, density=0.1)
+    dense = PageContext(needs_ocr=True, blank=False, hints=hints, density=0.9)
+    same = PageContext(needs_ocr=True, blank=False, hints=hints, density=0.1)
+
+    assert sparse.memo_key() != dense.memo_key()
+    assert sparse.memo_key() == same.memo_key()
+
+    signal = make_signal(1, text_chars=500, replacement=0.25)
+    context = page_context(Intent.OCR_GENERAL, signal, hints)
+    assert context is not None
+    assert context.density == pytest.approx(0.5)
+    assert page_context(Intent.NATIVE, make_signal(1), hints) is None  # A8 gate unchanged
+
+
+def test_density_normalized_to_reference() -> None:
+    """text_chars / DENSITY_REFERENCE_CHARS, saturated to [0.0, 1.0] (A9).
+
+    The anchors are the knox-1 corpus range (gh#6): 121 chars/page sparse
+    median, 6066 dense max — the 17× resolution the ≥40 binary used to throw
+    away. Calibration may move when the corpus rerun lands.
+    """
+    hints = FeatureHints()
+
+    def _density(chars: int) -> float:
+        context = page_context(Intent.OCR_GENERAL, make_signal(1, text_chars=chars, replacement=0.25), hints)
+        assert context is not None
+        return context.density
+
+    assert _density(0) == 0.0
+    assert _density(121) == pytest.approx(0.121)  # knox-1 sparse median
+    assert _density(DENSITY_REFERENCE_CHARS) == 1.0
+    assert _density(6066) == 1.0  # knox-1 dense max saturates
+    assert _density(20_000) == 1.0  # saturation, not unbounded growth
+
+
+def test_reason_string_unchanged_for_shape_b() -> None:
+    """The prose channel stays audit-only: the typed fact is what the model reads."""
+    analysis = make_analysis([make_signal(1, native=True)], 1)
+    backends = [make_desc("native-text"), make_desc("docling", group="docling")]
+
+    plan = plan_route(analysis, backends, full_constraints(formats={"text/plain"}))
+
+    reason = plan.pages[0].reason
+    assert "text_chars=500" in reason
+    assert "density" not in reason
+
+
+def test_end_to_end_stub_judge_uses_density() -> None:
+    """A density-aware judge sees the typed fact through plan_route and acts on it."""
+
+    class _DensityStubJudge(RoutingJudge):
+        """Prefers ocr-tele for sparse pages (<0.3), ocr-ovis for dense ones."""
+
+        def __init__(self) -> None:
+            self.seen_densities: list[float] = []
+
+        def rank(
+            self,
+            intent: Intent,
+            candidates: Sequence[BackendDescriptor],
+            context: PageContext | None = None,
+        ) -> Sequence[str]:
+            assert context is not None  # an OCR page carries the A8 context
+            self.seen_densities.append(context.density)
+            return ["ocr-tele", "ocr-ovis"] if context.density < 0.3 else ["ocr-ovis", "ocr-tele"]
+
+    def _chosen(chars: int) -> tuple[str, list[float]]:
+        stub = _DensityStubJudge()
+        analysis = make_analysis([make_signal(1, text_chars=chars, replacement=0.25)], 1)
+        backends = [
+            make_desc("ocr-ovis", gpu=True, vram=6.0, group="ocr-ovis"),
+            make_desc("ocr-tele", gpu=True, vram=2.0, group="ocr-tele"),
+        ]
+        plan = plan_route(analysis, backends, full_constraints(), stub)
+        return plan.pages[0].chosen, stub.seen_densities
+
+    sparse_chosen, sparse_seen = _chosen(90)  # density 0.09
+    dense_chosen, dense_seen = _chosen(900)  # density 0.9
+    assert sparse_seen == [pytest.approx(0.09)]
+    assert sparse_chosen == "ocr-tele"
+    assert dense_seen == [pytest.approx(0.9)]
+    assert dense_chosen == "ocr-ovis"
 
 
 def full_constraints(**overrides: Any) -> RoutingConstraints:
