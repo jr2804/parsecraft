@@ -208,7 +208,7 @@ moving any rail:
 
 ### Alternatives considered (classifier attachment)
 
-- **Enrich `native-pdf.analyze()` with the classifier.** Rejected: the same
+- **Enrich `pymupdf.analyze()` with the classifier.** Rejected: the same
   bytes would produce different canonical signals depending on the installed
   environment, and it couples the light pypdf path to a second PDF library.
 - **A classifier-only `DocumentBackend`.** Rejected: `choose_analyzer` ranks
@@ -270,7 +270,7 @@ dependency-free means dependency-free **for this host** — both `analyze()` AND
 backend is dropped from candidacy), but the lead is honest.
 
 **Why a new field.** `optional_dependency_group` is ambiguous about *which
-path* needs the group (knox-1's structural finding): `native-pdf` declares no
+path* needs the group (knox-1's structural finding): `pymupdf` declares no
 group because its analysis is core, yet its convert path crosses
 `parsecraft[pdf]`/PyMuPDF. The new `BackendCapabilities.convert_extra` records
 exactly the convert path's import boundary — **not every import**;
@@ -289,7 +289,7 @@ parser, so knox-1's wasted failed lead attempt is gone.
 
 **Descriptor mapping (scored by System One/Jev, verified against source;
 bead pc-9tr).** `native-text`/`-markdown`/`-html` and `ocr-tesseract` (engine-
-gated, not import-gated): `None`. `native-pdf` → `pdf`. `docling` → `docling`,
+gated, not import-gated): `None`. `pymupdf` → `pdf`. `docling` → `docling`,
 `liteparse` → `liteparse`, `marker` → `marker` (bring-your-own group, ADR-0006),
 `mineru` → `mineru`, `pandoc` → `pandoc`, `pdf-inspector` → `auto`,
 `trafilatura` → `web`, and the four OCR VLM backends (`ovis`, `tele`,

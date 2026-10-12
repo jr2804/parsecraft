@@ -12,7 +12,7 @@ the base install or is a bring-your-own dependency. Each third-party tool keeps
 its own licence.
 
 !!! warning "Copyleft extras are opt-in"
-    `native-pdf` extraction needs PyMuPDF
+    `pymupdf` extraction needs PyMuPDF
     (**AGPL-3.0-or-commercial**, `pdf` extra), and `pandoc` needs the Pandoc
     binary (**GPL-2.0-or-later**). These are never core or dev dependencies.
     OCR PDF input does **not** need PyMuPDF — the base install rasterizes
@@ -46,7 +46,7 @@ and the extension is the suffix the host layer joins onto it.
 | `native-text` — base install | `.txt` (`text/plain`) — plus every other suffix the MIME table maps to `text/plain` (`.py`, `.rst`, `.toml`, `.log`, `.tex`, …) | in-package — MIT | Zero dependencies, fully offline, deterministic | Paragraphs only; no headings, tables, or layout |
 | `native-markdown` — base install | `.md`, `.markdown` (`text/markdown`) | [`markdown-it-py`](https://github.com/executablebooks/markdown-it-py) — MIT | CommonMark token structure: headings, lists, tables, code, quotes | CommonMark only; no non-CommonMark dialects |
 | `native-html` — base install | `.html`, `.htm` (`text/html`) | in-package (stdlib `html.parser`) — MIT | Zero dependencies; headings, lists, tables, code, quotes | Simplistic parser; scripts and styles skipped; not a full HTML5 engine |
-| `native-pdf` — `pypdf` (core, analysis) + `parsecraft[pdf]` (extraction) | `.pdf` (`application/pdf`) | [`pypdf`](https://pypi.org/project/pypdf/) — BSD-3-Clause; [`pymupdf`](https://pypi.org/project/PyMuPDF/) — **AGPL-3.0-or-commercial** | Fast native text and layout extraction; monospace runs become fenced `code` chunks with recovered relative indentation and joined wrapped lines; analysis works without the AGPL extra | Extraction requires the AGPL `pdf` extra; scanned PDFs need OCR |
+| `pymupdf` — `pypdf` (core, analysis) + `parsecraft[pdf]` (extraction) | `.pdf` (`application/pdf`) | [`pypdf`](https://pypi.org/project/pypdf/) — BSD-3-Clause; [`pymupdf`](https://pypi.org/project/PyMuPDF/) — **AGPL-3.0-or-commercial** | Fast native text and layout extraction; monospace runs become fenced `code` chunks with recovered relative indentation and joined wrapped lines; analysis works without the AGPL extra | Extraction requires the AGPL `pdf` extra; scanned PDFs need OCR |
 | `pandoc` — `parsecraft[pandoc]` (`pypandoc>=1.15`) | `.docx` (`application/vnd.openxmlformats-officedocument.wordprocessingml.document`), `.pptx` (`application/vnd.openxmlformats-officedocument.presentationml.presentation`), `.xlsx` (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, read-only), `.odt` (`application/vnd.oasis.opendocument.text`), `.rtf` (`application/rtf`), `.epub` (`application/epub+zip`) | [pandoc.org](https://pandoc.org/) — **GPL-2.0-or-later** binary, MIT wrapper | Broad office and e-book coverage through one wrapper | Needs the external **Pandoc binary**; `.ods`/`.odp` are unsupported by pandoc 3.11; copyleft gate |
 | `liteparse` — `parsecraft[liteparse]` (`liteparse>=2.14`) | `.pdf` (`application/pdf`), `.jpg`, `.jpeg` (`image/jpeg`), `.png` (`image/png`), `.tif`, `.tiff` (`image/tiff`) | [`run-llama/liteparse`](https://github.com/run-llama/liteparse) — Apache-2.0 | Broad and permissive; no copyleft gate | Office/ODF formats require a system LibreOffice; `.html` is not supported; larger extra dependency surface |
 | `docling` — `parsecraft[docling]` (`docling>=2.130`) | `.pdf` (`application/pdf`), `.html` (`text/html`), `.md` (`text/markdown`), `.txt` (`text/plain`) | [`docling`](https://pypi.org/project/docling/) — MIT | Layout, tables, and reading order | Heavy dependency graph; office/image formats are registered upstream but undeclared pending conversion verification; a 113-page PDF ran >1 h |
@@ -159,7 +159,7 @@ All OCR backends accept `application/pdf`, `image/jpeg`, and `image/png`, and
 [`pypdfium2`](https://pypi.org/project/pypdfium2/) raster engine (BSD-3-Clause +
 Apache-2.0) with Pillow as its image bridge, so OCR on a scanned PDF stays off
 the AGPL path. PyMuPDF remains available behind
-`parsecraft[pdf]` for `native-pdf` extraction.
+`parsecraft[pdf]` for `pymupdf` extraction.
 
 Every backend declares `supported_formats` as **MIME types** — one
 vocabulary shared with `RoutingConstraints.formats`, which is built from the
@@ -218,7 +218,7 @@ it never excludes a language-agnostic backend (see
 
 | Backend | Declared languages |
 | ------- | ------------------ |
-| `native-text`, `native-markdown`, `native-html`, `native-pdf` | agnostic (no claim) |
+| `native-text`, `native-markdown`, `native-html`, `pymupdf` | agnostic (no claim) |
 | `liteparse` | agnostic (no claim) |
 | `ocr-tele` | `zh`, `en` |
 | `ocr-ovis`, `ocr-unlimited`, `ocr-qianfan` | agnostic (multilingual) |
@@ -255,8 +255,8 @@ re-implementing it.
 
 | Document trait | Route | Why |
 | -------------- | ----- | --- |
-| Digital text PDF | `native-pdf` | Fast native text extraction, no GPU |
-| Digital text PDF, throughput first | `pdf-inspector` | Rust extraction with no OCR runtime; falls back to `native-pdf` when the extra is absent |
+| Digital text PDF | `pymupdf` | Fast native text extraction, no GPU |
+| Digital text PDF, throughput first | `pdf-inspector` | Rust extraction with no OCR runtime; falls back to `pymupdf` when the extra is absent |
 | Scanned pages or camera photos | `ocr-tele`, `ocr-ovis` | No native text; geometry-aware, formula-capable |
 | Multi-page dense tables | `ocr-unlimited` | Long-horizon multi-page handling |
 | Formulas and equations | `ocr-ovis` | Formula-aware extraction |

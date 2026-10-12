@@ -78,7 +78,7 @@ def test_cpu_backends_and_licensed_pdfs_are_present() -> None:
     assert "itu-t-p863.pdf" in documents
     assert "etsi-ts-103558.pdf" in documents
     assert any("nist-sp-800-53r5" in document for document in documents)
-    assert {"native-text", "native-markdown", "native-html", "native-pdf"} <= backends
+    assert {"native-text", "native-markdown", "native-html", "pymupdf"} <= backends
 
 
 def _report() -> BenchmarkReport:

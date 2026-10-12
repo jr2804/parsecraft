@@ -4,7 +4,7 @@ The PDF text layer has no paragraph or code structure — only positioned glyphs
 PyMuPDF's page dictionary exposes what we need to recover a *useful* amount of
 it: per-line geometry (``y0``/``y1``) and per-span font names and left edges
 (``x0``). This module is the whole decision, kept pure and dependency-free
-(``pdf_text.py`` only maps PyMuPDF's dictionary into these models), so the rules
+(``_convert.py`` only maps PyMuPDF's dictionary into these models), so the rules
 below are unit-tested without the AGPL ``pdf`` extra.
 
 What v1 recovers, and what it deliberately does not:
@@ -224,7 +224,7 @@ def _span(span: _SpanDict) -> TextSpan:
     return TextSpan(font=span.font, size=span.size, x0=span.bbox[0], x1=span.bbox[2], text=span.text)
 
 
-def build_chunks(page: PageText, *, page_number: int, prefix: str = "native-pdf") -> PageLayout:
+def build_chunks(page: PageText, *, page_number: int, prefix: str = "pymupdf") -> PageLayout:
     """Recover a page's PARAGRAPH and CODE chunks from its positioned lines."""
     chunks: list[StructuredChunk] = []
     code_chars = 0

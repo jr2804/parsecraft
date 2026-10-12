@@ -55,7 +55,7 @@ fallbacks (a backend that cannot serve the source is a usage error, exit `2`):
 
 ```bash
 parsecraft convert report.pdf --backend docling
-parsecraft convert report.pdf --no-auto --backend native-pdf
+parsecraft convert report.pdf --no-auto --backend pymupdf
 ```
 
 ## Let a judge order the candidates

@@ -329,7 +329,7 @@ def test_probe_omits_a_required_engine_the_host_lacks(monkeypatch: pytest.Monkey
 
 def test_probe_asks_about_no_engine_when_no_backend_requires_one(monkeypatch: pytest.MonkeyPatch) -> None:
     """The fact is probed on demand only: nothing declares one, nothing is looked up."""
-    _patch_entry_points(monkeypatch, [_descriptor("native-text"), _descriptor("native-pdf")])
+    _patch_entry_points(monkeypatch, [_descriptor("native-text"), _descriptor("pymupdf")])
     asked = _patch_engine_discovery(monkeypatch, {"tesseract"}, found="/usr/bin/tesseract")
 
     assert probe_environment().engines == frozenset()

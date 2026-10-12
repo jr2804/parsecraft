@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import pytest
 
-from parsecraft.backends.native import pdf as pdf_module
-from parsecraft.backends.native.code_layout import (
+from parsecraft.backends import pymupdf as pdf_module
+from parsecraft.backends.protocol import BackendConfig, ConversionRequest, SourceDocument
+from parsecraft.backends.pymupdf.code_layout import (
     CODE_MASS_THRESHOLD,
     FEATURE_CODE,
     MAX_INDENT_COLUMNS,
@@ -24,7 +25,6 @@ from parsecraft.backends.native.code_layout import (
     is_monospace_font,
     page_text,
 )
-from parsecraft.backends.protocol import BackendConfig, ConversionRequest, SourceDocument
 from parsecraft.ir import render_page
 from parsecraft.ir.models import ChunkKind, DiagnosticLevel
 from tests.fixtures.documents import code_pdf, minimal_pdf
@@ -32,7 +32,7 @@ from tests.fixtures.documents import code_pdf, minimal_pdf
 _PROSE_FONT = "ABCDEF+NimbusRoman-Regular"
 _CODE_FONT = "ABCDEF+NimbusMonoPS-Regular"
 _PAGE = 7
-_PREFIX = "native-pdf"
+_PREFIX = "pymupdf"
 
 
 # ── Integration: the real PyMuPDF path (pdf extra, AGPL — ADR-0003) ──────────
@@ -49,7 +49,7 @@ def test_real_pdf_code_block_is_fenced_end_to_end() -> None:
     pytest.importorskip("pypdf", reason="pdf-lite extra absent in the light env")
 
     data = code_pdf()
-    backend = pdf_module.factory(BackendConfig(name="native-pdf"))
+    backend = pdf_module.factory(BackendConfig(name="pymupdf"))
     result = backend.convert(ConversionRequest(source=SourceDocument(uri="file:///code.pdf", media_type="application/pdf", content=data)))
 
     assert result.failures == []
@@ -73,7 +73,7 @@ def test_real_pdf_prose_only_page_has_no_code() -> None:
     pytest.importorskip("pypdf", reason="pdf-lite extra absent in the light env")
 
     data = minimal_pdf()
-    backend = pdf_module.factory(BackendConfig(name="native-pdf"))
+    backend = pdf_module.factory(BackendConfig(name="pymupdf"))
     result = backend.convert(ConversionRequest(source=SourceDocument(uri="file:///prose.pdf", media_type="application/pdf", content=data)))
     assert result.failures == []
     kinds = {chunk.kind for page in result.pages for chunk in page.blocks}

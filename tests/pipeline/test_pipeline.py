@@ -260,7 +260,7 @@ def test_total_failure_records_one_document_signal_and_reads_back(monkeypatch: p
     registry = make_registry(monkeypatch)
     add_stub(
         registry,
-        make_descriptor("native-pdf"),
+        make_descriptor("pymupdf"),
         create_error=DependencyUnavailableError("parsecraft.backends.native.pdf_text", "pdf"),
     )
     result = execute(make_analysis(2), registry, make_constraints(max_passes=1), make_source(), produced_at=PRODUCED)
@@ -271,13 +271,13 @@ def test_total_failure_records_one_document_signal_and_reads_back(monkeypatch: p
     assert signal.page_number is None  # document level, not one whisper per page
     assert signal.score == 0.0
     assert signal.detail is not None
-    assert "dependency_missing in native-pdf" in signal.detail
+    assert "dependency_missing in pymupdf" in signal.detail
     assert "install the 'pdf' extra" in signal.detail  # the fix is named once, at document level
 
     failure = pipeline_failure(document)
     assert failure is not None
     assert failure.code is FailureCode.DEPENDENCY_MISSING
-    assert failure.backend == "native-pdf"
+    assert failure.backend == "pymupdf"
     # the per-page record stays for machine consumers
     assert all([d.code for d in page.diagnostics] == [ALL_PASSES_FAILED_CODE] for page in document.pages)
 

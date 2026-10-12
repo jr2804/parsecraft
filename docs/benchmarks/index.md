@@ -18,7 +18,7 @@ Documents (all local, never fetched at run time):
 | `etsi-ts-103558.pdf` (licensed, 2.7 MiB) | application/pdf | 68 |
 | `…-nist-sp-800-53r5.pdf` (5.8 MiB) | application/pdf | 492 |
 
-Backends: `native-text`, `native-markdown`, `native-html`, `native-pdf`
+Backends: `native-text`, `native-markdown`, `native-html`, `pymupdf`
 (CPU), plus `liteparse` and the GPU OCR backends where noted below. Every
 backend eligible for a document's media type is measured once per document.
 
@@ -39,7 +39,7 @@ peak bytes) are run data and will vary. Benchmarking goes straight to the
 backend's `convert` and never reads the conversion cache, which would report
 ~0 s and falsify the measurement.
 
-`native-pdf` extraction needs the AGPL `pdf` extra; without it the report
+`pymupdf` extraction needs the AGPL `pdf` extra; without it the report
 records a typed `dependency_missing` row instead of crashing.
 
 ## Results
@@ -52,9 +52,9 @@ Headlines (CPU pass, 2026-09-27; values as committed in
 
 | document | backend | elapsed | pages/s | coverage |
 | --- | --- | --- | --- | --- |
-| itu-t-p863.pdf (80 pp) | native-pdf | **0.612 s** | **130.8** | 0.999 |
-| nist-sp-800-53r5.pdf (492 pp) | native-pdf | **4.002 s** | **122.9** | 0.995 |
-| etsi-ts-103558.pdf (68 pp, image-heavy) | native-pdf | 6.468 s | 10.5 | 0.963 |
+| itu-t-p863.pdf (80 pp) | pymupdf | **0.612 s** | **130.8** | 0.999 |
+| nist-sp-800-53r5.pdf (492 pp) | pymupdf | **4.002 s** | **122.9** | 0.995 |
+| etsi-ts-103558.pdf (68 pp, image-heavy) | pymupdf | 6.468 s | 10.5 | 0.963 |
 | itu-t-p863.pdf (80 pp) | liteparse | 5.672 s | 14.1 | 1.017 |
 | nist-sp-800-53r5.pdf (492 pp) | liteparse | 115.647 s | 4.3 | 0.904 |
 | etsi-ts-103558.pdf (68 pp) | liteparse | 6.011 s | 11.3 | 1.012 |
@@ -149,7 +149,7 @@ cancelled* (≈ >31.9 s/page, never finished).
 
 Measured here on the staged ITU-T P.863 artifact (80 pages, same document
 family — the staged file is not byte-identical to the incident's 113-page
-bundle): **native-pdf extracts 80 pages in 0.612 s (≈ 7.7 ms/page)**, and
+bundle): **pymupdf extracts 80 pages in 0.612 s (≈ 7.7 ms/page)**, and
 the 492-page NIST SP 800-53r5 in 4.00 s (122.9 pages/s). That is more than
 three orders of magnitude below the incident's per-page cost — with honest
 caveats: this is text-layer extraction into typed chunks, not Docling's
@@ -158,15 +158,15 @@ native pass first, escalate to OCR/layout backends only for pages whose
 signals say native extraction cannot do the job (the cold-cache budget for a
 whole document, escalations included, is 15 minutes).
 
-## Docling vs native-pdf (bounded head-to-head)
+## Docling vs pymupdf (bounded head-to-head)
 
 The gap the incident cross-check only inferred is now measured on **2-page
 fixtures** of the three corpus PDFs (docling 2.130.0, 2026-09-28).
 Environment: Windows laptop, CPython 3.13, CPU only. Docling ran its **default
-pipeline untuned** (layout, tables, and its bundled RapidOCR); `native-pdf` used
+pipeline untuned** (layout, tables, and its bundled RapidOCR); `pymupdf` used
 PyMuPDF. Both were measured with `parsecraft benchmark`.
 
-| fixture (2 pp) | docling | native-pdf | ratio |
+| fixture (2 pp) | docling | pymupdf | ratio |
 | --- | --- | --- | --- |
 | `itu-t-p863` (of 80) | 20.6 s | 0.014 s | ≈ 1470× |
 | `etsi-ts-103558` (of 68) | 30.5 s | 2.98 s | ≈ 10× |
@@ -174,7 +174,7 @@ PyMuPDF. Both were measured with `parsecraft benchmark`.
 
 - Docling's **first** conversion in a process is far slower — 191.9 s for the
   p863 fixture — because it loads its layout/OCR models. The table is warm; its
-  peak Python memory is 158–405 MB against 0.03–15 MB for `native-pdf`.
+  peak Python memory is 158–405 MB against 0.03–15 MB for `pymupdf`.
 - Docling emits more structure (headings, tables) at comparable text coverage;
   the cost of that is runtime and memory, not correctness.
 - Ratios vary per document (the ETSI fixture is the most docling-favourable of
@@ -222,4 +222,4 @@ parsecraft benchmark fixtures/*.pdf --json > benchmark-docling-vs-native.json
 | [`benchmark.json`](benchmark.json) | full JSON report, schema-guarded |
 | [`benchmark-ocr-pass-a.json`](benchmark-ocr-pass-a.json) | GPU pass A (ovis + qianfan, transformers 5.17.0), 12 rows — schema-guarded |
 | [`benchmark-ocr-pass-b.json`](benchmark-ocr-pass-b.json) | GPU pass B (tele + unlimited, transformers 4.57.1), 15 rows — schema-guarded |
-| [`benchmark-docling-vs-native.json`](benchmark-docling-vs-native.json) | docling vs native-pdf, 2-page fixtures, 6 rows |
+| [`benchmark-docling-vs-native.json`](benchmark-docling-vs-native.json) | docling vs pymupdf, 2-page fixtures, 6 rows |

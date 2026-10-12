@@ -33,7 +33,7 @@ _CPU_ONLY = MachineProfile(vram_budget_gb=0.0)
 #: A GPU host that can host the OCR candidate comfortably.
 _GPU_HOST = MachineProfile(vram_budget_gb=32.0, gpu_usable=True)
 _NATIVE = BackendDescriptor(
-    name="native-pdf",
+    name="pymupdf",
     capabilities=BackendCapabilities(supported_formats=["application/pdf"], gpu_requirement=0.0),
 )
 _OCR_GPU = BackendDescriptor(

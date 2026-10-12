@@ -120,7 +120,7 @@ tables hint on a multi-page document → `OCR_TABLES`, equations/figures →
 `OCR_VISION`, otherwise `OCR_GENERAL`.
 
 **The hint channel is under-fed in production.** No production backend emits a
-`feature:*` code; `native-pdf` is the only analyzer that emits analysis
+`feature:*` code; `pymupdf` is the only analyzer that emits analysis
 diagnostics at all (`pdf-encrypted`, `pdf-no-extractable-text` — neither is a
 feature hint), and the `feature:*` codes are synthesized only by tests. Real
 documents therefore route on text statistics and image mass alone.

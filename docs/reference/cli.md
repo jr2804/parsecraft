@@ -207,7 +207,7 @@ pages in the IR.
 Eligibility matches `RoutingConstraints.formats` against each backend's
 `supported_formats`; both declare MIME media types (`text/plain`,
 `application/pdf`, `image/jpeg`, `image/png`), so a scanned PDF can route to
-OCR and a digital PDF to `native-pdf`.
+OCR and a digital PDF to `pymupdf`.
 
 With `--cache`, a completed conversion is stored under
 `sha256(source bytes + registry.fingerprint() + canonical constraints +

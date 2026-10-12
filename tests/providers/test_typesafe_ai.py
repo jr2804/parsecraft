@@ -38,7 +38,7 @@ _TYPESAFE_KEY_ENV: str = provider.PROFILE.api_key_env
 _MODEL = "jev"
 _QUESTION_ID = "lead"
 _NATIVE = BackendDescriptor(
-    name="native-pdf",
+    name="pymupdf",
     capabilities=BackendCapabilities(supported_formats=["application/pdf"], gpu_requirement=0.0),
 )
 _OCR = BackendDescriptor(
@@ -134,10 +134,10 @@ def test_blank_api_key_is_treated_as_missing(monkeypatch: pytest.MonkeyPatch, je
 
 def test_rank_orders_candidates_by_the_choice_distribution(jev_sdk: StubSdk, ts_key: str) -> None:
     jev_sdk.response = StubResponse(
-        choices={_QUESTION_ID: StubAnswer(choice="native-pdf", probabilities={"ocr-ovis": 0.2, "native-pdf": 0.7})},
+        choices={_QUESTION_ID: StubAnswer(choice="pymupdf", probabilities={"ocr-ovis": 0.2, "pymupdf": 0.7})},
     )
     judge = provider.load_judge(JudgeSpec(provider="typesafe-ai", model=_MODEL))
-    assert list(judge.rank(Intent.NATIVE, [_OCR, _NATIVE])) == ["native-pdf", "ocr-ovis"]
+    assert list(judge.rank(Intent.NATIVE, [_OCR, _NATIVE])) == ["pymupdf", "ocr-ovis"]
 
 
 def test_rank_keeps_planner_order_for_ties_and_non_numeric_probabilities(jev_sdk: StubSdk, ts_key: str) -> None:
@@ -160,7 +160,7 @@ def test_rank_sends_one_bounded_choice_question(jev_sdk: StubSdk, ts_key: str) -
         "preference": "balanced",
         "candidates": {
             "ocr-ovis": {"family": "ocr", "gpu_requirement": 1.0, "estimated_vram_gb": 6.0, "formats": ["application/pdf", "image/png"]},
-            "native-pdf": {"family": "native", "gpu_requirement": 0.0, "estimated_vram_gb": None, "formats": ["application/pdf"]},
+            "pymupdf": {"family": "native", "gpu_requirement": 0.0, "estimated_vram_gb": None, "formats": ["application/pdf"]},
         },
     }
     assert set(questions) == {_QUESTION_ID}
@@ -168,7 +168,7 @@ def test_rank_sends_one_bounded_choice_question(jev_sdk: StubSdk, ts_key: str) -
     assert "`state`" in instructions
     assert criteria == {
         "ocr-ovis": "OCR backend; requires ~6 GB VRAM; handles application/pdf, image/png",
-        "native-pdf": "native backend; runs on CPU; handles application/pdf",
+        "pymupdf": "native backend; runs on CPU; handles application/pdf",
     }
 
 
@@ -295,7 +295,7 @@ def test_rank_omits_the_machine_key_when_the_host_is_unknown(jev_sdk: StubSdk, t
 
 def test_rank_short_circuits_a_single_candidate(jev_sdk: StubSdk, ts_key: str) -> None:
     judge = provider.load_judge(JudgeSpec(provider="typesafe-ai", model=_MODEL))
-    assert list(judge.rank(Intent.NATIVE, [_NATIVE])) == ["native-pdf"]
+    assert list(judge.rank(Intent.NATIVE, [_NATIVE])) == ["pymupdf"]
     assert jev_sdk.calls == []
     assert jev_sdk.client_kwargs == []
 
@@ -318,12 +318,12 @@ def test_rank_without_the_choice_answer_is_a_typed_error(jev_sdk: StubSdk, ts_ke
 
 def test_rank_is_deterministic_and_never_invents_a_candidate(jev_sdk: StubSdk, ts_key: str) -> None:
     jev_sdk.response = StubResponse(
-        choices={_QUESTION_ID: StubAnswer(choice="ghost", probabilities={"ghost": 1.0, "native-pdf": 0.4, "ocr-ovis": 0.6})},
+        choices={_QUESTION_ID: StubAnswer(choice="ghost", probabilities={"ghost": 1.0, "pymupdf": 0.4, "ocr-ovis": 0.6})},
     )
     judge = provider.load_judge(JudgeSpec(provider="typesafe-ai", model=_MODEL))
     first = list(judge.rank(Intent.NATIVE, [_OCR, _NATIVE]))
     second = list(judge.rank(Intent.NATIVE, [_OCR, _NATIVE]))
-    assert first == second == ["ocr-ovis", "native-pdf"]
+    assert first == second == ["ocr-ovis", "pymupdf"]
     assert "ghost" not in first  # an option the planner never offered is dropped
 
 
@@ -385,7 +385,7 @@ def test_live_typesafe_ranks_real_candidates() -> None:
     if not os.environ.get(_TYPESAFE_KEY_ENV):  # the REAL environment: no fixture plants a key here
         pytest.skip(f"{_TYPESAFE_KEY_ENV} is not set")
     judge = resolve_judge("typesafe-ai/jev-latest", machine=MachineProfile(vram_budget_gb=0.0))
-    candidates = [_descriptor("ocr-ovis"), _descriptor("ocr-tele", ocr=False), _descriptor("native-pdf", ocr=False)]
+    candidates = [_descriptor("ocr-ovis"), _descriptor("ocr-tele", ocr=False), _descriptor("pymupdf", ocr=False)]
     order = list(judge.rank(Intent.OCR_GENERAL, candidates))
     assert sorted(order) == sorted(descriptor.name for descriptor in candidates)
     assert len(order) == len(set(order))  # best-first, each candidate exactly once

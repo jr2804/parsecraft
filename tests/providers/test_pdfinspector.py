@@ -252,7 +252,7 @@ def test_classifier_adds_ocr_need_and_routes_pages_apart(stub: _Stub, monkeypatc
     """One flag: page 1 gains OCR need, page 2 keeps its rule-table NATIVE route."""
     stub.detection = _Detection(pdf_type="mixed", pages_needing_ocr=(1,), pages_with_tables=())
     registry = _registry(monkeypatch)
-    _register(registry, "native-pdf")
+    _register(registry, "pymupdf")
     _register(registry, "ocr-stub")
     classifier = resolve_classifier(_SPEC)
     analysis = analyze_source(
@@ -267,7 +267,7 @@ def test_classifier_adds_ocr_need_and_routes_pages_apart(stub: _Stub, monkeypatc
 
     plan = plan_route(analysis, registry.list_backends(), _constraints())
     assert [route.intent for route in plan.pages] == [Intent.OCR_GENERAL, Intent.NATIVE]
-    assert [route.chosen for route in plan.pages] == ["ocr-stub", "native-pdf"]
+    assert [route.chosen for route in plan.pages] == ["ocr-stub", "pymupdf"]
 
 
 def test_flagged_page_without_ocr_permission_degrades_to_native(stub: _Stub, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -279,7 +279,7 @@ def test_flagged_page_without_ocr_permission_degrades_to_native(stub: _Stub, mon
     """
     stub.detection = _Detection(pages_needing_ocr=(1,))
     registry = _registry(monkeypatch)
-    _register(registry, "native-pdf")
+    _register(registry, "pymupdf")
     _register(registry, "ocr-stub")
     analysis = analyze_source(
         _PDF_SOURCE,
@@ -292,7 +292,7 @@ def test_flagged_page_without_ocr_permission_degrades_to_native(stub: _Stub, mon
 
     plan = plan_route(analysis, registry.list_backends(), _constraints(allow_ocr=False))
     assert [route.intent for route in plan.pages] == [Intent.NATIVE, Intent.NATIVE]
-    assert [route.candidates for route in plan.pages] == [["native-pdf"], ["native-pdf"]]
+    assert [route.candidates for route in plan.pages] == [["pymupdf"], ["pymupdf"]]
     assert plan.pages[0].degradation_code is not None  # recorded, not silent
 
 
@@ -300,7 +300,7 @@ def test_absent_classifier_keeps_the_rule_table_route(stub: _Stub, monkeypatch: 
     """No classifier: the analysis and the plan are exactly the pre-seam behaviour."""
     stub.detection = _Detection(pages_needing_ocr=(1,))
     registry = _registry(monkeypatch)
-    _register(registry, "native-pdf")
+    _register(registry, "pymupdf")
     _register(registry, "ocr-stub")
     analysis = analyze_source(_PDF_SOURCE, registry, media_type="application/pdf", installed_extras={"pdf-inspector"})
     assert [signal.classifier_needs_ocr for signal in analysis.signals] == [None, None]

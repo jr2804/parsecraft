@@ -1,6 +1,6 @@
 """Shared machinery for the built-in native backend family.
 
-``native-pdf`` splits responsibilities (ADR-0003): analysis/inspection uses
+``pymupdf`` splits responsibilities (ADR-0003): analysis/inspection uses
 pypdf (core, permissive) while text extraction uses PyMuPDF
 (``pdf`` extra, AGPL) — so ``analyze()`` works without the AGPL extra.
 """

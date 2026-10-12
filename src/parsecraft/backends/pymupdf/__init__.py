@@ -1,4 +1,4 @@
-"""Native PDF backend — pypdf inspection, PyMuPDF extraction (ADR-0003, ADR-0009).
+"""PyMuPDF backend — pypdf inspection, PyMuPDF extraction (ADR-0003, ADR-0009).
 
 ``analyze()`` uses pypdf (core dependency since ADR-0009) so structure
 analysis, encryption detection, and difficulty signals work without the
@@ -23,7 +23,6 @@ from parsecraft.backends.native._common import (
     PdfInspection,
     source_bytes,
 )
-from parsecraft.backends.native.code_layout import PageText, build_chunks
 from parsecraft.backends.protocol import (
     AnalysisResult,
     BackendCapabilities,
@@ -33,28 +32,29 @@ from parsecraft.backends.protocol import (
     DocumentBackend,
     SourceDocument,
 )
+from parsecraft.backends.pymupdf.code_layout import PageText, build_chunks
 from parsecraft.ir.models import Diagnostic, DiagnosticLevel, PageResult, PageSignal
 
-BACKEND_NAME = "native-pdf"
+BACKEND_NAME = "pymupdf"
 SUPPORTED_FORMATS = ["application/pdf"]
 
-_PDF_INSPECT_MODULE = "parsecraft.backends.native.pdf_inspect"
-_PDF_TEXT_MODULE = "parsecraft.backends.native.pdf_text"
+_PYMUPDF_ANALYZE_MODULE = "parsecraft.backends.pymupdf._analyze"
+_PYMUPDF_CONVERT_MODULE = "parsecraft.backends.pymupdf._convert"
 
 
-class _PdfInspectImpl(Protocol):
+class _PymupdfAnalyzeImpl(Protocol):
     """What this backend needs from the pypdf inspection module."""
 
     def inspect(self, data: bytes) -> PdfInspection: ...
 
 
-class _PdfTextImpl(Protocol):
+class _PymupdfConvertImpl(Protocol):
     """What this backend needs from the PyMuPDF extraction module."""
 
     def page_layouts(self, data: bytes) -> list[PageText]: ...
 
 
-class PdfBackend(NativeBackendBase):
+class PymupdfBackend(NativeBackendBase):
     """PDF: pypdf for analysis, PyMuPDF for text extraction."""
 
     name = BACKEND_NAME
@@ -65,7 +65,7 @@ class PdfBackend(NativeBackendBase):
     @override
     def analyze(self, source: SourceDocument) -> AnalysisResult:
         data = source_bytes(source)
-        inspection = _inspect_impl().inspect(data)
+        inspection = _analyze_impl().inspect(data)
         signals = [
             PageSignal(
                 page_number=stats.page_number,
@@ -106,7 +106,7 @@ class PdfBackend(NativeBackendBase):
         )
 
 
-class _PdfFactory:
+class _PymupdfFactory:
     """Light entry-point object: loads pypdf inspection at instantiation."""
 
     descriptor = BackendDescriptor(
@@ -121,19 +121,19 @@ class _PdfFactory:
     )
 
     def __call__(self, config: BackendConfig) -> DocumentBackend:
-        _inspect_impl()  # fail fast if the install is broken
-        return PdfBackend(config, self.descriptor.capabilities)
+        _analyze_impl()  # fail fast if the install is broken
+        return PymupdfBackend(config, self.descriptor.capabilities)
 
 
-def _inspect_impl() -> _PdfInspectImpl:
-    return cast(_PdfInspectImpl, import_module(_PDF_INSPECT_MODULE))
+def _analyze_impl() -> _PymupdfAnalyzeImpl:
+    return cast(_PymupdfAnalyzeImpl, import_module(_PYMUPDF_ANALYZE_MODULE))
 
 
 def _extract_pdf(source: SourceDocument, data: bytes) -> list[PageResult]:
     try:
-        impl = cast(_PdfTextImpl, import_module(_PDF_TEXT_MODULE))
+        impl = cast(_PymupdfConvertImpl, import_module(_PYMUPDF_CONVERT_MODULE))
     except ImportError as exc:
-        raise DependencyUnavailableError(_PDF_TEXT_MODULE, "pdf") from exc
+        raise DependencyUnavailableError(_PYMUPDF_CONVERT_MODULE, "pdf") from exc
     pages: list[PageResult] = []
     for number, page in enumerate(impl.page_layouts(data), start=1):
         layout = build_chunks(page, page_number=number)
@@ -141,4 +141,4 @@ def _extract_pdf(source: SourceDocument, data: bytes) -> list[PageResult]:
     return pages
 
 
-factory: BackendFactory = _PdfFactory()
+factory: BackendFactory = _PymupdfFactory()

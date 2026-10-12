@@ -32,7 +32,7 @@ image extraction. `pypdf` is permissive but materially weaker as a parser;
 - The `pdf` extra is copyleft and therefore never bundled into the default
   distribution or the `all` convenience profile without the same explicit
   acknowledgement.
-- `native-pdf` extraction requires `parsecraft[pdf]`; `native-pdf` analysis
+- `pymupdf` extraction requires `parsecraft[pdf]`; `pymupdf` analysis
   works on the core install alone.
 - Any future copyleft dependency follows this same pattern: optional extra +
   addendum + no core/dev install.

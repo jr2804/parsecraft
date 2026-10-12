@@ -49,7 +49,7 @@ from parsecraft.routing.rules import (
 ALL_FORMATS = {"text/plain", "text/markdown", "text/html", "application/pdf", "text/csv", "application/json"}
 OCR_EXTRAS = {"ocr-ovis", "ocr-tele", "ocr-unlimited", "ocr-qianfan"}
 OCR_NAMES = ("ocr-ovis", "ocr-qianfan", "ocr-tele", "ocr-unlimited")
-NATIVE_NAMES = ("native-html", "native-markdown", "native-pdf", "native-text")
+NATIVE_NAMES = ("native-html", "native-markdown", "pymupdf", "native-text")
 
 _SOURCES_PATH = Path(__file__).parent.parent / "fixtures" / "sources.toml"
 # Module constant, not a helper call: decorators evaluate at import time and
@@ -219,7 +219,7 @@ def test_engine_gate_reads_the_declaration_not_the_backend_name() -> None:
 
 
 def test_format_coverage_rules() -> None:
-    pdf_backend = make_desc("native-pdf", ("application/pdf",))
+    pdf_backend = make_desc("pymupdf", ("application/pdf",))
     assert is_hard_eligible(pdf_backend, full_constraints(formats={"application/pdf"})) is True
     assert is_hard_eligible(pdf_backend, full_constraints(formats={"text/plain"})) is False
     assert is_hard_eligible(pdf_backend, full_constraints(formats=set())) is True
@@ -521,7 +521,11 @@ def test_plan_hands_a_context_to_ocr_pages_only() -> None:
         @staticmethod
         def rank(intent: Intent, candidates: Any, context: Any = None) -> list[str]:
             seen.append((intent.value, context))
-            return [descriptor.name for descriptor in candidates]
+            # The NATIVE-lead guard requires native-capable candidates before OCR
+            # fallbacks, so an identity order is not a legal answer.
+            native = [d.name for d in candidates if not d.name.startswith("ocr-")]
+            ocr = [d.name for d in candidates if d.name.startswith("ocr-")]
+            return [*native, *ocr]
 
     analysis = make_analysis([*good_native(), *garbled(1)], 2)
     plan_route(analysis, all_backends(), full_constraints(formats=set(), max_passes=9), RecordingJudge())
@@ -614,7 +618,15 @@ def test_plan_accepts_a_judge_that_keeps_native_candidates_first() -> None:
         full_constraints(formats=set(), max_passes=9),
         NativeFirstJudge(),
     )
-    assert plan.pages[0].chosen == "native-text"  # last of the reversed native group
+    # The contract constrains the FAMILY order (native-capable before OCR), not
+    # the judge's taste WITHIN the native group — so the winner is the first of
+    # the judge's reversed native group, and it is a native-capable backend.
+    # Asserted name-independently: backend names sort, and pymupdf sorts after
+    # the native-* names, so a hardcoded name would pin the accident of sorting.
+    native_group = [d.name for d in all_backends() if not d.name.startswith("ocr-")]
+    expected = sorted(native_group, reverse=True)[0]
+    assert plan.pages[0].chosen == expected
+    assert not plan.pages[0].chosen.startswith("ocr-")
 
 
 def test_plan_max_passes_truncates_candidates() -> None:
@@ -738,7 +750,7 @@ def native_backends() -> list[BackendDescriptor]:
         make_desc("native-text", ("text/plain",)),
         make_desc("native-markdown", ("text/markdown",)),
         make_desc("native-html", ("text/html",)),
-        make_desc("native-pdf", ("application/pdf",)),
+        make_desc("pymupdf", ("application/pdf",)),
     ]
 
 
@@ -1018,16 +1030,16 @@ def good_native(signals_count: int = 1) -> list[PageSignal]:
 
 
 def test_native_pdf_is_demoted_when_pdf_extra_absent() -> None:
-    """A host without ``parsecraft[pdf]`` must not be led by ``native-pdf``.
+    """A host without ``parsecraft[pdf]`` must not be led by ``pymupdf``.
 
     knox-1 measured the cost this removes: on the 2026.10.3 tier model,
-    ``native-pdf`` led every ``application/pdf`` NATIVE page because its
+    ``pymupdf`` led every ``application/pdf`` NATIVE page because its
     ``analyze()`` runs on core pypdf, while its ``convert()`` needs PyMuPDF —
     so each document paid one failed lead attempt before falling through.
     A10 demotes it into the extra-backed tier for exactly that host.
     """
     candidates = [
-        make_desc("native-pdf", ("application/pdf",), convert_extra="pdf"),
+        make_desc("pymupdf", ("application/pdf",), convert_extra="pdf"),
         make_desc("docling", ("application/pdf",), group="docling"),
         make_desc("liteparse", ("application/pdf",), group="liteparse"),
         make_desc("mineru", ("application/pdf",), group="mineru"),
@@ -1038,20 +1050,20 @@ def test_native_pdf_is_demoted_when_pdf_extra_absent() -> None:
     order = list(judge.rank(Intent.NATIVE, candidates))
 
     assert order[0] == "docling"  # the first installed extra-backed parser, alphabetical
-    assert order.index("native-pdf") > order.index("mineru")  # demoted into tier 1, behind the installed parsers
+    assert order.index("pymupdf") > order.index("mineru")  # demoted into tier 1, behind the installed parsers
     assert order[-1] == "ocr-ovis"  # OCR stays the last resort
 
 
 def test_native_pdf_leads_when_pdf_extra_installed() -> None:
-    """Regression (2026.10.3): with ``[pdf]`` installed native-pdf is dependency-free and leads."""
+    """Regression (2026.10.3): with ``[pdf]`` installed pymupdf is dependency-free and leads."""
     candidates = [
-        make_desc("native-pdf", ("application/pdf",), convert_extra="pdf"),
+        make_desc("pymupdf", ("application/pdf",), convert_extra="pdf"),
         make_desc("docling", ("application/pdf",), group="docling"),
         make_desc("ocr-ovis", ("application/pdf",), gpu=True, vram=6.0, group="ocr"),
     ]
     judge = DeterministicJudge(installed_extras=frozenset({"pdf", "docling", "ocr"}))
 
-    assert list(judge.rank(Intent.NATIVE, candidates))[0] == "native-pdf"
+    assert list(judge.rank(Intent.NATIVE, candidates))[0] == "pymupdf"
 
 
 def test_every_base_install_native_backend_is_always_eligible() -> None:
@@ -1059,19 +1071,19 @@ def test_every_base_install_native_backend_is_always_eligible() -> None:
 
     ``native-text``/``-markdown``/``-html`` declare no ``convert_extra`` and no
     group, so a base install (empty extras) still ranks them tier 0 — and
-    ``native-pdf`` joins them the moment its extra is present.
+    ``pymupdf`` joins them the moment its extra is present.
     """
     candidates = [
         make_desc("native-markdown"),
         make_desc("native-text"),
-        make_desc("native-pdf", ("application/pdf",), convert_extra="pdf"),
+        make_desc("pymupdf", ("application/pdf",), convert_extra="pdf"),
         make_desc("docling", ("text/plain", "application/pdf"), group="docling"),
     ]
     base = DeterministicJudge(installed_extras=frozenset())
     with_pdf = DeterministicJudge(installed_extras=frozenset({"pdf", "docling"}))
 
     assert list(base.rank(Intent.NATIVE, candidates))[:2] == ["native-markdown", "native-text"]
-    assert list(with_pdf.rank(Intent.NATIVE, candidates))[0] == "native-markdown"  # tier 0 alphabetical; native-pdf is tier 0 too
+    assert list(with_pdf.rank(Intent.NATIVE, candidates))[0] == "native-markdown"  # tier 0 alphabetical; pymupdf is tier 0 too
 
 
 def test_empty_candidate_set_yields_typed_planner_error() -> None:
@@ -1086,27 +1098,27 @@ def test_empty_candidate_set_yields_typed_planner_error() -> None:
 def test_existing_tier_ordering_preserved_when_all_convert_extras_satisfied() -> None:
     """Regression (2026.10.3): a fully-satisfied host keeps the tier model."""
     candidates = [
-        make_desc("native-pdf", ("application/pdf",), convert_extra="pdf"),
+        make_desc("pymupdf", ("application/pdf",), convert_extra="pdf"),
         make_desc("docling", ("application/pdf",), group="docling"),
         make_desc("liteparse", ("application/pdf",), group="liteparse"),
         make_desc("ocr-ovis", ("application/pdf",), gpu=True, vram=6.0, group="ocr"),
     ]
     judge = DeterministicJudge(installed_extras=frozenset({"pdf", "docling", "liteparse", "ocr"}))
 
-    assert list(judge.rank(Intent.NATIVE, candidates)) == ["native-pdf", "docling", "liteparse", "ocr-ovis"]
+    assert list(judge.rank(Intent.NATIVE, candidates)) == ["pymupdf", "docling", "liteparse", "ocr-ovis"]
 
 
 def test_max_passes_1_does_not_waste_a_native_pdf_lead_on_knox_config() -> None:
     """The knox-1 shape, offline: one pass, no ``[pdf]`` — the lead is deliverable.
 
     knox-1 ran ``[auto,docling,liteparse,mineru,ocr,pandoc,web]`` (licence-
-    consciously omitting ``[pdf]``) and every PDF paid the failed ``native-pdf``
+    consciously omitting ``[pdf]``) and every PDF paid the failed ``pymupdf``
     lead before ``mineru`` converted it. With A10 the single pass goes straight
     to the first installed extra-backed parser.
     """
     analysis = make_analysis([make_signal(1, native=True)], 1)
     backends = [
-        make_desc("native-pdf", ("application/pdf",), convert_extra="pdf"),
+        make_desc("pymupdf", ("application/pdf",), convert_extra="pdf"),
         make_desc("docling", ("application/pdf",), group="docling"),
         make_desc("liteparse", ("application/pdf",), group="liteparse"),
         make_desc("mineru", ("application/pdf",), group="mineru"),
@@ -1118,7 +1130,7 @@ def test_max_passes_1_does_not_waste_a_native_pdf_lead_on_knox_config() -> None:
         full_constraints(formats={"application/pdf"}, installed_extras={"docling", "liteparse", "mineru"}, max_passes=1),
     )
 
-    assert plan.pages[0].candidates == ["docling"]  # exactly one pass, no native-pdf waste
+    assert plan.pages[0].candidates == ["docling"]  # exactly one pass, no pymupdf waste
     assert plan.pages[0].chosen == "docling"
 
 

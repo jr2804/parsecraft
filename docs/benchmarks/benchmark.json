@@ -111,7 +111,7 @@
     },
     {
       "analyzer_text_chars": 161871,
-      "backend": "native-pdf",
+      "backend": "pymupdf",
       "chunk_counts": {
         "caption": 0,
         "code": 0,
@@ -165,7 +165,7 @@
     },
     {
       "analyzer_text_chars": 1653105,
-      "backend": "native-pdf",
+      "backend": "pymupdf",
       "chunk_counts": {
         "caption": 0,
         "code": 0,
@@ -219,7 +219,7 @@
     },
     {
       "analyzer_text_chars": 191646,
-      "backend": "native-pdf",
+      "backend": "pymupdf",
       "chunk_counts": {
         "caption": 0,
         "code": 0,

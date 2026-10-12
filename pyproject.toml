@@ -57,7 +57,7 @@ web = ["httpx>=0.27", "trafilatura>=2.3.1"]
 native-text = "parsecraft.backends.native.text:factory"
 native-markdown = "parsecraft.backends.native.markdown:factory"
 native-html = "parsecraft.backends.native.html:factory"
-native-pdf = "parsecraft.backends.native.pdf:factory"
+pymupdf = "parsecraft.backends.pymupdf:factory"
 liteparse = "parsecraft.backends.liteparse.liteparse:factory"
 pandoc = "parsecraft.backends.pandoc.pandoc:factory"
 docling = "parsecraft.backends.docling.docling:factory"

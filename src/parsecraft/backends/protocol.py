@@ -100,7 +100,7 @@ class BackendCapabilities(BaseModel):
     estimated_vram_gb: float | None = Field(default=None, ge=0)
     optional_dependency_group: str | None = None
     #: The optional extra whose import boundary the CONVERT path crosses — its
-    #: absence makes conversion un-deliverable on this host (``native-pdf``
+    #: absence makes conversion un-deliverable on this host (``pymupdf``
     #: analyzes on core pypdf but converts via ``parsecraft[pdf]``/PyMuPDF).
     #: ``None`` means convert needs nothing beyond core/base deps. This is the
     #: convert path's import boundary, not every import: analyze()-only imports

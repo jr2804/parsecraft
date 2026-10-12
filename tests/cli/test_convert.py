@@ -776,7 +776,7 @@ def test_convert_judge_error_specs_map_to_typed_exit_codes(pdf_registry: Path) -
 
 
 def test_convert_backend_and_judge_are_mutually_exclusive(pdf_registry: Path) -> None:
-    result = runner.invoke(app, ["convert", str(pdf_registry), "--backend", "native-pdf", "--judge", "cli-fake-judge/j"])
+    result = runner.invoke(app, ["convert", str(pdf_registry), "--backend", "pymupdf", "--judge", "cli-fake-judge/j"])
     assert result.exit_code == 2
     assert "mutually exclusive" in _text(result)
 
@@ -890,7 +890,7 @@ def pdf_registry(registry: BackendRegistry, tmp_path: Path, monkeypatch: pytest.
     let a judge demonstrate re-ranking without crossing the NATIVE contract.
     """
     _register(registry, _descriptor("aaa-native", ("application/pdf",)), content="aaa native content")
-    _register(registry, _descriptor("native-pdf", ("application/pdf",)), content="native content")
+    _register(registry, _descriptor("pymupdf", ("application/pdf",)), content="native content")
     _register(registry, _descriptor("ocr-stub", ("application/pdf",)), content="ocr content")
     monkeypatch.setattr(
         convert_module,
