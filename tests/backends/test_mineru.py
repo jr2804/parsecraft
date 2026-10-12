@@ -25,6 +25,8 @@ from parsecraft.backends.errors import BackendError, DependencyUnavailableError
 from parsecraft.backends.mineru import mineru as mineru_module
 from parsecraft.backends.protocol import BackendConfig, BackendResult, ConversionRequest, DocumentBackend, SourceDocument
 from parsecraft.ir.models import ChunkKind, FailureCode, PageRange, PassKind
+from parsecraft.routing.models import RoutingConstraints
+from parsecraft.routing.rules import is_hard_eligible
 
 _PDF_BYTES = b"%PDF-1.7 stub"
 _PDF_SOURCE = SourceDocument(uri="file:///doc.pdf", media_type="application/pdf", content=_PDF_BYTES)
@@ -166,7 +168,28 @@ def test_descriptor_declares_only_the_verified_pdf_format() -> None:
     # The verified default (text PDF at effort="flash") is weight-free CPU work;
     # the VLM path is a GPU speedup, never a precondition.
     assert capabilities.gpu_requirement == 0.5
-    assert capabilities.estimated_vram_gb == 0.0
+    # Undeclared strength (pc-ecf): 0.0 was the flash path's VRAM *cost*, and
+    # the tiebreak reads the field as *strength* — the same value pulled
+    # opposite ways. Unknown is honest for a weight-free path.
+    assert capabilities.estimated_vram_gb is None
+
+
+def test_mineru_stays_eligible_on_a_host_without_a_usable_gpu() -> None:
+    """pc-ecf regression guard: dropping the vram declaration must not drop eligibility.
+
+    ``is_hard_eligible`` gates on ``estimated_vram_gb is not None`` only for
+    GPU_REQUIRED backends; mineru is GPU_OPTIONAL, so ``gpu_ok`` holds via the
+    ``gpu_requirement < GPU_REQUIRED`` branch whether or not a vram figure is
+    declared — verified before the drop, pinned here after it.
+    """
+    host = RoutingConstraints(
+        formats={"application/pdf"},
+        gpu_usable=False,
+        vram_budget_gb=0.0,
+        offline=False,
+        installed_extras=frozenset({"mineru"}),
+    )
+    assert is_hard_eligible(mineru_module.DESCRIPTOR, host) is True
 
 
 def test_model_asset_carries_the_corrected_licence_facts() -> None:
@@ -181,7 +204,9 @@ def test_model_asset_carries_the_corrected_licence_facts() -> None:
     # MinerU downloads its own weights; parsecraft pins nothing.
     assert asset.file_pins == ()
     assert asset.size_bytes is None
-    assert asset.estimated_vram_gb == 0.0
+    # Same conflation, metadata form (pc-ecf): nothing routes on the asset
+    # field, and with no pinned weights there is no footprint to state.
+    assert asset.estimated_vram_gb is None
 
 
 def test_factory_reports_the_missing_extra(monkeypatch: pytest.MonkeyPatch) -> None:

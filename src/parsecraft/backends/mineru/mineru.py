@@ -65,11 +65,12 @@ MINERU_ASSET = ModelAssetDescriptor(
     ],
     size_bytes=None,
     quantization=None,
-    # MEASURED (2026-10-09): effort="flash" on a text PDF loads no weights at
-    # all (MINERU_HOME/models stayed empty) -> 0 GiB. Scanned pages and effort
-    # above "flash" load the VLM checkpoint and need a GPU; the executor's
-    # timeout deadline bounds that case.
-    estimated_vram_gb=0.0,
+    # Undeclared (pc-ecf): the old 0.0 came from the flash measurement (no
+    # weights loaded -> 0 GiB), but that answers a COST question, not the
+    # SIZE question this field names — and with file_pins=() there are no
+    # pinned weights whose footprint could be stated. Unknown is the honest
+    # value; nothing in routing reads the asset field.
+    estimated_vram_gb=None,
     file_pins=(),
 )
 
@@ -81,7 +82,13 @@ CAPABILITIES = BackendCapabilities(
     # the VLM path (scanned pages, higher effort) is a GPU speedup, never a
     # precondition for the declared surface.
     gpu_requirement=GPU_OPTIONAL,
-    estimated_vram_gb=0.0,
+    # Undeclared (pc-ecf): the routing tiebreak reads this field as MODEL
+    # STRENGTH, and 0.0 — measured as the flash path's VRAM cost — made mineru
+    # the smallest model on every axis, so it won the NATIVE tiebreak for every
+    # preference, QUALITY included. The flash measurement justifies a cost
+    # claim, not a size claim; undeclared sorts last for every preference
+    # ("unknown strength"), which is the honest reading of a weight-free path.
+    estimated_vram_gb=None,
     optional_dependency_group=_EXTRA,
     convert_extra=_EXTRA,
     model_asset=MINERU_ASSET,
