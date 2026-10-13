@@ -25,7 +25,7 @@ from parsecraft.routing.classifier import (
     OcrFacts,
     PageOcrClassifier,
 )
-from parsecraft.routing.rules import FEATURE_TABLE_CODE
+from parsecraft.routing.rules import FEATURE_TABLE_CODE, is_ocr
 
 #: Suffix → MIME for every source class this package can consume. Values
 #: must be claimed by at least one registered backend (invariant-tested);
@@ -175,7 +175,7 @@ def choose_analyzer(
     *,
     installed_extras: Collection[str] | None = None,
 ) -> BackendDescriptor:
-    """Deterministic analyzer: native backends first, then name order.
+    """Deterministic analyzer: base-install backends first, then name order.
 
     When ``installed_extras`` is provided (the caller's set — this module
     never probes the environment), claimers whose optional dependency group
@@ -194,8 +194,24 @@ def choose_analyzer(
 
 
 def _analyzer_key(descriptor: BackendDescriptor) -> tuple[bool, str]:
-    """Native backends first, then stable name order."""
-    return (not descriptor.name.startswith("native-"), descriptor.name)
+    """Base-install, non-OCR analyzers first, then stable name order.
+
+    Keyed on what the analyzer contract is about — a base-install backend
+    (``optional_dependency_group is None``, so ``analyze()`` is core/base work)
+    that is not an OCR route — **not** on a ``native-`` name prefix. The prefix
+    key silently inverted when ``native-pdf`` was renamed to ``pymupdf``
+    (pc-kwh→pc-hav): ``pymupdf`` lost the prefix, so a PDF was analyzed by the
+    alphabetically-first claimer (``docling``), making the analyzer's signal
+    source depend on which extras happened to be installed.
+
+    The non-OCR clause is not decoration: ``ocr-tesseract`` is ALSO
+    base-install (group ``None``), so base-install alone would hand every PDF
+    to the raster OCR engine. OCR routes are the fallback family by design
+    (routing's NATIVE-lead rule), never the signal source while a base native
+    can analyze the format.
+    """
+    base_non_ocr = not is_ocr(descriptor) and descriptor.capabilities.optional_dependency_group is None
+    return (not base_non_ocr, descriptor.name)
 
 
 def _extra_available(descriptor: BackendDescriptor, installed_extras: Collection[str]) -> bool:

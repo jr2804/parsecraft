@@ -682,9 +682,9 @@ def test_media_types_values_are_claimed_by_registered_backends() -> None:
     assert unclaimed == set()
 
 
-def test_choose_analyzer_prefers_native_then_name() -> None:
+def test_choose_analyzer_prefers_dependency_free_then_name() -> None:
     native = make_descriptor("native-z")
-    other = make_descriptor("aaa-first")
+    other = make_descriptor("aaa-first", group="aaa-extra")
     assert choose_analyzer([other, native], "text/plain") is native
     with pytest.raises(NoAnalyzerError, match="no installed backend can analyze"):
         choose_analyzer([native], "application/pdf")
@@ -693,7 +693,7 @@ def test_choose_analyzer_prefers_native_then_name() -> None:
 def test_choose_analyzer_none_keeps_historical_behaviour() -> None:
     claimers = _claimers()
     assert choose_analyzer(claimers, "image/png") is choose_analyzer(claimers, "image/png", installed_extras=None)
-    # native-first then name, regardless of extras
+    # dependency-free first, then name; native-a is the base-install claimer here
     assert choose_analyzer(claimers, "image/png").name == "native-a"
 
 
@@ -722,7 +722,28 @@ def test_choose_analyzer_all_unavailable_falls_back_to_name_order() -> None:
         make_descriptor("native-b", formats=("image/png",), group="missing-extra"),
     ]
     chosen = choose_analyzer(claimers, "image/png", installed_extras=set())
-    assert chosen.name == "native-b"  # fallback pool, same native-first-then-name key
+    # fallback pool; every claimer here is extra-backed, so the base-install key degrades to name order
+    assert chosen.name == "liteparse"
+
+
+def test_choose_analyzer_uses_the_base_install_analyzer_per_real_format() -> None:
+    """pc-hav regression guard: the base-install analyzer per real format, on the real registry.
+
+    The synthetic fixtures above missed the pc-kwh rename because none was named
+    ``pymupdf``: a real PDF must be analyzed by the base-install ``pymupdf`` (core
+    pypdf), never by the alphabetically-first extra-backed claimer.
+    """
+    registry = default_registry.list_backends()
+    extras = {"docling", "liteparse", "mineru", "pandoc", "ocr", "auto", "web", "marker"}
+    expectations = {
+        "application/pdf": "pymupdf",
+        "text/html": "native-html",
+        "text/markdown": "native-markdown",
+        "text/plain": "native-text",
+    }
+    for media_type, expected in expectations.items():
+        chosen = choose_analyzer(registry, media_type, installed_extras=extras)
+        assert chosen.name == expected, media_type
 
 
 def test_choose_analyzer_is_deterministic_across_input_order() -> None:
@@ -745,7 +766,7 @@ def _claimers() -> list[BackendDescriptor]:
     return [
         make_descriptor("liteparse", formats=("image/png",), group="liteparse"),
         make_descriptor("ocr-z", formats=("image/png",), group="ocr-z"),
-        make_descriptor("native-a", formats=("image/png",), group="missing-extra"),
+        make_descriptor("native-a", formats=("image/png",)),
     ]
 
 

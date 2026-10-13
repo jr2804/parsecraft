@@ -362,7 +362,10 @@ def test_convert_backend_not_eligible_is_usage_error(tmp_path: Path, registry: B
 
 
 def test_convert_without_eligible_backend_fails(tmp_path: Path, registry: BackendRegistry) -> None:
-    _register(registry, _descriptor("native-text", ("text/plain",), group="missing-extra"))
+    # Ineligible via the GPU gate, not a fake dependency group: the analyzer is a
+    # base-install, non-OCR claimer so analysis succeeds, while routing drops it
+    # (GPU_REQUIRED on a host with no usable GPU) — the shape this test is about.
+    _register(registry, _descriptor("native-text", ("text/plain",), gpu=True))
     result = runner.invoke(app, ["convert", str(_source_file(tmp_path))])
     assert result.exit_code == 1
     assert "routing failed" in _text(result)

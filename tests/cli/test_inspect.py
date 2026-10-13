@@ -117,7 +117,11 @@ def test_inspect_source_without_signals(tmp_path: Path, offline_probe: None) -> 
 
 def test_inspect_source_reports_routing_error(tmp_path: Path, offline_probe: None) -> None:
     registry = BackendRegistry()
-    registry.register("native-text", _StubFactory(_descriptor(group="missing-extra")))
+    # Ineligible via the GPU gate (no usable GPU on this host), not a fake dependency
+    # group: the analyzer is a base-install, non-OCR claimer, so analysis succeeds and
+    # the ROUTING error is what this test is about (pc-hav: the old fixture leaned on
+    # the removed ``native-`` name-prefix key).
+    registry.register("native-text", _StubFactory(_descriptor(gpu=True)))
     preview = inspect_module.inspect_source(_source_file(tmp_path), registry)
     assert preview.plan is None
     assert preview.routing_error is not None
@@ -279,10 +283,14 @@ def test_cli_inspect_unclaimed_media_type_is_usage_error(tmp_path: Path, offline
     assert "no installed backend can analyze image/png" in _text(result)
 
 
-def _descriptor(name: str = "native-text", *, group: str | None = None) -> BackendDescriptor:
+def _descriptor(name: str = "native-text", *, group: str | None = None, gpu: bool = False) -> BackendDescriptor:
     return BackendDescriptor(
         name=name,
-        capabilities=BackendCapabilities(supported_formats=["text/plain"], optional_dependency_group=group),
+        capabilities=BackendCapabilities(
+            supported_formats=["text/plain"],
+            optional_dependency_group=group,
+            gpu_requirement=1.0 if gpu else 0.0,
+        ),
     )
 
 
