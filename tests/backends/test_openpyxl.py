@@ -241,8 +241,9 @@ def test_real_openpyxl_converts_a_generated_workbook() -> None:
     the default suite rather than only under an extra.
     """
     backend = openpyxl_module.factory(BackendConfig(name="openpyxl"))
+    # No byte-determinism assertion: the fixture is not deterministic by design
+    # (pc-93d), and this test is about what the backend extracts.
     content = xlsx_bytes()
-    assert xlsx_bytes() == content, "the workbook scaffold must be byte-deterministic"
     result = backend.convert(ConversionRequest(source=_source(content)))
 
     assert result.failures == []

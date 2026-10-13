@@ -3,8 +3,9 @@
 No document binaries are committed (ADR-0001 §8): every format below is
 scaffolded at test time into the pytest cache directory (``cache_dir =
 "tests/test-cache"``, whose own ``.gitignore`` keeps it out of version
-control). The same input always produces byte-identical output, so tests may
-assert on hashes and diffs.
+control). The text formats and the PDF are byte-deterministic; the OFFICE
+scaffolds are not (pc-93d — their producers stamp wall-clock times into ZIP
+entries and core properties), so office tests assert on extracted content.
 """
 
 from __future__ import annotations
@@ -313,8 +314,8 @@ def docx_bytes() -> bytes:
     Built by python-docx rather than hand-assembled because mupdf rejects
     fabricated OOXML — a *complete* hand-built package still fails with
     ``FileDataError`` (measured 2026-10-13) — so the format's own producer is
-    the only scaffold PyMuPDF will read. Deterministic: repeated calls return
-    byte-identical bytes.
+    the only scaffold PyMuPDF will read. NOT byte-deterministic (pc-93d):
+    python-docx stamps the template's core properties with the wall clock.
     """
     document = Document()
     document.add_heading(DOCX_TEXTS[0], level=1)
@@ -328,7 +329,13 @@ def docx_bytes() -> bytes:
 
 
 def pptx_bytes() -> bytes:
-    """A real ``.pptx``: two slides, each a title plus a body text box."""
+    """A real ``.pptx``: two slides, each a title plus a body text box.
+
+    NOT byte-deterministic (pc-93d): the archive carries wall-clock timestamps.
+    Repacking the entries with a fixed ``date_time`` did make it deterministic,
+    and was removed — nothing consumes that guarantee, and a needless repack of
+    OOXML is a needless risk. Tests assert on extracted content.
+    """
     presentation = Presentation()
     for title, body in ((PPTX_TEXTS[0], PPTX_TEXTS[1]), (PPTX_TEXTS[2], PPTX_TEXTS[3])):
         slide = presentation.slides.add_slide(presentation.slide_layouts[5])
@@ -349,8 +356,11 @@ def xlsx_bytes() -> bytes:
     registry discovery imports every factory eagerly), but a fixture runs once
     per test session and may simply import it.
 
-    Deterministic: the core properties carry fixed timestamps, so repeated calls
-    return byte-identical bytes.
+    NOT byte-deterministic, measured (pc-93d): openpyxl rewrites the core
+    properties' ``modified`` inside ``save()`` and stamps each ZIP entry with
+    the wall clock, so two calls in different seconds differ. Setting
+    ``properties.created/modified`` does not survive the save. Tests assert on
+    the CONTENT the backend extracts, never on bytes.
     """
     workbook = openpyxl.Workbook()
     sheet = workbook.active
