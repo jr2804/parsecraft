@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import io
 import sys
+import tempfile
 from collections.abc import Iterator
 from types import ModuleType
 from typing import Any, cast
@@ -20,7 +21,20 @@ from parsecraft.backends.protocol import (
 from parsecraft.backends.pymupdf._analyze import inspect as inspect_impl  # noqa: F401 — re-exported for tests
 from parsecraft.backends.pymupdf.code_layout import PageText, page_text
 from parsecraft.ir.models import FailureCode, PassKind
-from tests.fixtures.documents import document_bytes, image_heavy_pdf, mixed_scanned_pdf
+from tests.fixtures.documents import (
+    DOCX_TEXTS,
+    PPTX_TEXTS,
+    document_bytes,
+    docx_bytes,
+    image_heavy_pdf,
+    mixed_scanned_pdf,
+    pptx_bytes,
+)
+
+#: Office media types as the backend declares them (kept in the test so a typo
+#: in either place fails here).
+_DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+_PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 
 _PYMUPDF_CONVERT_MODULE = "parsecraft.backends.pymupdf._convert"
 
@@ -62,7 +76,11 @@ class _FakePdfReader:
 def test_pymupdf_descriptor_contract() -> None:
     descriptor = pymupdf_module.factory.descriptor
     assert descriptor.name == "pymupdf"
-    assert descriptor.capabilities.supported_formats == ["application/pdf"]
+    assert descriptor.capabilities.supported_formats == [
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ]
     assert descriptor.capabilities.supports_page_ranges is True
     assert descriptor.capabilities.supports_multi_page is True
     assert descriptor.capabilities.optional_dependency_group is None
@@ -164,7 +182,7 @@ def test_pymupdf_convert_missing_pymupdf_yields_typed_failure(monkeypatch: pytes
 def test_pymupdf_convert_with_fake_extraction_impl(monkeypatch: pytest.MonkeyPatch) -> None:
     class FakeImpl:
         @staticmethod
-        def page_layouts(data: bytes) -> list[PageText]:
+        def page_layouts(data: bytes, *, filetype: str = "pdf") -> list[PageText]:
             # Two pages of prose: one line, then a blank-line-separated pair.
             return [_page("first page block"), _page("second page", "", "line two")]
 
@@ -287,6 +305,103 @@ def _encrypted_pdf(data: bytes) -> bytes:
     return buffer.getvalue()
 
 
+# ── office: DOCX + PPTX (pc-16y) ───────────────────────────────────────────
+
+
+def test_office_analysis_is_the_size_proxy_without_the_pdf_extra(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Office analysis must not need the ``pdf`` extra.
+
+    The declared surface stays analyzable on a base install: only conversion
+    crosses that boundary, so the extra's module is made unimportable here and
+    the office branch still answers. (pypdf itself is a core dependency since
+    ADR-0009, so it is not the boundary being tested.)
+    """
+
+    def refusing_loader(name: str) -> Any:
+        if name == _PYMUPDF_CONVERT_MODULE:
+            raise ImportError(name)
+        return importlib.import_module(name)
+
+    monkeypatch.setattr("parsecraft.backends.pymupdf.import_module", refusing_loader)
+    backend = pymupdf_module.factory(_config("pymupdf"))
+    data = docx_bytes()
+
+    analysis = backend.analyze(_source(data, media_type=_DOCX_MIME))
+
+    assert analysis.page_count == 1
+    assert len(analysis.signals) == 1
+    signal = analysis.signals[0]
+    assert signal.text_chars == len(data)
+    assert signal.blank is False
+    assert signal.image_count == 0
+    assert signal.replacement_char_ratio is None
+
+
+def test_office_conversion_names_the_format_to_the_stream_opener(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Office conversion reuses the PDF stream route, told which format it is.
+
+    No temp file exists to clean up: measured 2026-10-13 against real
+    python-docx/python-pptx files, ``open(stream=...)`` returns byte-identical
+    pages to the temp-file route, so ``NamedTemporaryFile``/``mkstemp`` are made
+    to raise here and conversion still succeeds. A source with no declared
+    media type keeps the PDF filetype — the behaviour every earlier fixture
+    relied on.
+    """
+    seen: list[tuple[int, str]] = []
+
+    class FakeImpl:
+        @staticmethod
+        def page_layouts(data: bytes, *, filetype: str = "pdf") -> list[PageText]:
+            seen.append((len(data), filetype))
+            return [_page("office block")]
+
+    def loader(name: str) -> Any:
+        if name == _PYMUPDF_CONVERT_MODULE:
+            return FakeImpl()
+        return importlib.import_module(name)
+
+    def no_temp_file(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("the office route must not need a temp file")
+
+    monkeypatch.setattr("parsecraft.backends.pymupdf.import_module", loader)
+    monkeypatch.setattr(tempfile, "NamedTemporaryFile", no_temp_file)
+    monkeypatch.setattr(tempfile, "mkstemp", no_temp_file)
+    backend = pymupdf_module.factory(_config("pymupdf"))
+
+    office_files = {"docx": docx_bytes, "pptx": pptx_bytes, "pdf": lambda: document_bytes("pdf")}
+    for suffix, media_type, expected in (("docx", _DOCX_MIME, "docx"), ("pptx", _PPTX_MIME, "pptx"), ("pdf", None, "pdf")):
+        seen.clear()
+        content = office_files[suffix]()
+        result = backend.convert(ConversionRequest(source=_source(content, media_type=media_type)))
+        assert seen == [(len(content), expected)]  # the original bytes, not a copy on disk
+        assert _contents(result) == ["office block"]
+        assert result.failures == []
+
+
+def test_real_pymupdf_extracts_generated_docx_and_pptx_text() -> None:
+    """End-to-end with the real engine over real, generated office files.
+
+    Skipped without the ``pdf`` extra (the default suite runs light); run it as
+    ``uv run --extra pdf pytest tests/backends/test_pymupdf.py -k real_pymupdf``.
+    The fixtures are produced by python-docx/python-pptx because mupdf rejects
+    hand-assembled OOXML, so a fabricated package could not exercise this path
+    at all.
+    """
+    pytest.importorskip("pymupdf", reason="the pdf extra is not installed")
+    sys.modules.pop(_PYMUPDF_CONVERT_MODULE, None)
+    try:
+        backend = pymupdf_module.factory(_config("pymupdf"))
+        for suffix, media_type, texts in (("docx", _DOCX_MIME, DOCX_TEXTS), ("pptx", _PPTX_MIME, PPTX_TEXTS)):
+            content = docx_bytes() if suffix == "docx" else pptx_bytes()
+            result = backend.convert(ConversionRequest(source=_source(content, media_type=media_type)))
+            joined = "\n".join(block.content for page in result.pages for block in page.blocks)
+            for text in texts:
+                assert text in joined, f"{suffix}: {text!r} missing from extraction"
+            assert result.failures == []
+    finally:
+        sys.modules.pop(_PYMUPDF_CONVERT_MODULE, None)
+
+
 def _page(*texts: str) -> PageText:
     """A page of 12 pt single-span lines; an empty entry leaves a blank line.
 
@@ -323,8 +438,8 @@ def _request(content: bytes, **kwargs: Any) -> ConversionRequest:
     return ConversionRequest(source=_source(content), **kwargs)
 
 
-def _source(content: bytes, uri: str = "mem://pymupdf") -> SourceDocument:
-    return SourceDocument(uri=uri, content=content)
+def _source(content: bytes, uri: str = "mem://pymupdf", media_type: str | None = None) -> SourceDocument:
+    return SourceDocument(uri=uri, content=content, media_type=media_type)
 
 
 def _config(name: str) -> BackendConfig:

@@ -40,7 +40,11 @@ basenames may repeat across groups (`cli/test_config.py` vs
   (.txt/.md/.csv/.json/.html + a minimal PDF built from stdlib bytes, an
   image-only-first-page scan PDF for mixed-OCR fixtures, `image_heavy_pdf(n)`
   for the image-mass routing trigger, and `code_pdf()` — a positioned Courier
-  listing for layout recovery).
+  listing for layout recovery). `docx_bytes()` and `pptx_bytes()` round it out
+  for the office path: they are built by python-docx/python-pptx (dev-group
+  test helpers) rather than by hand, because mupdf rejects hand-assembled
+  OOXML — a complete fabricated package still fails to open — and ADR-0001 §8
+  forbids committing the binary, so the generator stays the artifact.
 - `fixtures/sources.py` + `fixtures/sources.toml` — public test-document
   manifest: license, URL, why suitable, documented local download step, plus
   corpus expectations as data (`difficulty`, `pages`, `approx_size`,

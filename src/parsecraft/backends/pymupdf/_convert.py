@@ -16,9 +16,15 @@ import pymupdf  # ty: ignore[unresolved-import] — optional: "pdf" extra (AGPL,
 from parsecraft.backends.pymupdf.code_layout import PageText, page_text
 
 
-def page_layouts(data: bytes) -> list[PageText]:
-    """Positioned lines of every page, in document order."""
-    document = pymupdf.open(stream=data, filetype="pdf")
+def page_layouts(data: bytes, *, filetype: str = "pdf") -> list[PageText]:
+    """Positioned lines of every page, in document order.
+
+    ``filetype`` names the format for PyMuPDF's stream opener: the PDF importer
+    can sniff a stream, but the office importers cannot, so they must be told
+    (``"docx"``/``"pptx"``). A real python-docx file opened this way returns
+    byte-identical pages to the temp-file route, so no path handler is needed.
+    """
+    document = pymupdf.open(stream=data, filetype=filetype)
     try:
         return [page_text(page.get_text("dict")) for page in document]
     finally:

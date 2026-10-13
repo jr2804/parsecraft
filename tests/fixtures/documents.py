@@ -9,11 +9,34 @@ assert on hashes and diffs.
 
 from __future__ import annotations
 
+import io
 from collections.abc import Sequence
 from pathlib import Path
 
+from docx import Document
+from pptx import Presentation
+from pptx.util import Inches
+
 #: Suffixes the scaffold can generate without explicit caller content.
+#: Office formats are deliberately NOT here: this tuple is the vocabulary the
+#: manifest must cover, and DOCX/PPTX are synthetic (built by their real
+#: producers, see :func:`docx_bytes`) rather than downloaded real documents.
 FORMATS: tuple[str, ...] = ("csv", "html", "json", "md", "pdf", "txt")
+
+#: Text the office scaffolds are built from. Exported so a test asserts the
+#: strings the generator wrote rather than a second copy that could drift.
+DOCX_TEXTS: tuple[str, ...] = (
+    "ParseCraft synthetic docx heading",
+    "ParseCraft synthetic docx paragraph body text.",
+    "ParseCraft synthetic docx cell alpha",
+    "ParseCraft synthetic docx cell beta",
+)
+PPTX_TEXTS: tuple[str, ...] = (
+    "ParseCraft synthetic pptx slide one",
+    "ParseCraft synthetic pptx body one.",
+    "ParseCraft synthetic pptx slide two",
+    "ParseCraft synthetic pptx body two.",
+)
 
 _TEXT_CONTENT: dict[str, str] = {
     "csv": "id,name,score\n1,alpha,0.5\n2,beta,0.75\n3,gamma,1.0\n",
@@ -276,6 +299,39 @@ def code_pdf() -> bytes:
     objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
     objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>")
     return _assemble(objects)
+
+
+def docx_bytes() -> bytes:
+    """A real ``.docx``: heading, paragraph, and a 1×2 table.
+
+    Built by python-docx rather than hand-assembled because mupdf rejects
+    fabricated OOXML — a *complete* hand-built package still fails with
+    ``FileDataError`` (measured 2026-10-13) — so the format's own producer is
+    the only scaffold PyMuPDF will read. Deterministic: repeated calls return
+    byte-identical bytes.
+    """
+    document = Document()
+    document.add_heading(DOCX_TEXTS[0], level=1)
+    document.add_paragraph(DOCX_TEXTS[1])
+    table = document.add_table(rows=1, cols=2)
+    table.cell(0, 0).text = DOCX_TEXTS[2]
+    table.cell(0, 1).text = DOCX_TEXTS[3]
+    buffer = io.BytesIO()
+    document.save(buffer)
+    return buffer.getvalue()
+
+
+def pptx_bytes() -> bytes:
+    """A real ``.pptx``: two slides, each a title plus a body text box."""
+    presentation = Presentation()
+    for title, body in ((PPTX_TEXTS[0], PPTX_TEXTS[1]), (PPTX_TEXTS[2], PPTX_TEXTS[3])):
+        slide = presentation.slides.add_slide(presentation.slide_layouts[5])
+        slide.shapes.title.text = title
+        box = slide.shapes.add_textbox(Inches(1), Inches(2), Inches(4), Inches(1))
+        box.text_frame.text = body
+    buffer = io.BytesIO()
+    presentation.save(buffer)
+    return buffer.getvalue()
 
 
 def _code_page_content() -> bytes:
