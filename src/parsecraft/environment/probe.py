@@ -30,13 +30,10 @@ _ABSENT_CUDA_VALUES = frozenset({"None", "''", '""'})
 
 #: Declared map: extra name -> import packages whose presence proves it installed.
 EXTRA_IMPORTS: dict[str, tuple[str, ...]] = {
-    "auto": ("pdf_inspector", "typesafe_sdk"),
     "docling": ("docling",),
-    "liteparse": ("liteparse",),
     "marker": ("marker",),  # bring-your-own dependency (ADR-0006): no declared extra
     "mineru": ("mineru",),
     "ocr": ("transformers",),
-    "pandoc": ("pypandoc",),
     "pdf": ("pymupdf",),
     "vllm": ("vllm",),
     "web": ("httpx", "trafilatura"),

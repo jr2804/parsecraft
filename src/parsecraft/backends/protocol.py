@@ -99,6 +99,15 @@ class BackendCapabilities(BaseModel):
     gpu_requirement: float = Field(default=GPU_NOT_NEEDED, ge=0.0, le=1.0)
     estimated_vram_gb: float | None = Field(default=None, ge=0)
     optional_dependency_group: str | None = None
+
+    #: True when ``analyze()`` delegates to this backend's own library instead of
+    #: being parsecraft's own inspection over core dependencies. The analyzer pool
+    #: prefers in-package inspection: it is cheap, deterministic, and — the reason
+    #: this field exists (pc-s7g) — a licence-driven packaging promotion must not
+    #: decide which parser produces the routing signals. Promoting ``liteparse``
+    #: and ``pdf-inspector`` from extra to base did exactly that, because name
+    #: order among base claimers handed PDFs to ``liteparse``.
+    delegated_analysis: bool = False
     #: The optional extra whose import boundary the CONVERT path crosses — its
     #: absence makes conversion un-deliverable on this host (``pymupdf``
     #: analyzes on core pypdf but converts via ``parsecraft[pdf]``/PyMuPDF).

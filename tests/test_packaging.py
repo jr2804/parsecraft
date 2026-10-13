@@ -47,15 +47,19 @@ def test_wheel_metadata_declares_core_dependencies_only(wheel_path: Path) -> Non
     assert "Requires-Python: >=3.13" in metadata
 
 
-def test_auto_extra_carries_the_routing_seam_dependencies() -> None:
-    """``parsecraft[auto]`` is exactly the two routing-seam dependencies (pc-dbu).
+def test_routing_seam_dependencies_are_base_dependencies() -> None:
+    """The routing-seam deps are base installs (pc-dbu → pc-s7g).
 
-    A direct feature group, not a meta-extra: licence-isolated stacks (`pdf`,
-    pandoc, OCR) are deliberately not included — routing flags and heavy
-    extraction are separate install decisions (ADR-0009).
+    The ``auto`` extra is gone: auto-mode's value comes from the decision model,
+    and the deterministic fallback judge is a degradation path, not the design —
+    so ``pdf-inspector`` and ``typesafe-sdk`` ship in the base install and no
+    extra gates them. Licence-isolated stacks stay optional (ADR-0005/ADR-0009).
     """
-    extras = _declared_extras()
-    assert set(extras["auto"]) == {"pdf-inspector>=1.25.2", "typesafe-sdk>=0.7.2"}
+    data = tomllib.loads(_PYPROJECT.read_text(encoding="utf-8"))
+    dependencies: list[str] = data["project"]["dependencies"]
+    assert any(dependency.startswith("pdf-inspector") for dependency in dependencies)
+    assert any(dependency.startswith("typesafe-sdk") for dependency in dependencies)
+    assert "auto" not in data["project"]["optional-dependencies"]
 
 
 def _declared_extras() -> dict[str, list[str]]:

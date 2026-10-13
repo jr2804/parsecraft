@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hashlib
 import importlib
-import re
 import sys
 import time
 import types
@@ -19,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from parsecraft.backends.errors import BackendError, DependencyUnavailableError
+from parsecraft.backends.errors import BackendError
 from parsecraft.backends.pdf_inspector import pdf_inspector as backend_module
 from parsecraft.backends.protocol import (
     AnalysisResult,
@@ -114,7 +113,7 @@ class _FallbackFactory:
     descriptor = BackendDescriptor(
         name="zzz-parser",
         version="0.1.0",
-        capabilities=_FallbackBackend.capabilities.model_copy(update={"optional_dependency_group": "auto"}),
+        capabilities=_FallbackBackend.capabilities.model_copy(update={"optional_dependency_group": None}),
     )
 
     def __call__(self, config: BackendConfig) -> DocumentBackend:
@@ -132,7 +131,9 @@ def test_descriptor_declares_only_verified_formats_and_stays_cpu_only() -> None:
     capabilities = descriptor.capabilities
     # Verified against pdf-inspector 1.25.2 — the library is PDF-only:
     assert capabilities.supported_formats == ["application/pdf"]
-    assert capabilities.optional_dependency_group == "auto"
+    # Base dependency (pc-s7g): no group to install, no extra to cross.
+    assert capabilities.optional_dependency_group is None
+    assert capabilities.convert_extra is None
     assert capabilities.supports_page_ranges is True
     assert capabilities.supports_multi_page is True
     assert capabilities.gpu_requirement == 0.0
@@ -155,11 +156,11 @@ def test_factory_reports_the_missing_extra(monkeypatch: pytest.MonkeyPatch) -> N
 
     monkeypatch.setattr(importlib, "import_module", _raise)
     with pytest.raises(
-        DependencyUnavailableError,
-        match=re.escape("backend dependency 'pdf_inspector' is not installed — install the 'auto' extra"),
+        BackendError,
+        match="base dependency",
     ) as excinfo:
         backend_module.factory(BackendConfig(name="pdf-inspector"))
-    assert (excinfo.value.module, excinfo.value.extra) == ("pdf_inspector", "auto")
+    assert "pdf-inspector" in str(excinfo.value)
     assert isinstance(excinfo.value, BackendError)
 
 
@@ -428,7 +429,7 @@ def _add_fallback(registry: BackendRegistry) -> None:
 def _constraints() -> RoutingConstraints:
     return RoutingConstraints(
         formats={"application/pdf"},
-        installed_extras={"auto"},
+        installed_extras=set(),
         vram_budget_gb=8.0,
         max_passes=3,
     )

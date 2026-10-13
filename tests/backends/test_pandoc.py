@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from parsecraft.backends.errors import BackendError, DependencyUnavailableError
+from parsecraft.backends.errors import BackendError
 from parsecraft.backends.pandoc.pandoc import (
     DESCRIPTOR,
     PANDOC_FORMATS,
@@ -20,6 +20,8 @@ from parsecraft.backends.pandoc.pandoc import (
 )
 from parsecraft.backends.protocol import BackendConfig, ConversionRequest, SourceDocument
 from parsecraft.ir.models import ChunkKind, FailureCode, PageRange
+from parsecraft.routing.models import RoutingConstraints
+from parsecraft.routing.rules import is_hard_eligible
 
 _CONFIG = BackendConfig(name="pandoc")
 
@@ -38,7 +40,10 @@ def test_descriptor_declares_exactly_the_verified_formats() -> None:
     capabilities = DESCRIPTOR.capabilities
     assert capabilities.supports_page_ranges is False
     assert capabilities.supports_multi_page is False
-    assert capabilities.optional_dependency_group == "pandoc"
+    # Base dependency (pc-s7g) plus the engine gate that replaces the extra.
+    assert capabilities.optional_dependency_group is None
+    assert capabilities.convert_extra is None
+    assert capabilities.required_engine == "pandoc"
     assert capabilities.gpu_requirement == 0.0
     assert capabilities.model_asset is None
 
@@ -51,10 +56,9 @@ def test_factory_missing_extra_is_typed(monkeypatch: pytest.MonkeyPatch) -> None
         raise ImportError("No module named 'pypandoc'", name="pypandoc")
 
     monkeypatch.setattr(importlib, "import_module", fake_import)
-    with pytest.raises(DependencyUnavailableError) as exc_info:
+    with pytest.raises(BackendError) as exc_info:
         factory(_CONFIG)
-    assert exc_info.value.module == "pypandoc"
-    assert exc_info.value.extra == "pandoc"
+    assert "base dependency" in str(exc_info.value)
 
 
 def test_factory_rejects_impl_without_create(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -67,9 +71,9 @@ def test_missing_binary_is_typed_at_instantiation(monkeypatch: pytest.MonkeyPatc
     # No fixture: install only the failing stub (binary missing at create()).
     monkeypatch.setitem(sys.modules, "pypandoc", make_fake_pypandoc({}, version_error=True))
     sys.modules.pop("parsecraft.backends.pandoc._impl", None)
-    with pytest.raises(DependencyUnavailableError) as exc_info:
+    with pytest.raises(BackendError) as exc_info:
         factory(_CONFIG)
-    assert exc_info.value.module == "pandoc"  # the system binary, not the wrapper
+    assert "pandoc binary" in str(exc_info.value)  # the system binary, not the wrapper
     sys.modules.pop("parsecraft.backends.pandoc._impl", None)
 
 
@@ -256,3 +260,19 @@ def make_request(
 ) -> ConversionRequest:
     source = SourceDocument(uri=uri, media_type=media_type, content=content)
     return ConversionRequest(source=source, **kwargs)
+
+
+def test_pandoc_is_eligible_only_where_the_binary_is_present() -> None:
+    """The engine gate replaced the extra (pc-s7g): no binary, no eligibility.
+
+    The extra never checked for the binary; ``required_engine`` does, so this is a
+    stronger guarantee than the extra gave. ``is_hard_eligible`` reads the host fact
+    (``engines``), never a probe of its own.
+    """
+    descriptor = factory.descriptor
+    otd = "application/vnd.oasis.opendocument.text"
+    with_binary = RoutingConstraints(formats={otd}, engines={"pandoc"})
+    without_binary = with_binary.model_copy(update={"engines": set()})
+
+    assert is_hard_eligible(descriptor, with_binary) is True
+    assert is_hard_eligible(descriptor, without_binary) is False

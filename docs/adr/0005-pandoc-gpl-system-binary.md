@@ -47,3 +47,28 @@ AGPL PyMuPDF binary.
   outside the resolver by construction.
 - Any future copyleft dependency follows the same pattern: optional extra +
   addendum + no core/dev install + typed errors when absent.
+
+## Amendment (2026-10-13): the `pandoc` extra is gone — the engine gate replaces it
+
+**Decision 1 is reversed, deliberately.** `pandoc` was an optional extra because the
+Pandoc binary is GPL-2.0-or-later. That framing did not survive contact with what the
+extra actually contained: the extra gated `pypandoc` — an MIT, pure-Python wrapper of
+about 0 MB — while the copyleft binary it warned about is **not** a pip dependency at
+all (decision 2) and remains the user's own system install. An extra that installs a
+permissive wrapper while the licence decision it advertises lives outside the resolver
+gates nothing the decision is about, so it was complexity, not a licence boundary.
+
+**What replaces it.** `pandoc` is now a base-install backend with an **engine gate**
+(`required_engine="pandoc"`, ADR-0008 decision 13): it is eligible only where the
+binary is present — found on `PATH` or declared through the engine's environment
+variable — which is a stronger guarantee than the extra ever gave, because the extra
+never checked for the binary at all.
+
+**The licence position is unchanged.** Subprocess invocation does not propagate
+GPL-2.0-or-later to parsecraft: the wrapper is MIT, the binary is a separate program
+the operator installs and licenses themselves, and parsecraft ships neither the binary
+nor a copy of it. Decision 2 stands as written.
+
+**Rule 10.** Removing the extra and adding `pypandoc` to the base dependencies keeps
+`uv sync -U --all-extras --all-groups --all-packages --dry-run` at exit 0: the package
+adds no native pins, and the system binary stays outside the resolver by construction.

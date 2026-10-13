@@ -14,7 +14,7 @@ from __future__ import annotations
 import importlib
 from typing import Protocol, runtime_checkable
 
-from parsecraft.backends.errors import BackendError, DependencyUnavailableError
+from parsecraft.backends.errors import BackendError
 from parsecraft.backends.protocol import (
     BackendCapabilities,
     BackendConfig,
@@ -33,7 +33,6 @@ LITEPARSE_FORMATS: tuple[str, ...] = (
     "image/tiff",
 )
 
-_EXTRA = "liteparse"
 _IMPL_MODULE = "parsecraft.backends.liteparse._impl"
 
 CAPABILITIES = BackendCapabilities(
@@ -41,9 +40,10 @@ CAPABILITIES = BackendCapabilities(
     supports_page_ranges=True,
     supports_multi_page=True,
     estimated_vram_gb=None,
-    optional_dependency_group=_EXTRA,
-    convert_extra=_EXTRA,
+    optional_dependency_group=None,  # base dependency: no group to install
+    convert_extra=None,  # ...so conversion crosses no extra boundary either
     model_asset=None,  # local library — no model weights to pin
+    delegated_analysis=True,  # analyze() is liteparse's own inspection
 )
 
 DESCRIPTOR = BackendDescriptor(
@@ -71,7 +71,8 @@ class LiteparseFactory:
         try:
             module = importlib.import_module(_IMPL_MODULE)
         except ImportError as exc:
-            raise DependencyUnavailableError(exc.name or "liteparse", _EXTRA) from exc
+            msg = f"liteparse is a base dependency but could not be imported ({exc}); the install is broken"
+            raise BackendError(msg) from exc
         if not isinstance(module, _ImplModule):
             msg = f"impl module {_IMPL_MODULE!r} must expose create(config)"
             raise BackendError(msg)

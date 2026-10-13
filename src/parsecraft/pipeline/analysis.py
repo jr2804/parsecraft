@@ -193,8 +193,17 @@ def choose_analyzer(
     return sorted(pool, key=_analyzer_key)[0]
 
 
-def _analyzer_key(descriptor: BackendDescriptor) -> tuple[bool, str]:
-    """Base-install, non-OCR analyzers first, then stable name order.
+def _analyzer_key(descriptor: BackendDescriptor) -> tuple[bool, bool, str]:
+    """Base-install, non-OCR analyzers first, then in-package before delegated.
+
+    The SECOND element is the pc-s7g constraint (user ruling: "constrain it"): a
+    packaging promotion must not decide which parser produces the routing
+    signals. Promoting ``liteparse`` and ``pdf-inspector`` from extra to base
+    otherwise handed PDFs to ``liteparse`` on name order, because both are
+    base-install and neither is an OCR route. In-package inspection
+    (``pymupdf``'s own pypdf pass) now outranks a converter's delegated
+    ``analyze()``; the pool itself is unchanged, so an image still prefers its
+    installed claimer over an OCR route.
 
     Keyed on what the analyzer contract is about — a base-install backend
     (``optional_dependency_group is None``, so ``analyze()`` is core/base work)
@@ -210,8 +219,17 @@ def _analyzer_key(descriptor: BackendDescriptor) -> tuple[bool, str]:
     (routing's NATIVE-lead rule), never the signal source while a base native
     can analyze the format.
     """
-    base_non_ocr = not is_ocr(descriptor) and descriptor.capabilities.optional_dependency_group is None
-    return (not base_non_ocr, descriptor.name)
+    capabilities = descriptor.capabilities
+    base_non_ocr = not is_ocr(descriptor) and capabilities.optional_dependency_group is None
+    # ``delegated_analysis`` is the pc-s7g constraint (user ruling: "constrain it"),
+    # and it is FIRST because a converter's parser is both not-cheap and not
+    # reliable: measured, liteparse rejects a valid 8x8 png where the size proxy
+    # cannot. Routing signals are therefore never taken from a delegated parser
+    # while a non-delegated analyzer is available for the format — which keeps
+    # pymupdf on PDFs and restores the pre-promotion behaviour on images (an OCR
+    # backend analyzes). Ordering, not a pool exclusion: a delegated analyzer is
+    # still the last resort for a format nothing else claims.
+    return (capabilities.delegated_analysis, not base_non_ocr, descriptor.name)
 
 
 def _extra_available(descriptor: BackendDescriptor, installed_extras: Collection[str]) -> bool:

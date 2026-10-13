@@ -23,7 +23,7 @@ from __future__ import annotations
 import importlib
 from typing import Protocol, runtime_checkable
 
-from parsecraft.backends.errors import BackendError, DependencyUnavailableError
+from parsecraft.backends.errors import BackendError
 from parsecraft.backends.protocol import (
     BackendCapabilities,
     BackendConfig,
@@ -54,7 +54,6 @@ PANDOC_READERS: dict[str, str] = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
 }
 
-_EXTRA = "pandoc"
 _IMPL_MODULE = "parsecraft.backends.pandoc._impl"
 
 CAPABILITIES = BackendCapabilities(
@@ -63,9 +62,12 @@ CAPABILITIES = BackendCapabilities(
     supports_page_ranges=False,
     supports_multi_page=False,
     estimated_vram_gb=None,
-    optional_dependency_group=_EXTRA,
-    convert_extra=_EXTRA,
+    optional_dependency_group=None,  # base dependency: no group to install
+    convert_extra=None,  # ...so conversion crosses no extra boundary either
     model_asset=None,  # system binary — no model weights to pin
+    # The binary is NOT a pip dependency (ADR-0005 d2), so the engine gate —
+    # not an extra — is what keeps pandoc eligible only where it is installed.
+    required_engine="pandoc",
 )
 
 DESCRIPTOR = BackendDescriptor(
@@ -93,7 +95,8 @@ class PandocFactory:
         try:
             module = importlib.import_module(_IMPL_MODULE)
         except ImportError as exc:
-            raise DependencyUnavailableError(exc.name or "pypandoc", _EXTRA) from exc
+            msg = f"pypandoc is a base dependency but could not be imported ({exc}); the install is broken"
+            raise BackendError(msg) from exc
         if not isinstance(module, _ImplModule):
             msg = f"impl module {_IMPL_MODULE!r} must expose create(config)"
             raise BackendError(msg)

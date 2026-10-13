@@ -408,6 +408,11 @@ def test_convert_image_prefers_installed_claimer(tmp_path: Path, monkeypatch: py
         lambda: EnvironmentInfo(installed_extras=frozenset({"ocr-ovis"}), vram_budget_gb=8.0, offline=False),
     )
     path = tmp_path / "scan.png"
+    # The 8-byte signature is LOAD-BEARING, not a placeholder: the stub models an
+    # image with a size proxy (`has_native_text = chars >= 40`), so a small file is
+    # a thin-text page -> OCR intent -> the installed OCR claimer wins. A valid
+    # ~70-byte png would flip the intent to NATIVE, which no backend claims for
+    # image/png, and this test would fail for a reason unrelated to what it pins.
     path.write_bytes(b"\x89PNG\r\n\x1a\n")
     result = runner.invoke(app, ["convert", str(path)])
     assert result.exit_code == 0

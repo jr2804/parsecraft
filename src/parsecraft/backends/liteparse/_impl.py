@@ -20,7 +20,7 @@ import hashlib
 from pathlib import Path
 from time import monotonic
 
-from liteparse import LiteParse  # ty: ignore[unresolved-import] — extra not installed in dev/CI; heavy by contract
+from liteparse import LiteParse
 
 from parsecraft.backends.errors import BackendError
 from parsecraft.backends.liteparse.liteparse import DESCRIPTOR, LITEPARSE_BACKEND_VERSION

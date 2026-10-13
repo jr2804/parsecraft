@@ -19,7 +19,7 @@ from __future__ import annotations
 import importlib
 from typing import Protocol, runtime_checkable
 
-from parsecraft.backends.errors import BackendError, DependencyUnavailableError
+from parsecraft.backends.errors import BackendError
 from parsecraft.backends.protocol import (
     BackendCapabilities,
     BackendConfig,
@@ -33,7 +33,6 @@ PDF_INSPECTOR_BACKEND_VERSION = "0.1.0"
 #: Conversion-verified MIME inputs (pdf-inspector 1.25.2, 2026-10-01).
 PDF_INSPECTOR_FORMATS: tuple[str, ...] = ("application/pdf",)
 
-_EXTRA = "auto"
 _IMPL_MODULE = "parsecraft.backends.pdf_inspector._impl"
 
 CAPABILITIES = BackendCapabilities(
@@ -41,9 +40,10 @@ CAPABILITIES = BackendCapabilities(
     supports_page_ranges=True,
     supports_multi_page=True,
     estimated_vram_gb=None,
-    optional_dependency_group=_EXTRA,
-    convert_extra=_EXTRA,
+    optional_dependency_group=None,  # base dependency: no group to install
+    convert_extra=None,  # ...so conversion crosses no extra boundary either
     model_asset=None,  # local Rust library; no weights downloaded
+    delegated_analysis=True,  # analyze() is pdf-inspector's own classifier
 )
 
 DESCRIPTOR = BackendDescriptor(
@@ -71,7 +71,8 @@ class PdfInspectorFactory:
         try:
             module = importlib.import_module(_IMPL_MODULE)
         except ImportError as exc:
-            raise DependencyUnavailableError(exc.name or "pdf_inspector", _EXTRA) from exc
+            msg = f"pdf-inspector is a base dependency but could not be imported ({exc}); the install is broken"
+            raise BackendError(msg) from exc
         if not isinstance(module, _ImplModule):
             msg = f"impl module {_IMPL_MODULE!r} must expose create(config)"
             raise BackendError(msg)

@@ -34,7 +34,7 @@ from time import monotonic
 # `mise dev`/CI installs the light set, so without
 # it ty reports unresolved-import; with `--all-extras` synced the same marker
 # reads as unused under error-on-warning. Same pattern as liteparse/docling.
-import pdf_inspector  # ty: ignore[unresolved-import] — extra absent from the light dev/CI env
+import pdf_inspector
 
 from parsecraft.backends.errors import BackendError
 from parsecraft.backends.pdf_inspector.pdf_inspector import DESCRIPTOR, PDF_INSPECTOR_BACKEND_VERSION

@@ -12,7 +12,7 @@ Design notes:
   ``INVALID_INPUT`` record, and multi-page capabilities stay off.
 - **Binary check at instantiation:** ``create()`` asks pypandoc for the
   pandoc version once, so a missing system binary surfaces as a typed
-  ``DependencyUnavailableError`` at ``registry.create`` — not mid-convert.
+  ``BackendError`` at ``registry.create`` — not mid-convert.
 - **Bounds:** cancellation and the timeout deadline are checked before the
   (single, blocking) conversion; the output budget is checked after it. A
   failing conversion is a typed ``BACKEND_ERROR`` record, never a raise.
@@ -29,9 +29,9 @@ import hashlib
 from pathlib import Path
 from time import monotonic
 
-import pypandoc  # ty: ignore[unresolved-import] — extra not installed in dev/CI; heavy by contract
+import pypandoc
 
-from parsecraft.backends.errors import BackendError, DependencyUnavailableError
+from parsecraft.backends.errors import BackendError
 from parsecraft.backends.pandoc.pandoc import DESCRIPTOR, PANDOC_BACKEND_VERSION, PANDOC_READERS
 from parsecraft.backends.protocol import (
     AnalysisResult,
@@ -71,7 +71,8 @@ class PandocBackend:
             pypandoc.get_pandoc_version()
         except (OSError, RuntimeError) as exc:
             # Missing system binary (GPL, user-installed — ADR-0005).
-            raise DependencyUnavailableError("pandoc", "pandoc") from exc
+            msg = "the pandoc binary is not available (a system install; see ADR-0005)"
+            raise BackendError(msg) from exc
 
     def convert(self, request: ConversionRequest) -> BackendResult:
         """Single-page conversion into typed IR (failures are records, never raises)."""

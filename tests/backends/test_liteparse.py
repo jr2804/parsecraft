@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import hashlib
 import importlib
-import re
 import sys
 import time
 from collections.abc import Callable, Iterator
@@ -16,7 +15,7 @@ from collections.abc import Callable, Iterator
 import pytest
 
 from parsecraft.backends import registry as registry_module
-from parsecraft.backends.errors import BackendError, DependencyUnavailableError
+from parsecraft.backends.errors import BackendError
 from parsecraft.backends.liteparse import liteparse as liteparse_module
 from parsecraft.backends.protocol import (
     BackendConfig,
@@ -123,7 +122,9 @@ def test_descriptor_declares_only_verified_formats_and_stays_cpu_only() -> None:
     assert capabilities.supported_formats == ["application/pdf", "image/jpeg", "image/png", "image/tiff"]
     assert capabilities.gpu_requirement == 0.0
     assert capabilities.estimated_vram_gb is None
-    assert capabilities.optional_dependency_group == "liteparse"
+    # Base dependency (pc-s7g): no group to install, no extra to cross.
+    assert capabilities.optional_dependency_group is None
+    assert capabilities.convert_extra is None
     assert capabilities.model_asset is None
     assert capabilities.supports_page_ranges is True
     assert capabilities.supports_multi_page is True
@@ -148,11 +149,11 @@ def test_missing_extra_error_names_parsecraft_extra(monkeypatch: pytest.MonkeyPa
 
     monkeypatch.setattr(importlib, "import_module", _fake_import)
     with pytest.raises(
-        DependencyUnavailableError,
-        match=re.escape("backend dependency 'liteparse' is not installed — install the 'liteparse' extra"),
+        BackendError,
+        match="base dependency",
     ) as excinfo:
         liteparse_module.factory(BackendConfig(name="liteparse"))
-    assert (excinfo.value.module, excinfo.value.extra) == ("liteparse", "liteparse")
+    assert "liteparse" in str(excinfo.value)
     assert isinstance(excinfo.value, BackendError)
 
 

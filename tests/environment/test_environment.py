@@ -284,7 +284,7 @@ def test_probe_skips_descriptors_without_a_dependency_group(
 
 
 def test_extra_imports_map_covers_the_declared_ocr_and_pdf_groups() -> None:
-    for group in ("liteparse", "ocr", "pdf", "auto"):
+    for group in ("ocr", "pdf"):
         assert group in EXTRA_IMPORTS
         assert EXTRA_IMPORTS[group]
 

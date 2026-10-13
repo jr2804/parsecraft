@@ -18,25 +18,27 @@ classifiers = [
 dependencies = [
     "charset-normalizer>=3.4",
     "huggingface-hub>=0.34",
+    "liteparse>=2.14",
     "markdown-it-py>=4.2",
-    "openpyxl>=3.1",  # MIT, pure-Python: a base dep, lighter than pillow/pypdfium2
+    "openpyxl>=3.1",
+    "pdf-inspector>=1.25.2",  # MIT, pure-Python: a base dep, lighter than pillow/pypdfium2
     "pillow>=10.4",
     "pydantic>=2.13",
     "pydantic-settings>=2.15",
     "platformdirs>=4.3",
+    "pypandoc>=1.15",  # MIT wrapper; the GPL binary is a system install (ADR-0005)
     "pypdf>=5",
     "pypdfium2>=5.14",
     "tomlkit>=0.13",
     "typer>=0.12.0",
+    "typesafe-sdk>=0.7.2",
 ]
 
 # Feature-oriented extras (ADR-0009): core is comprehensive; extras exist only
 # for heavyweight or licence-isolated functionality. One line each — rationale
 # lives in the ADRs, not here.
 [project.optional-dependencies]
-auto = ["pdf-inspector>=1.25.2", "typesafe-sdk>=0.7.2"]
 docling = ["docling>=2.130"]
-liteparse = ["liteparse>=2.14"]
 mineru = ["mineru>=4.0.11,<5"]  # mixed licences incl. weights: ADR-0007
 ocr = [
     "accelerate>=0.34",
@@ -49,7 +51,6 @@ ocr = [
     "transformers>=5.17,<6",
     "torchvision",
 ]
-pandoc = ["pypandoc>=1.15"]  # GPL-2.0-or-later binary: ADR-0005
 pdf = ["pymupdf>=1.24"]  # AGPL: ADR-0003
 vllm = ["vllm>=0.11 ; sys_platform != 'win32'"]  # Linux/WSL2 accelerator
 web = ["httpx>=0.27", "trafilatura>=2.3.1"]
