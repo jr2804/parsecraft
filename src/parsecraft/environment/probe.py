@@ -36,7 +36,6 @@ EXTRA_IMPORTS: dict[str, tuple[str, ...]] = {
     "marker": ("marker",),  # bring-your-own dependency (ADR-0006): no declared extra
     "mineru": ("mineru",),
     "ocr": ("transformers",),
-    "openpyxl": ("openpyxl",),
     "pandoc": ("pypandoc",),
     "pdf": ("pymupdf",),
     "vllm": ("vllm",),

@@ -1,28 +1,26 @@
 """Tests for the openpyxl backend — typed TABLE chunks from a workbook grid.
 
-The light env carries no openpyxl (it is the backend's own extra), so the grid
-and failure paths run against a fake ``openpyxl`` module installed in
-``sys.modules`` before the impl is imported; the real engine is exercised by one
-extra-gated test that builds a workbook with openpyxl itself.
+openpyxl is a base dependency, but the backend still defers importing it
+(137 ms cold, and discovery imports every factory eagerly), so these tests seed
+``sys.modules`` with a fake before instantiating — no module reload needed. One
+test converts a real generated workbook with the real engine.
 """
 
 from __future__ import annotations
 
 import sys
 from collections.abc import Iterator
-from importlib import import_module
 from types import ModuleType
 from typing import Any
 
 import pytest
 
-from parsecraft.backends.errors import BackendError, DependencyUnavailableError
+from parsecraft.backends.errors import BackendError
 from parsecraft.backends.openpyxl import openpyxl as openpyxl_module
 from parsecraft.backends.protocol import BackendConfig, ConversionRequest, SourceDocument
 from parsecraft.ir.models import ChunkKind, FailureCode, PageRange
 from tests.fixtures.documents import XLSX_SHEET, XLSX_TEXTS, xlsx_bytes
 
-_IMPL_MODULE = "parsecraft.backends.openpyxl._impl"
 _XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
@@ -56,41 +54,32 @@ def test_openpyxl_descriptor_contract() -> None:
     descriptor = openpyxl_module.factory.descriptor
     assert descriptor.name == "openpyxl"
     assert descriptor.capabilities.supported_formats == [_XLSX_MIME]
-    assert descriptor.capabilities.optional_dependency_group == "openpyxl"
-    assert descriptor.capabilities.convert_extra == "openpyxl"
+    # Base dependency: no group to install and no extra boundary to cross.
+    assert descriptor.capabilities.optional_dependency_group is None
+    assert descriptor.capabilities.convert_extra is None
     assert descriptor.capabilities.supports_page_ranges is False
     assert descriptor.capabilities.supports_multi_page is False
     assert descriptor.capabilities.estimated_vram_gb is None
     assert descriptor.capabilities.model_asset is None
 
 
-def test_openpyxl_factory_reports_the_missing_extra(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A light-env install names the extra instead of failing with ImportError."""
+def test_openpyxl_reports_a_broken_base_install(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Openpyxl is unconditional: a missing module is a broken install, not a missing extra."""
     monkeypatch.setattr(
-        "parsecraft.backends.openpyxl.openpyxl._IMPL_MODULE",
-        "parsecraft.backends.openpyxl._not_installed",
+        "parsecraft.backends.openpyxl.openpyxl._OPENPYXL_MODULE",
+        "parsecraft_openpyxl_absent",
     )
-    with pytest.raises(DependencyUnavailableError, match="openpyxl"):
+    with pytest.raises(BackendError, match="base dependency"):
         openpyxl_module.factory(BackendConfig(name="openpyxl"))
 
 
-def test_openpyxl_factory_resolves_the_impl_when_the_extra_is_present(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The factory is the sanctioned heavy boundary: it returns a working backend."""
+def test_openpyxl_factory_returns_a_working_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The entry point resolves to a factory that builds a usable backend."""
     _install_engine(monkeypatch, _FakeWorkbook([_FakeSheet("S", [("a",)])]), [])
     backend = openpyxl_module.factory(BackendConfig(name="openpyxl"))
 
     assert backend.capabilities.supported_formats == [_XLSX_MIME]
     assert backend.convert(_request()).failures == []
-
-
-def test_openpyxl_factory_rejects_an_impl_without_create(monkeypatch: pytest.MonkeyPatch) -> None:
-    """An importable module that is not an impl module is a contract error, not a silent pass."""
-    monkeypatch.setattr(
-        "parsecraft.backends.openpyxl.openpyxl._IMPL_MODULE",
-        "parsecraft.backends.openpyxl.openpyxl",  # importable, but exposes no create()
-    )
-    with pytest.raises(BackendError, match="must expose create"):
-        openpyxl_module.factory(BackendConfig(name="openpyxl"))
 
 
 # ── analyze: the size proxy ────────────────────────────────────────────────
@@ -214,12 +203,11 @@ def _request(content: bytes = b"workbook", **kwargs: Any) -> ConversionRequest:
 
 
 def _backend(monkeypatch: pytest.MonkeyPatch, outcome: object, calls: list[dict[str, object]]) -> Any:
-    impl = _install_engine(monkeypatch, outcome, calls)
-    return impl.create(BackendConfig(name="openpyxl"))
+    return _install_engine(monkeypatch, outcome, calls)
 
 
-def _install_engine(monkeypatch: pytest.MonkeyPatch, outcome: object, calls: list[dict[str, object]]) -> ModuleType:
-    """Fake ``openpyxl`` + a freshly imported impl, returning the impl module.
+def _install_engine(monkeypatch: pytest.MonkeyPatch, outcome: object, calls: list[dict[str, object]]) -> Any:
+    """A backend whose openpyxl is the fake, seeded before instantiation.
 
     ``outcome`` is the workbook to hand back, or the exception ``load_workbook``
     should raise. Keyword arguments are recorded so a test can pin that the
@@ -233,8 +221,7 @@ def _install_engine(monkeypatch: pytest.MonkeyPatch, outcome: object, calls: lis
         return outcome
 
     monkeypatch.setitem(sys.modules, "openpyxl", _stub_module("openpyxl", load_workbook=load_workbook))
-    sys.modules.pop(_IMPL_MODULE, None)
-    return import_module(_IMPL_MODULE)
+    return openpyxl_module.OpenpyxlBackend(BackendConfig(name="openpyxl"))
 
 
 def _stub_module(name: str, **attributes: object) -> ModuleType:
@@ -248,29 +235,24 @@ def _stub_module(name: str, **attributes: object) -> ModuleType:
 
 
 def test_real_openpyxl_converts_a_generated_workbook() -> None:
-    """End-to-end with the real engine and a real, generated workbook.
+    """End-to-end with the real engine over a real, generated workbook.
 
-    Skipped without the ``openpyxl`` extra; run it isolated:
-    ``uv run --isolated --extra openpyxl pytest tests/backends/test_openpyxl.py -k real_openpyxl``.
+    No skip: openpyxl is a base dependency, so the real engine is exercised in
+    the default suite rather than only under an extra.
     """
-    pytest.importorskip("openpyxl", reason="the openpyxl extra is not installed")
-    sys.modules.pop(_IMPL_MODULE, None)
-    try:
-        backend = import_module(_IMPL_MODULE).create(BackendConfig(name="openpyxl"))
-        content = xlsx_bytes()
-        assert xlsx_bytes() == content, "the workbook scaffold must be byte-deterministic"
-        result = backend.convert(ConversionRequest(source=_source(content)))
+    backend = openpyxl_module.factory(BackendConfig(name="openpyxl"))
+    content = xlsx_bytes()
+    assert xlsx_bytes() == content, "the workbook scaffold must be byte-deterministic"
+    result = backend.convert(ConversionRequest(source=_source(content)))
 
-        assert result.failures == []
-        (page,) = result.pages
-        (chunk,) = page.blocks
-        assert chunk.kind is ChunkKind.TABLE
-        assert chunk.metadata["sheet"] == XLSX_SHEET
-        grid = "\n".join("\t".join(row) for row in chunk.rows or ())
-        for text in XLSX_TEXTS:
-            assert text in grid, f"{text!r} missing from the typed grid"
-    finally:
-        sys.modules.pop(_IMPL_MODULE, None)
+    assert result.failures == []
+    (page,) = result.pages
+    (chunk,) = page.blocks
+    assert chunk.kind is ChunkKind.TABLE
+    assert chunk.metadata["sheet"] == XLSX_SHEET
+    grid = "\n".join("\t".join(row) for row in chunk.rows or ())
+    for text in XLSX_TEXTS:
+        assert text in grid, f"{text!r} missing from the typed grid"
 
 
 def _source(content: bytes = b"workbook", media_type: str | None = _XLSX_MIME) -> SourceDocument:

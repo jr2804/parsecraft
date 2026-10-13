@@ -12,9 +12,9 @@ from __future__ import annotations
 import io
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from importlib import import_module
 from pathlib import Path
 
+import openpyxl
 from docx import Document
 from pptx import Presentation
 from pptx.util import Inches
@@ -343,17 +343,15 @@ def pptx_bytes() -> bytes:
 def xlsx_bytes() -> bytes:
     """A real ``.xlsx``: one sheet, a header row and two data rows.
 
-    Built by openpyxl, fetched through ``import_module`` at call time rather than
-    imported at module scope: openpyxl is an *extra* (the ``openpyxl`` backend's),
-    not a dev dependency, so a module-level import would drag it into the
-    canonical light env where the backend's ``ty: ignore`` marker must stay
-    load-bearing. ``importlib`` is also what ``pyreorder`` leaves alone, so the
-    call site survives a formatter pass (POLICIES: imports must be hoist-safe).
+    Built by openpyxl, which is a **base dependency** — so this is an ordinary
+    module-level import, the way the office dev-group helpers are imported. The
+    backend module itself still defers openpyxl to call time (137 ms cold, and
+    registry discovery imports every factory eagerly), but a fixture runs once
+    per test session and may simply import it.
 
     Deterministic: the core properties carry fixed timestamps, so repeated calls
     return byte-identical bytes.
     """
-    openpyxl = import_module("openpyxl")
     workbook = openpyxl.Workbook()
     sheet = workbook.active
     sheet.title = XLSX_SHEET

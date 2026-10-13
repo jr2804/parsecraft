@@ -7,17 +7,29 @@ with the cell grid carried as structured `rows` and the sheet name as chunk
 metadata. This is the spreadsheet backend; pymupdf deliberately does not claim
 `.xlsx` because it extracts only numeric cells.
 
+openpyxl is a **base dependency** (MIT, pure-Python), so this backend has no
+extra, no licence gate, no model weights and no GPU.
+
 ## Ownership
 
-- Format list, capabilities and the descriptor: `openpyxl.py` (the light
-  module the entry point names).
-- Extraction and chunk construction: `_impl.py` (imports `openpyxl` at module
-  scope, loaded only through the factory's `importlib` boundary).
-- Fixtures and tests: `tests/fixtures/documents.py` (`xlsx_bytes()`) and
-  `tests/backends/test_openpyxl.py`.
+Everything lives in one module, `openpyxl.py`: descriptor, factory, backend and
+the grid helpers. There is deliberately **no light/heavy split** — the split
+exists to defer an import, and the deferral here happens inside one module.
 
 ## Local contracts
 
+- **The import is deferred, and that is a measured decision.** `import openpyxl`
+  costs ~137 ms cold (against ~0.5 ms for a dependency-free factory), and
+  registry discovery imports every entry point's factory module eagerly, so a
+  module-scope import would add that to *every* command — including a PDF-only
+  conversion. The module therefore resolves openpyxl through
+  `import_module("openpyxl")` **in `__init__`**, which is also the one spelling
+  `pyreorder` never hoists (POLICIES: imports must be hoist-safe). Keep the
+  access behind the local `Protocol`s so the library stays out of the module's
+  type surface.
+- **No `ty: ignore[unresolved-import]`.** openpyxl is unconditional, so no
+  suppression is needed and none may be added — an unused ignore is a
+  warning-as-error in this repo.
 - **Typed rows, never parsed Markdown** (root rule 4). Rows come from the
   worksheet grid; `content` is rendered *from* those rows for the projection.
   Nothing reads Markdown back into state.
@@ -26,15 +38,14 @@ metadata. This is the spreadsheet backend; pymupdf deliberately does not claim
   `supports_multi_page` stay off, and a range beyond page 1 is a typed
   `INVALID_INPUT` record.
 - **Trailing blanks are trimmed** per sheet: all-blank trailing rows are
-  dropped and trailing blank columns are removed, so a grid is rectangular and
+  dropped and trailing blank columns removed, so a grid is rectangular and
   carries no sheet-sized tail of empties. Interior blanks are preserved —
   an empty cell in the middle of a row is data.
 - **The sheet name travels as `metadata["sheet"]`**, not as prose and not as a
-  separate chunk: the table stays one chunk per sheet.
+  separate `CAPTION` chunk: the table stays one chunk per sheet.
 - **Analyze is a size proxy** (the `pandoc`/`native` precedent): one page,
-  `text_chars = len(data)`, so the declared surface is analyzable on a base
-  install and routing never escalates a text-bearing workbook to OCR.
+  `text_chars = len(data)`, so a text-bearing workbook never escalates to OCR.
 - **`read_only=True, data_only=True`**: no formula evaluation and no writes back
-  to the file, and cell values are read as stored (a formula's cached value).
+  to the file, and a formula cell yields its cached value.
 - Failures are typed records, never raises, except `source_bytes` on an
   unreadable source (the family's shape).
