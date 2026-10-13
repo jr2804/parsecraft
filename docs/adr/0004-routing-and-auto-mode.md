@@ -344,6 +344,17 @@ prose names `density` so the prompt and the state agree. The field defaults
 to `0.0` — the honest "no text signal" for a context constructed without a
 page behind it.
 
+**Released-artifact scope (verified 2026-10-13).** This widening is on `main`
+**only**: the `2026.10.3` tag still carries the old rule —
+`page_context()` there returns `None` for every NATIVE intent and contains no
+`pc-86l` reference — so a consumer importing the released wheel sees the
+pre-widening behaviour until the next release is cut from a tip that contains
+this commit. Verified with `git show 2026.10.3:src/parsecraft/routing/judge.py`,
+not from the changelog. Recorded here because "the issue is fixed" and "your
+installed wheel has the fix" are different claims, and the A9/A8 notes around
+this one read as if they were the same; the distinction cost a downstream
+consumer (gh#6/knox-1) a correction in each direction.
+
 **Encoding consult (System One/Jev, bead pc-bzz).** Asked whether a float or a
 delivered `sparse/medium/dense` label is the better A8 fact, the model
 preferred the label but with no extractable confidence — the dispatch's
