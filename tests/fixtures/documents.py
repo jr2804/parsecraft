@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import io
 from collections.abc import Sequence
+from datetime import UTC, datetime
+from importlib import import_module
 from pathlib import Path
 
 from docx import Document
@@ -33,10 +35,14 @@ DOCX_TEXTS: tuple[str, ...] = (
 )
 PPTX_TEXTS: tuple[str, ...] = (
     "ParseCraft synthetic pptx slide one",
-    "ParseCraft synthetic pptx body one.",
+    "ParseCraft synthetic pptx slide one body.",
     "ParseCraft synthetic pptx slide two",
-    "ParseCraft synthetic pptx body two.",
+    "ParseCraft synthetic pptx slide two body.",
 )
+
+#: Text the workbook scaffold is built from (header cells then data cells).
+XLSX_SHEET = "SyntheticSheet"
+XLSX_TEXTS: tuple[str, ...] = ("Region", "Score", "north", "0.5", "south", "0.75")
 
 _TEXT_CONTENT: dict[str, str] = {
     "csv": "id,name,score\n1,alpha,0.5\n2,beta,0.75\n3,gamma,1.0\n",
@@ -331,6 +337,35 @@ def pptx_bytes() -> bytes:
         box.text_frame.text = body
     buffer = io.BytesIO()
     presentation.save(buffer)
+    return buffer.getvalue()
+
+
+def xlsx_bytes() -> bytes:
+    """A real ``.xlsx``: one sheet, a header row and two data rows.
+
+    Built by openpyxl, fetched through ``import_module`` at call time rather than
+    imported at module scope: openpyxl is an *extra* (the ``openpyxl`` backend's),
+    not a dev dependency, so a module-level import would drag it into the
+    canonical light env where the backend's ``ty: ignore`` marker must stay
+    load-bearing. ``importlib`` is also what ``pyreorder`` leaves alone, so the
+    call site survives a formatter pass (POLICIES: imports must be hoist-safe).
+
+    Deterministic: the core properties carry fixed timestamps, so repeated calls
+    return byte-identical bytes.
+    """
+    openpyxl = import_module("openpyxl")
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.title = XLSX_SHEET
+    sheet.append([XLSX_TEXTS[0], XLSX_TEXTS[1]])
+    sheet.append([XLSX_TEXTS[2], XLSX_TEXTS[3]])
+    sheet.append([XLSX_TEXTS[4], XLSX_TEXTS[5]])
+    fixed = datetime(2026, 1, 1, tzinfo=UTC)
+    workbook.properties.created = fixed
+    workbook.properties.modified = fixed
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    workbook.close()
     return buffer.getvalue()
 
 

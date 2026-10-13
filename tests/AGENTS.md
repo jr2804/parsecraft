@@ -45,6 +45,10 @@ basenames may repeat across groups (`cli/test_config.py` vs
   test helpers) rather than by hand, because mupdf rejects hand-assembled
   OOXML — a complete fabricated package still fails to open — and ADR-0001 §8
   forbids committing the binary, so the generator stays the artifact.
+  `xlsx_bytes()` does the same for the spreadsheet path, fetching openpyxl
+  through `import_module` at call time rather than importing it, because
+  openpyxl is an *extra* (not a dev dependency) and a module-level import would
+  pull it into the canonical light env.
 - `fixtures/sources.py` + `fixtures/sources.toml` — public test-document
   manifest: license, URL, why suitable, documented local download step, plus
   corpus expectations as data (`difficulty`, `pages`, `approx_size`,
