@@ -232,8 +232,14 @@ def _source(
 
 
 def test_real_pandoc_docx_round_trip(tmp_path: Path) -> None:
-    pypandoc = pytest.importorskip("pypandoc", reason="pandoc extra not installed")
-    pypandoc.get_pandoc_version()  # skips nothing; raises if the binary is missing
+    pypandoc = pytest.importorskip("pypandoc", reason="pypandoc is not installed")
+    try:
+        pypandoc.get_pandoc_version()
+    except OSError as exc:
+        # The WRAPPER is installed; the engine is not. That is the same condition
+        # routing handles in production (ADR-0008 d13: pandoc is engine-gated), so
+        # the real-binary test skips instead of failing a runner that has no pandoc.
+        pytest.skip("pandoc binary not installed (engine-gated; install it from your package manager): " + str(exc))
     docx = tmp_path / "sample.docx"
     pypandoc.convert_text(
         "# Hello pandoc\n\nReal round-trip body.",
