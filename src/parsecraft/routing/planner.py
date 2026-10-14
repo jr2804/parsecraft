@@ -79,6 +79,7 @@ def plan_route(
             # needs a native-capable lead backend (see routing/AGENTS.md).
             raise NoEligibleBackendError(intent, "no native backend covers the source format")
         order = list(active_judge.rank(intent, family, page_context(intent, signal, hints)))
+        order = _apply_preference(order, family, intent, constraints)
         _validate_order(order, family, intent)
         candidates = order[: constraints.max_passes]
         pages.append(
@@ -93,6 +94,31 @@ def plan_route(
             )
         )
     return RoutingPlan(primary=_primary(pages), pages=pages)
+
+
+def _apply_preference(order: list[str], family: list[BackendDescriptor], intent: Intent, constraints: RoutingConstraints) -> list[str]:
+    """Move ``constraints.preferred_backend`` to the front when that is valid.
+
+    Preference is a ranking input, never a hard constraint: a preferred
+    backend that is not eligible for this page leaves the order untouched
+    (the normal order serves the page — a document never aborts because one
+    page cannot use the caller's favourite), and a preferred OCR backend on a
+    ``NATIVE`` page never *leads* (the non-OCR lead invariant,
+    ``_validate_native_fallbacks``): it slots in directly after the first
+    non-OCR candidate so an explicit OCR preference is still honoured as the
+    first fallback.
+    """
+    preferred = constraints.preferred_backend
+    if preferred is None or preferred not in order:
+        return order
+    if intent is Intent.NATIVE:
+        ocr_names = {descriptor.name for descriptor in family if is_ocr(descriptor)}
+        if preferred in ocr_names:
+            lead = next((name for name in order if name not in ocr_names), None)
+            if lead is not None:
+                rest = [name for name in order if name not in (lead, preferred)]
+                return [lead, preferred, *rest]
+    return [preferred, *(name for name in order if name != preferred)]
 
 
 def _validate_order(order: list[str], family: list[BackendDescriptor], intent: Intent) -> None:

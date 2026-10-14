@@ -46,6 +46,7 @@ from parsecraft.routing import (
     RoutingConstraints,
     RoutingJudge,
     RoutingPlan,
+    judge_cache_identity,
     plan_route,
 )
 from parsecraft.routing.models import PageRoute
@@ -189,7 +190,7 @@ def _cache_key(
     source_bytes = source.content if source.content is not None else source.uri.encode("utf-8")
     source_hash = hashlib.sha256(source_bytes).hexdigest()
     effective_judge = judge if judge is not None else DeterministicJudge()
-    judge_id = f"{type(effective_judge).__module__}.{type(effective_judge).__qualname__}"
+    judge_id = judge_cache_identity(effective_judge)
     material = json.dumps(
         [source_hash, registry.fingerprint(), _canonical_constraints(constraints), judge_id],
         separators=(",", ":"),

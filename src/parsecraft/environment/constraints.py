@@ -18,6 +18,7 @@ def constraints_from_environment(
     allow_ocr: bool | None = None,
     max_passes: int = 1,
     preference: RoutingPreference = RoutingPreference.BALANCED,
+    preferred_backend: str | None = None,
 ) -> RoutingConstraints:
     """Fill :class:`RoutingConstraints` from detected host facts.
 
@@ -42,6 +43,7 @@ def constraints_from_environment(
         allow_ocr=allow_ocr,
         offline=environment.offline,
         preference=preference,
+        preferred_backend=preferred_backend,
     )
 
 

@@ -89,6 +89,13 @@ class RoutingConstraints(BaseModel):
     #: Ranking preference *within* the eligible family (see
     #: :class:`RoutingPreference`); it orders candidates, it never widens them.
     preference: RoutingPreference = RoutingPreference.BALANCED
+    #: Preferred backend name (CLI ``--backend``, library callers): the planner
+    #: moves it to the front of a page's valid order when it is eligible for
+    #: that page, and leaves the order untouched when it is not — preference is
+    #: a ranking input, never a hard constraint, and never a page-level abort.
+    #: For ``NATIVE`` pages an OCR-capable preferred backend never leads (the
+    #: non-OCR lead invariant stands); it slots in directly after the lead.
+    preferred_backend: str | None = None
 
 
 class PageRoute(BaseModel):

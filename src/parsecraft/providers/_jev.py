@@ -126,6 +126,16 @@ class SdkEndpoint:
         self._base_url = base_url
         self._timeout_s = timeout_s
 
+    @property
+    def model(self) -> str:
+        """Model id served by this endpoint (part of a judge's cache identity)."""
+        return self._model
+
+    @property
+    def base_url(self) -> str | None:
+        """Explicit endpoint base URL, ``None`` for the SDK default."""
+        return self._base_url
+
     def client(self) -> _Client:
         """A fresh SDK client for one call (the memo caps how often that happens)."""
         if self._timeout_s is None:
@@ -177,6 +187,10 @@ class JevJudge:
         self._machine = machine
         self._preference = preference
         self._memo: dict[tuple[str, tuple[str, ...], tuple[bool, bool, float] | None], list[str]] = {}
+
+    def cache_identity(self) -> str:
+        """Cache-key slice: endpoint, model and axis — never the API key."""
+        return f"model={self._endpoint.model},base_url={self._endpoint.base_url},preference={self._preference.value}"
 
     def rank(
         self,

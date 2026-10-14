@@ -57,7 +57,7 @@ from parsecraft.pipeline import (
     pipeline_failure,
 )
 from parsecraft.pipeline.executor import ALL_PASSES_FAILED_CODE, _exception_failure
-from parsecraft.routing import Intent, RoutingConstraints, RoutingError
+from parsecraft.routing import Intent, RoutingConstraints, RoutingError, RoutingPreference
 
 PRODUCED = datetime(2026, 9, 27, tzinfo=UTC)
 _VERSION = "9.9.9"
@@ -1138,3 +1138,43 @@ def make_caps(
         estimated_vram_gb=vram,
         optional_dependency_group=group,
     )
+
+def test_cache_miss_on_changed_preferred_backend(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Bug 1 regression: the conversion-cache key includes the preferred
+    backend, so two requests for the same source with different ``--backend``
+    values produce different keys and never share a cached artifact.
+    """
+    registry = make_registry(monkeypatch)
+    calls_a = add_stub(registry, make_descriptor("native-a"))
+    calls_b = add_stub(registry, make_descriptor("native-b"))
+    store = ConversionCache(root=tmp_path / "conversions")
+    source = make_source()
+
+    execute(make_analysis(1), registry, make_constraints(preferred_backend="native-a"), source, produced_at=PRODUCED, cache=store)
+    assert len(calls_a) == 1
+    assert len(calls_b) == 0  # the preferred backend was the only one dispatched
+
+    execute(make_analysis(1), registry, make_constraints(preferred_backend="native-b"), source, produced_at=PRODUCED, cache=store)
+    assert len(calls_a) == 1  # native-a was NOT re-dispatched (cache miss on native-b)
+    assert len(calls_b) == 1  # native-b was dispatched — different preferred, different key
+
+
+def test_cache_miss_on_changed_judge_cache_identity(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Two judges of one class but different ranking state must not share a key."""
+    from parsecraft.routing import DeterministicJudge
+
+    registry = make_registry(monkeypatch)
+    calls = add_stub(registry, make_descriptor("native-a"))
+    store = ConversionCache(root=tmp_path / "conversions")
+    source = make_source()
+
+    execute(
+        make_analysis(1), registry, make_constraints(), source,
+        judge=DeterministicJudge(RoutingPreference.SPEED), produced_at=PRODUCED, cache=store,
+    )
+    assert len(calls) == 1
+    execute(
+        make_analysis(1), registry, make_constraints(), source,
+        judge=DeterministicJudge(RoutingPreference.QUALITY), produced_at=PRODUCED, cache=store,
+    )
+    assert len(calls) == 2  # different preference axes ⇒ different key ⇒ miss, not stale reuse

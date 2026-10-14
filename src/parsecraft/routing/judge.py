@@ -41,6 +41,31 @@ DENSITY_REFERENCE_CHARS = 1000
 
 
 @runtime_checkable
+class JudgeCacheIdentity(Protocol):
+    """A judge that names its ranking state for the conversion cache.
+
+    Two judges of one class can rank differently (a preference axis, a model
+    spec); a cache keyed on the class alone would serve one ranking's artifact
+    for the other's query. Implementations return a short deterministic string
+    naming everything that changes their ranking.
+    """
+
+    def cache_identity(self) -> str: ...
+
+
+def judge_cache_identity(judge: RoutingJudge) -> str:
+    """Cache-safe judge identity: class path plus ranking state when declared.
+
+    Judges without :class:`JudgeCacheIdentity` fall back to the class path —
+    correct exactly when the class has no ranking state beyond its type.
+    """
+    path = f"{type(judge).__module__}.{type(judge).__qualname__}"
+    if isinstance(judge, JudgeCacheIdentity):
+        return f"{path}:{judge.cache_identity()}"
+    return path
+
+
+@runtime_checkable
 class RoutingJudge(Protocol):
     """Orders eligible candidates best-first; returns backend names.
 
@@ -91,6 +116,10 @@ class DeterministicJudge(RoutingJudge):
     ) -> None:
         self._preference = preference
         self._installed_extras = installed_extras
+
+    def cache_identity(self) -> str:
+        """Cache-key slice: two preference axes must never share an entry."""
+        return f"preference={self._preference.value}"
 
     @override
     def rank(

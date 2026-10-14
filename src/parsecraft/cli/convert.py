@@ -20,7 +20,7 @@ import typer
 from parsecraft.assets.errors import AssetError
 from parsecraft.backends import default_registry
 from parsecraft.backends.errors import BackendError, DependencyUnavailableError, UnsupportedDependencyVersionError
-from parsecraft.backends.protocol import BackendDescriptor, SourceDocument
+from parsecraft.backends.protocol import SourceDocument
 from parsecraft.cache import ConversionCache
 from parsecraft.cli.errors import CliError
 from parsecraft.environment import EnvironmentInfo, constraints_from_environment, cuda_runtime_note, probe_environment
@@ -35,11 +35,9 @@ from parsecraft.pipeline.analysis import (
     media_type_for,
 )
 from parsecraft.routing import (
-    Intent,
     JudgeViolationError,
     MachineProfile,
     NoEligibleBackendError,
-    PageContext,
     RoutingConstraints,
     RoutingError,
     RoutingJudge,
@@ -82,29 +80,6 @@ class ProviderResolutionError(ConvertError):
         super().__init__(message, exit_code=exit_code)
 
 
-class PreferredBackendJudge:
-    """Non-auto judge: lead with ``name``, keep other eligible candidates as fallbacks."""
-
-    def __init__(self, name: str) -> None:
-        self._name = name
-
-    def rank(
-        self,
-        intent: Intent,
-        candidates: Sequence[BackendDescriptor],
-        context: PageContext | None = None,
-    ) -> Sequence[str]:
-        """Return the preferred backend first, then the remaining eligible names.
-
-        ``context`` is unused: ``--backend`` already names the lead, so the page
-        class cannot change the order this judge produces.
-        """
-        names = [descriptor.name for descriptor in candidates]
-        if self._name not in names:
-            raise JudgeViolationError(self._name, "not eligible for this page", intent)
-        return [self._name, *(name for name in names if name != self._name)]
-
-
 def convert_source(
     path: Path,
     *,
@@ -135,7 +110,8 @@ def convert_source(
         raise ConvertError(str(exc), exit_code=_USAGE_EXIT_CODE) from exc
     environment = probe_environment()  # a single probe per invocation, shared by analysis and the seams
     warn_unusable_gpu(environment)
-    resolved_classifier, resolved_judge = _resolve_providers(classifier, backend, judge, environment, preference)
+    registry_names = frozenset(descriptor.name for descriptor in default_registry.list_backends())
+    resolved_classifier, resolved_judge, preferred_backend = _resolve_providers(classifier, backend, judge, environment, preference, registry_names)
     source = read_source(path, media_type)
     registry = default_registry
     try:
@@ -161,12 +137,19 @@ def convert_source(
         raise ConvertError(f"model assets unavailable: {exc}") from exc  # exit 1
     except BackendError as exc:
         raise ConvertError(f"analysis with {analyzer.name!r} failed: {exc}") from exc
-    constraints = build_constraints(media_type, max_passes=max_passes, allow_ocr=allow_ocr, environment=environment, preference=preference)
+    constraints = build_constraints(
+        media_type,
+        max_passes=max_passes,
+        allow_ocr=allow_ocr,
+        environment=environment,
+        preference=preference,
+        preferred_backend=preferred_backend,
+    )
     try:
         cache = ConversionCache() if use_cache else None
         pipeline = execute(analysis, registry, constraints, source, resolved_judge, cache=cache)
     except JudgeViolationError as exc:
-        raise ConvertError(f"backend {backend!r} is not eligible for this source: {exc}", exit_code=_USAGE_EXIT_CODE) from exc
+        raise ConvertError(f"judge returned an invalid order: {exc}", exit_code=1) from exc
     except AssetError as exc:
         raise ConvertError(f"model assets unavailable: {exc}") from exc  # exit 1, same mapping as the analyzer path
     except (NoEligibleBackendError, RoutingError) as exc:
@@ -211,7 +194,8 @@ def _resolve_providers(
     judge: str | None,
     environment: EnvironmentInfo,
     preference: RoutingPreference,
-) -> tuple[PageOcrClassifier | None, RoutingJudge | None]:
+    registry_names: frozenset[str],
+) -> tuple[PageOcrClassifier | None, RoutingJudge | None, str | None]:
     """Resolve both provider seams, reporting every failure in one diagnosis.
 
     Each seam is attempted independently, so a command naming two providers with
@@ -221,23 +205,26 @@ def _resolve_providers(
     the header plus one line per failure, carrying the usage exit code when any of
     them was a malformed spec (a caller bug still outranks environment state).
     Both seams resolve before the source is read, so the timing is unchanged.
+    The third return slot is the CLI's preferred backend (``--backend``) for
+    the constraints builder, or ``None``.
     """
     failures: list[ProviderResolutionError] = []
     resolved_classifier: PageOcrClassifier | None = None
     resolved_judge: RoutingJudge | None = None
+    preferred_backend: str | None = None
     try:
         resolved_classifier = _resolve_classifier(classifier)
     except ProviderResolutionError as exc:
         failures.append(exc)
     try:
-        resolved_judge = _resolve_judge(backend, judge, environment, preference)
+        resolved_judge, preferred_backend = _resolve_judge(backend, judge, environment, preference, registry_names)
     except ProviderResolutionError as exc:
         failures.append(exc)
     if len(failures) == 1:
         raise failures[0]
     if failures:
         raise _combined_provider_error(failures)
-    return resolved_classifier, resolved_judge
+    return resolved_classifier, resolved_judge, preferred_backend
 
 
 def _combined_provider_error(failures: Sequence[ProviderResolutionError]) -> ConvertError:
@@ -270,25 +257,30 @@ def _resolve_judge(
     spec: str | None,
     environment: EnvironmentInfo,
     preference: RoutingPreference,
-) -> RoutingJudge | None:
-    """Resolve the judge seam: ``--backend`` builds the CLI's own lead-candidate judge.
+    registry_names: frozenset[str],
+) -> tuple[RoutingJudge | None, str | None]:
+    """Resolve the judge seam and the CLI's preferred backend.
 
-    ``None`` (no seam flag) stays ``None`` so ``execute`` keeps its default
-    deterministic judge — byte-identical to the pre-flag behaviour — and that
-    judge reads the preference from the constraints. The host facts from
-    ``environment`` reach a machine-aware judge, so it can weigh hardware fit
-    among the eligible candidates without probing the host again, and
-    ``preference`` reaches a preference-aware one; both are ignored by judges
-    that have no use for them.
+    ``--backend`` is a preference, not a custom judge: the planner rotates
+    the named backend to the front of each page's valid order, and the
+    conversion-cache key carries the preference so different ``--backend``
+    values never share a cached artifact. The judge (a provider, or
+    ``None`` for the default) is returned alongside. A backend name that is
+    not in the registry is a usage error raised before any source is read.
     """
     if backend is not None and spec is not None:
         msg = "--backend and --judge are mutually exclusive: both choose the lead candidate"
         raise ProviderResolutionError(flag="--judge", spec=spec, body=msg, exit_code=_USAGE_EXIT_CODE)
+    if backend is not None and registry_names and backend not in registry_names:
+        raise ConvertError(
+            f"backend {backend!r} is not a registered backend: pick from {sorted(registry_names)}",
+            exit_code=_USAGE_EXIT_CODE,
+        )
     if spec is None:
-        return PreferredBackendJudge(backend) if backend is not None else None
+        return None, backend
     machine = MachineProfile(vram_budget_gb=environment.vram_budget_gb, gpu_usable=environment.gpu_usable)
     try:
-        return resolve_judge(spec, machine=machine, preference=preference)
+        return resolve_judge(spec, machine=machine, preference=preference), backend
     except JudgeSpecError as exc:
         raise ProviderResolutionError(flag="--judge", spec=spec, body=str(exc), exit_code=_USAGE_EXIT_CODE) from exc
     except JudgeError as exc:
@@ -311,11 +303,16 @@ def build_constraints(
     allow_ocr: bool | None,
     environment: EnvironmentInfo | None = None,
     preference: RoutingPreference = RoutingPreference.BALANCED,
+    preferred_backend: str | None = None,
 ) -> RoutingConstraints:
     """Distill detected host facts plus plan inputs into routing constraints.
 
     ``environment`` lets a caller that already probed the host reuse that one
-    result; ``None`` probes here (the library default).
+    result; ``None`` probes here (the library default). ``preferred_backend``
+    is the CLI's ``--backend`` name (or the library caller's): the planner
+    moves it to the front of a page's valid order when it is eligible for
+    that page, and it enters the conversion-cache key so two requests for
+    different preferred backends never share a cached artifact.
     """
     return constraints_from_environment(
         environment if environment is not None else probe_environment(),
@@ -323,6 +320,7 @@ def build_constraints(
         allow_ocr=allow_ocr,
         max_passes=max_passes,
         preference=preference,
+        preferred_backend=preferred_backend,
     )
 
 

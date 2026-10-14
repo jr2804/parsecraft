@@ -11,6 +11,7 @@ import pytest
 from pydantic import ValidationError
 
 from parsecraft.backends.protocol import (
+    GPU_NOT_NEEDED,
     AnalysisResult,
     BackendCapabilities,
     BackendDescriptor,
@@ -31,6 +32,7 @@ from parsecraft.routing import (
     plan_route,
 )
 from parsecraft.routing.judge import DENSITY_REFERENCE_CHARS, PREFERRED_BACKENDS, RoutingJudge, page_context
+from parsecraft.routing.planner import _apply_preference
 from parsecraft.routing.rules import (
     FEATURE_EQUATIONS_CODE,
     FEATURE_FIGURES_CODE,
@@ -1360,3 +1362,44 @@ def test_degradation_fields_must_travel_together() -> None:
             reason="r",
             degradation_score=0.5,
         )
+
+def test_apply_preference_rotates_eligible_preferred_to_front() -> None:
+    """Preferred backend goes to the front of an eligible order; never wider."""
+    preferred = BackendDescriptor(
+        name="preferred", version="1.0.0",
+        capabilities=BackendCapabilities(supported_formats=["text/plain"]),
+    )
+    other = BackendDescriptor(
+        name="other", version="1.0.0",
+        capabilities=BackendCapabilities(supported_formats=["text/plain"]),
+    )
+    family = [preferred, other]
+    constraints = RoutingConstraints(preferred_backend="preferred")
+    assert _apply_preference(["other", "preferred"], family, Intent.NATIVE, constraints) == ["preferred", "other"]
+    # Not eligible on this page: order is the judge's output, unchanged.
+    assert _apply_preference(["other"], family, Intent.NATIVE, constraints) == ["other"]
+
+
+def test_apply_preference_never_leads_an_ocr_preferred_on_a_native_page() -> None:
+    """Bug 2 regression: an explicit OCR preference on a NATIVE page honours the
+    non-OCR lead invariant by slotting the preferred backend in as the first
+    fallback. The document never aborts because a page can't use the caller's
+    favourite.
+    """
+    native_lead = BackendDescriptor(
+        name="native-lead", version="1.0.0",
+        capabilities=BackendCapabilities(supported_formats=["text/plain"]),
+    )
+    preferred_ocr = BackendDescriptor(
+        name="ocr-tesseract", version="1.0.0",
+        capabilities=BackendCapabilities(supported_formats=["text/plain"], gpu_requirement=GPU_NOT_NEEDED),
+    )
+    other_ocr = BackendDescriptor(
+        name="ocr-other", version="1.0.0",
+        capabilities=BackendCapabilities(supported_formats=["text/plain"], gpu_requirement=GPU_NOT_NEEDED),
+    )
+    family = [native_lead, preferred_ocr, other_ocr]
+    constraints = RoutingConstraints(preferred_backend="ocr-tesseract")
+    result = _apply_preference(["ocr-tesseract", "native-lead", "ocr-other"], family, Intent.NATIVE, constraints)
+    assert result[0] == "native-lead"
+    assert result[1] == "ocr-tesseract"

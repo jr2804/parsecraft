@@ -8,7 +8,15 @@ candidates. See ``AGENTS.md`` in this directory for the full contract.
 from __future__ import annotations
 
 from parsecraft.routing.classifier import OcrFacts, PageOcrClassifier
-from parsecraft.routing.judge import DeterministicJudge, MachineProfile, PageContext, RoutingJudge, page_context
+from parsecraft.routing.judge import (
+    DeterministicJudge,
+    JudgeCacheIdentity,
+    MachineProfile,
+    PageContext,
+    RoutingJudge,
+    judge_cache_identity,
+    page_context,
+)
 from parsecraft.routing.language import LanguageDetector
 from parsecraft.routing.models import (
     Intent,
@@ -25,6 +33,7 @@ from parsecraft.routing.planner import plan_route
 __all__ = [
     "DeterministicJudge",
     "Intent",
+    "JudgeCacheIdentity",
     "JudgeViolationError",
     "LanguageDetector",
     "MachineProfile",
@@ -38,6 +47,7 @@ __all__ = [
     "RoutingJudge",
     "RoutingPlan",
     "RoutingPreference",
+    "judge_cache_identity",
     "page_context",
     "plan_route",
 ]

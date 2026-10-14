@@ -16,7 +16,7 @@ from parsecraft.cli import benchmark as benchmark_module
 from parsecraft.cli import inspect as inspect_module
 from parsecraft.cli import judges as judges_module
 from parsecraft.cli import models as models_module
-from parsecraft.cli.convert import ConvertError, convert_source, render
+from parsecraft.cli.convert import _USAGE_EXIT_CODE, ConvertError, convert_source, render
 from parsecraft.cli.errors import CliError
 from parsecraft.config import ConfigError
 from parsecraft.routing import RoutingPreference
@@ -105,7 +105,17 @@ def _emit_config_error(error: ConfigError, *, as_json: bool) -> None:
 def convert(
     source: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True, help="Source document to convert")],
     *,
-    backend: Annotated[str | None, typer.Option("--backend", "-b", help="Non-auto: prefer this backend")] = None,
+    backend: Annotated[
+        str | None,
+        typer.Option(
+            "--backend",
+            "-b",
+            help=(
+                "Prefer this backend for pages where it is eligible; auto routing "
+                "still serves pages where it is not"
+            ),
+        ),
+    ] = None,
     judge: Annotated[
         str | None,
         typer.Option(
@@ -121,7 +131,16 @@ def convert(
         str | None,
         typer.Option("--classifier", help="Fold OCR-need facts from a classifier provider (`provider/model[:variant]`) into the analysis"),
     ] = None,
-    auto: Annotated[bool, typer.Option("--auto/--no-auto", help="Route automatically (default); --no-auto requires --backend")] = True,
+    auto: Annotated[
+        bool,
+        typer.Option(
+            "--auto/--no-auto",
+            help=(
+                "Route automatically (default); --no-auto requires --backend, which the "
+                "planner then prefers"
+            ),
+        ),
+    ] = True,
     preference: Annotated[
         RoutingPreference,
         typer.Option("--preference", help="Ranking axis inside the eligible family: speed, balanced, or quality"),
@@ -260,16 +279,25 @@ def models_clean() -> None:
 
 
 def cache(
+    action: Annotated[
+        str | None,
+        typer.Argument(help="Optional action: `clear` deletes every cached conversion"),
+    ] = None,
     as_json: args.JsonFlag = False,
     *,
     clear: Annotated[bool, typer.Option("--clear", help="Delete every cached conversion")] = False,
 ) -> None:
-    """Inspect or clear the content-addressed conversion cache."""
+    """Inspect or clear the content-addressed conversion cache.
+
+    `cache clear` (positional) is an ergonomic alias for `cache --clear`.
+    """
     store = ConversionCache()
-    if clear:
+    if action == "clear" or clear:
         removed = store.clear()
         typer.echo(f"removed {removed} conversion cache entries from {store.root}")
         return
+    if action is not None:
+        raise ConvertError(f"unknown cache action {action!r}: only `clear` is supported", exit_code=_USAGE_EXIT_CODE)
     entries = store.entries()
     if as_json:
         payload = {

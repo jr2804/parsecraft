@@ -31,7 +31,7 @@ from parsecraft.cli.app import app
 from parsecraft.environment import EnvironmentInfo
 from parsecraft.ir import ChunkKind, PageResult, PageSignal, StructuredChunk
 from parsecraft.pipeline.analysis import NoAnalyzerError, UnsupportedSourceError, choose_analyzer, media_type_for
-from parsecraft.routing import Intent, MachineProfile, PageContext, RoutingJudge, RoutingPreference
+from parsecraft.routing import Intent, MachineProfile, PageContext, RoutingConstraints, RoutingJudge, RoutingPreference
 from parsecraft.routing.classifier import (
     ClassifierSpec,
     OcrFacts,
@@ -40,6 +40,7 @@ from parsecraft.routing.classifier import (
 )
 from parsecraft.routing.judge import DeterministicJudge, JudgeSpec
 from parsecraft.routing.judge_providers import register_judge_provider
+from parsecraft.routing.planner import _apply_preference
 from tests.fixtures.documents import minimal_pdf
 
 _LONG_TEXT = "A paragraph comfortably longer than the forty character routing threshold."
@@ -242,13 +243,46 @@ def test_build_constraints_from_probe(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_preferred_backend_judge_orders_and_rejects() -> None:
-    candidates = [_descriptor("native-text", ("text/plain",)), _descriptor("other", ("text/plain",))]
-    judge = convert_module.PreferredBackendJudge("other")
-    assert list(judge.rank(convert_module.Intent.NATIVE, candidates)) == ["other", "native-text"]
+    """The new contract: ``--backend`` is a routing preference, not a judge.
 
-    missing = convert_module.PreferredBackendJudge("nope")
-    with pytest.raises(convert_module.JudgeViolationError):
-        missing.rank(convert_module.Intent.NATIVE, candidates)
+    The planner moves a preferred, eligible backend to the front of each
+    page's valid order, and a preferred backend that is not eligible for a
+    page leaves the order untouched (no document aborts because a single
+    page cannot use the caller's favourite). The conversion cache keys on
+    the preferred name, so two requests for different ``--backend`` values
+    never share a cached artifact.
+    """
+
+    def _text_descriptor(name: str) -> BackendDescriptor:
+        return _descriptor(name, ("text/plain",))
+
+    candidates = [_text_descriptor("native-text"), _text_descriptor("other")]
+
+    # Preferred, eligible on a NATIVE page → moves to the front.
+    assert _apply_preference(
+        ["native-text", "other"], candidates, Intent.NATIVE, RoutingConstraints(preferred_backend="other")
+    ) == ["other", "native-text"]
+
+    # Preferred, not eligible on this page → order is the judge's, unchanged.
+    assert _apply_preference(
+        ["native-text"], candidates, Intent.NATIVE, RoutingConstraints(preferred_backend="missing")
+    ) == ["native-text"]
+
+    # An OCR preferred on a NATIVE page never leads the non-OCR family.
+    ocr_candidates = [
+        _descriptor("native-text", ("text/plain",)),
+        _descriptor("ocr-tesseract", ("text/plain",)),
+        _descriptor("ocr-other", ("text/plain",)),
+    ]
+    rotated = _apply_preference(
+        ["ocr-tesseract", "native-text", "ocr-other"],
+        ocr_candidates,
+        Intent.NATIVE,
+        RoutingConstraints(preferred_backend="ocr-tesseract"),
+    )
+    assert rotated[0] == "native-text"
+    assert rotated[1] == "ocr-tesseract"
+
 
 
 def test_convert_auto_native_markdown(tmp_path: Path, registry: BackendRegistry) -> None:
@@ -354,11 +388,35 @@ def test_convert_backend_path_prefers_named_backend(tmp_path: Path, registry: Ba
     assert "html stub" in result.output
 
 
-def test_convert_backend_not_eligible_is_usage_error(tmp_path: Path, registry: BackendRegistry) -> None:
+def test_convert_backend_preferred_name_unknown_is_usage_error(tmp_path: Path, registry: BackendRegistry) -> None:
+    """An unknown ``--backend`` name is a usage error caught before any source is read.
+
+    The old PreferredBackendJudge raised a JudgeViolationError mid-execution
+    for an eligible-but-uninstalled name; the new contract moves that check
+    upfront (a typo) and silently falls back to the normal order for an
+    *installed* but page-ineligible preferred (see the next test).
+    """
     _register(registry, _descriptor("native-text", ("text/plain",)))
-    result = runner.invoke(app, ["convert", str(_source_file(tmp_path)), "--backend", "native-html"])
+    result = runner.invoke(app, ["convert", str(_source_file(tmp_path)), "--backend", "ocr-totally-fake"])
     assert result.exit_code == 2
-    assert "not eligible" in _text(result)
+    assert "not a registered backend" in _text(result)
+
+
+def test_convert_backend_preferred_page_ineligible_falls_back_to_normal_order(
+    tmp_path: Path, registry: BackendRegistry
+) -> None:
+    """An installed preferred backend that is not eligible for this page's
+    family is silently dropped: the document does NOT abort, the page uses
+    the normal order. (The old judge raised; the planner no longer does.)
+    """
+    _register(registry, _descriptor("native-text", ("text/plain",)), content="stub content")
+    result = runner.invoke(
+        app, ["convert", str(_source_file(tmp_path)), "--backend", "native-html"]
+    )
+    assert result.exit_code == 0
+    # The eligible stub ran (the preferred native-html was dropped because it
+    # does not claim text/plain), so the page carries the stub's content.
+    assert "stub content" in result.output
 
 
 def test_convert_without_eligible_backend_fails(tmp_path: Path, registry: BackendRegistry) -> None:
@@ -691,10 +749,14 @@ def test_convert_judge_flag_reorders_candidates(pdf_registry: Path) -> None:
 
 
 def test_convert_rejects_a_judge_that_leads_a_native_page_with_ocr(pdf_registry: Path) -> None:
-    """A judge crossing the native/OCR boundary is a usage error, not a plan."""
+    """A judge crossing the native/OCR boundary is a runtime judge failure, not a usage error.
+
+    The native/OCR family invariant is the planner's contract; a provider
+    judge that violates it is wrong (exit 1), not a caller typo (exit 2).
+    """
     register_judge_provider("cli-ocr-first-judge", _load_ocr_leading_judge)
     result = runner.invoke(app, ["convert", str(pdf_registry), "--judge", "cli-ocr-first-judge/j"])
-    assert result.exit_code == 2
+    assert result.exit_code == 1
     assert "may not lead a NATIVE page" in _text(result)
 
 
