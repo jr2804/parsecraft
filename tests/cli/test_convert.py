@@ -1044,3 +1044,30 @@ def _source_file(tmp_path: Path, name: str = "doc.txt", text: str = _LONG_TEXT) 
     path = tmp_path / name
     path.write_text(text, encoding="utf-8")
     return path
+
+def test_convert_no_auto_pins_the_backend(tmp_path: Path, registry: BackendRegistry) -> None:
+    """``--no-auto --backend X`` is a pin: a page X cannot serve fails loudly.
+
+    Preference mode (``--auto --backend X``) may mix backends; a pinned run is
+    only interpretable if every page used that backend, so it must not silently
+    fall back (polqa-re).
+    """
+    _register(registry, _descriptor("native-text", ("text/plain",)))
+    _register(registry, _descriptor("native-html", ("text/html",)))
+    source = _source_file(tmp_path)
+
+    pinned_ok = runner.invoke(app, ["convert", str(source), "--backend", "native-text", "--no-auto"])
+    assert pinned_ok.exit_code == 0
+
+    # native-html cannot serve text/plain: the pin fails instead of converting
+    # the page with native-text behind the caller's back.
+    pinned_bad = runner.invoke(app, ["convert", str(source), "--backend", "native-html", "--no-auto"])
+    assert pinned_bad.exit_code == 1
+    assert "pinned backend 'native-html'" in _text(pinned_bad)
+
+
+def test_convert_backend_option_requires_a_backend(tmp_path: Path, registry: BackendRegistry) -> None:
+    _register(registry, _descriptor("native-text", ("text/plain",)))
+    result = runner.invoke(app, ["convert", str(_source_file(tmp_path)), "--backend-option", "effort=high"])
+    assert result.exit_code == 2
+    assert "--backend-option requires --backend" in _text(result)

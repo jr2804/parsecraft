@@ -21,6 +21,7 @@ def constraints_from_environment(
     preferred_backend: str | None = None,
     engines: Collection[str] | None = None,
     backend_options: dict[str, dict[str, str | int | float | bool]] | None = None,
+    only_backend: str | None = None,
 ) -> RoutingConstraints:
     """Fill :class:`RoutingConstraints` from detected host facts.
 
@@ -51,6 +52,7 @@ def constraints_from_environment(
         offline=environment.offline,
         preference=preference,
         preferred_backend=preferred_backend,
+        only_backend=only_backend,
         backend_options=dict(backend_options or {}),
     )
 

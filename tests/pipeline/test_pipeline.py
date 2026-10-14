@@ -143,7 +143,18 @@ def test_groups_split_when_route_changes(monkeypatch: pytest.MonkeyPatch) -> Non
     registry = make_registry(monkeypatch)
     add_stub(registry, make_descriptor("native-a"))
     add_stub(registry, make_descriptor("ocr-stub", group="ocr-stub"))
-    result = execute(make_analysis(2, blank_pages=(2,)), registry, make_constraints(), make_source(), produced_at=PRODUCED)
+    # Page 2 carries a figure and no text: an OCR page that is NOT blank (a blank
+    # page with no images degrades now, which would collapse the split).
+    analysis = AnalysisResult(
+        source_hash="0" * 64,
+        page_count=2,
+        signals=[
+            make_signal(1),
+            PageSignal(page_number=2, has_native_text=False, text_chars=0, image_count=3, blank=False, replacement_char_ratio=None),
+        ],
+        diagnostics=[],
+    )
+    result = execute(analysis, registry, make_constraints(), make_source(), produced_at=PRODUCED)
     assert [group.page_numbers for group in result.groups] == [[1], [2]]
     assert result.groups[0].intent is Intent.NATIVE
     assert result.groups[1].intent is Intent.OCR_GENERAL

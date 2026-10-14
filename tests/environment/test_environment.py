@@ -689,7 +689,8 @@ def _environment(**overrides: object) -> EnvironmentInfo:
 
 def test_constraints_engines_override_and_backend_options() -> None:
     """``engines=`` overrides the probed set without re-probing; ``backend_options``
-    reach the constraints (and therefore the cache key) verbatim."""
+    reach the constraints (and therefore the cache key) verbatim.
+    """
     derived = constraints_from_environment(_environment())
     assert derived.engines == frozenset({"tesseract"})  # the probe's answer
 

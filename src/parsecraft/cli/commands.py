@@ -195,6 +195,7 @@ def convert(
                 preference=preference,
                 use_cache=use_cache,
                 backend_options=options or None,
+                only_backend=backend if not auto else None,
             )
     except ConvertError as exc:
         typer.echo(f"error: {exc}", err=True)

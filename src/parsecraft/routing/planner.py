@@ -49,6 +49,13 @@ def plan_route(
         raise RoutingError("analysis carries no page signals to route")
     active_judge: RoutingJudge = judge if judge is not None else DeterministicJudge(constraints.preference, frozenset(constraints.installed_extras))
     eligible = [descriptor for descriptor in sorted(backends, key=lambda d: d.name) if is_hard_eligible(descriptor, constraints)]
+    if constraints.only_backend is not None:
+        # A pin is a hard filter: pages it cannot serve fail loudly (pc-4u7,
+        # polqa-re). Content is not coverage — a blank page still degrades.
+        pinned = [descriptor for descriptor in eligible if descriptor.name == constraints.only_backend]
+        if not pinned:
+            raise NoEligibleBackendError(None, f"pinned backend {constraints.only_backend!r} is not eligible for this source")
+        eligible = pinned
     if not eligible:
         raise NoEligibleBackendError(None, "no backend satisfies the hard constraints")
     hints = extract_hints(analysis)
@@ -69,6 +76,16 @@ def plan_route(
             # valid document (routing/AGENTS.md, pc-ztq).
             degraded = True
             unavailable = _ocr_unavailable_cause(backends, constraints)
+            degradation_code, degradation_score = degradation_for(signal)
+            intent = Intent.NATIVE
+            family = [descriptor for descriptor in eligible if in_intent_family(intent, descriptor)]
+        elif _nothing_to_lose(signal) and intent is not Intent.NATIVE and can_degrade_to_native(signal, eligible):
+            # A blank page with no images has nothing an OCR pass could return:
+            # sending it to a VLM is pure cost (measured: 527 s of ocr-ovis for
+            # an empty page). Degrade it even when the OCR family IS available —
+            # the reason string records it exactly as it does without a GPU.
+            degraded = True
+            unavailable = "blank page: no text or images to lose"
             degradation_code, degradation_score = degradation_for(signal)
             intent = Intent.NATIVE
             family = [descriptor for descriptor in eligible if in_intent_family(intent, descriptor)]
@@ -119,6 +136,17 @@ def _apply_preference(order: list[str], family: list[BackendDescriptor], intent:
                 rest = [name for name in order if name not in (lead, preferred)]
                 return [lead, preferred, *rest]
     return [preferred, *(name for name in order if name != preferred)]
+
+
+def _nothing_to_lose(signal: PageSignal) -> bool:
+    """A blank page with no images: an OCR pass could not return anything.
+
+    The distinction that matters is coverage versus content (polqa-re): such a
+    page is fully *covered* by the OCR family, it just has no content, so OCR
+    cost buys nothing. A blank page *with* images stays in the OCR family —
+    there is a figure a vision pass could read.
+    """
+    return signal.blank and signal.image_count == 0
 
 
 def _validate_order(order: list[str], family: list[BackendDescriptor], intent: Intent) -> None:

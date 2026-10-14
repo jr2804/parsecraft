@@ -96,6 +96,13 @@ class RoutingConstraints(BaseModel):
     #: For ``NATIVE`` pages an OCR-capable preferred backend never leads (the
     #: non-OCR lead invariant stands); it slots in directly after the lead.
     preferred_backend: str | None = None
+    #: Hard pin: the only backend the plan may dispatch (CLI ``--no-auto
+    #: --backend X``). Applied as an eligibility filter before intent families
+    #: are computed, so a page the pinned backend cannot serve fails loudly
+    #: (never silently falls back), while a page it *can* serve keeps the normal
+    #: degrade/skip paths — a blank page degrades to native rather than failing
+    #: the pin.
+    only_backend: str | None = None
     #: Per-backend constructor options, keyed by backend name, spread into the
     #: backend's ``BackendConfig.options`` at dispatch time (e.g.
     #: ``{"mineru": {"effort": "high"}}``). Options are consumer intent, not

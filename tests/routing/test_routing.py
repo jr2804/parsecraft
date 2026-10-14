@@ -34,6 +34,7 @@ from parsecraft.routing import (
 from parsecraft.routing.judge import DENSITY_REFERENCE_CHARS, PREFERRED_BACKENDS, RoutingJudge, page_context
 from parsecraft.routing.planner import _apply_preference
 from parsecraft.routing.rules import (
+    DEGRADED_BLANK_PAGE_CODE,
     FEATURE_EQUATIONS_CODE,
     FEATURE_FIGURES_CODE,
     FEATURE_TABLE_CODE,
@@ -495,8 +496,9 @@ def test_plan_primary_is_mode_with_name_tiebreak() -> None:
 
 
 def test_plan_primary_tiebreak_by_name() -> None:
-    # Two pages: one routed native, one OCR — no majority, so name order wins.
-    signals = [make_signal(1), make_signal(2, blank=True)]
+    # Two pages: one routed native, one OCR (a figure page — a blank page would
+    # degrade now) — no majority, so name order wins.
+    signals = [make_signal(1), make_signal(2, text_chars=0, native=False, blank=True, images=2)]
     analysis = make_analysis(signals, 2, (FEATURE_EQUATIONS_CODE,))
     plan = plan_route(analysis, all_backends(), full_constraints(formats=set()))
     chosen = {page.chosen for page in plan.pages}
@@ -993,9 +995,31 @@ def test_garbled_text_degradation_is_flagged_distinctly() -> None:
     assert page.degradation_code != "degraded-short-text"
 
 
-def test_blank_page_keeps_its_ocr_intent_when_an_ocr_backend_is_eligible() -> None:
-    """The classification is untouched: with an OCR family present, nothing changes."""
+def test_blank_page_without_images_degrades_even_when_ocr_is_eligible() -> None:
+    """A blank page with no images has nothing an OCR pass could return.
+
+    Regression (polqa-re): with a usable GPU the OCR family is eligible, so the
+    old rule sent the page to a VLM — measured at 527 s of ocr-ovis for an empty
+    page. Content is not coverage: the page is fully covered and still has
+    nothing to lose, so it degrades with the same recorded reason it gets on a
+    host without OCR.
+    """
     signal = make_signal(1, text_chars=0, native=False, blank=True, images=0)
+    plan = plan_route(
+        make_analysis([signal], 1),
+        [make_desc("native-text"), make_desc("ocr-ovis", ALL_FORMATS, group="ocr-ovis", vram=2.0)],
+        full_constraints(formats={"text/plain"}),
+    )
+    page = plan.pages[0]
+    assert page.intent is Intent.NATIVE
+    assert page.chosen == "native-text"
+    assert page.degradation_code == DEGRADED_BLANK_PAGE_CODE
+    assert page.degradation_score == 0.0
+
+
+def test_blank_page_with_images_keeps_its_ocr_intent() -> None:
+    """A blank page holding a figure stays in the OCR family: a vision pass can read it."""
+    signal = make_signal(1, text_chars=0, native=False, blank=True, images=2)
     plan = plan_route(
         make_analysis([signal], 1),
         [make_desc("native-text"), make_desc("ocr-ovis", ALL_FORMATS, group="ocr-ovis", vram=2.0)],
@@ -1403,3 +1427,40 @@ def test_apply_preference_never_leads_an_ocr_preferred_on_a_native_page() -> Non
     result = _apply_preference(["ocr-tesseract", "native-lead", "ocr-other"], family, Intent.NATIVE, constraints)
     assert result[0] == "native-lead"
     assert result[1] == "ocr-tesseract"
+
+def test_only_backend_pins_the_plan_to_one_backend() -> None:
+    """``only_backend`` is a hard filter; the pinned backend leads every page it covers."""
+    signals = [make_signal(1), make_signal(2, text_chars=0, native=False, blank=True, images=2)]
+    constraints = full_constraints(formats={"text/plain"}, only_backend="native-text")
+    plan = plan_route(
+        make_analysis(signals, 2),
+        [make_desc("native-text"), make_desc("ocr-ovis", ALL_FORMATS, group="ocr-ovis", vram=2.0)],
+        constraints,
+    )
+    # Page 1 is native; page 2 is blank with a figure, so the pin excludes the
+    # OCR family and it degrades to the pinned native backend (content is not
+    # coverage). A page the pin cannot cover at all raises — see the next test.
+    assert [page.chosen for page in plan.pages] == ["native-text", "native-text"]
+
+
+def test_only_backend_that_cannot_serve_raises() -> None:
+    constraints = full_constraints(formats={"text/plain"}, only_backend="native-html")
+    with pytest.raises(NoEligibleBackendError, match="pinned backend 'native-html'"):
+        plan_route(
+            make_analysis([make_signal(1)], 1),
+            [make_desc("native-text"), make_desc("native-html", ("text/html",))],
+            constraints,
+        )
+
+
+def test_only_backend_still_degrades_a_blank_page() -> None:
+    """Coverage is not content: a pinned native backend serves a blank page by degrade."""
+    signal = make_signal(1, text_chars=0, native=False, blank=True, images=0)
+    plan = plan_route(
+        make_analysis([signal], 1),
+        [make_desc("native-text"), make_desc("ocr-ovis", ALL_FORMATS, group="ocr-ovis", vram=2.0)],
+        full_constraints(formats={"text/plain"}, only_backend="native-text"),
+    )
+    page = plan.pages[0]
+    assert page.chosen == "native-text"
+    assert page.degradation_code == DEGRADED_BLANK_PAGE_CODE
