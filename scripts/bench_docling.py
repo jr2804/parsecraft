@@ -13,7 +13,7 @@ fetched.
 
 Usage::
 
-    uv run --extra docling --extra pdf --extra pdf-lite \
+    uv run --extra docling --extra pymupdf \
         python scripts/bench_docling.py .tmp/docling-bench/*.pdf
 """
 
@@ -94,7 +94,7 @@ def main(argv: list[str] | None = None) -> int:
 def _constraints() -> RoutingConstraints:
     """Explicit constraints: the probe cannot see the heavy extras by design."""
     return RoutingConstraints(
-        installed_extras={"pdf-lite", "pdf", "docling"},
+        installed_extras={"pymupdf", "docling"},
         vram_budget_gb=0.0,
         offline=False,
         allow_ocr=False,

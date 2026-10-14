@@ -59,19 +59,26 @@ Current version on [PyPI](https://pypi.org/project/parsecraft/).
 
 ### Extras
 
-Optional features live in extras, and one of them is a shortcut:
+The base install is self-sufficient for the routing pipeline: the System One
+judge client, the OCR-need classifier, the fast `liteparse` parser,
+`openpyxl` for spreadsheets, and the `pypandoc` wrapper all ship in the core.
+Extras add the heavyweight or licence-isolated engines:
 
-```bash
-pip install "parsecraft[auto]"        # the judge providers + the classifier provider
-parsecraft judges                     # provider tokens, credentials, extras
-```
+- `parsecraft[docling]` — layout-aware parsing.
+- `parsecraft[pymupdf]` — PyMuPDF extraction for PDF and office documents
+  (**AGPL-3.0-or-commercial**).
+- `parsecraft[mineru]` — MinerU's VLM pipeline (conditional licence terms).
+- `parsecraft[pdf-full]` — the full PDF stack in one name: PyMuPDF **and**
+  MinerU.
+- `parsecraft[ocr]` — the GPU OCR/VLM backends (torch, transformers).
+- `parsecraft[vllm]` — the vLLM accelerator (Linux/WSL2 only).
+- `parsecraft[web]` — the `trafilatura` HTML backend.
 
-`auto` is a meta-extra that pulls in `typesafe-sdk` and
-`parsecraft[pdf-inspector]` for the `--judge` and `--classifier` flags. It does
-not include `pdf` or any OCR/HTML backend, so pick those separately when
-you need PDF extraction. Judge credentials come from the environment
+`pandoc` conversions need no extra but do need the **pandoc binary** on the
+host (install it with your package manager); the backend is eligible only
+where the engine exists. Judge credentials come from the environment
 (`TYPESAFE_API_KEY`, `OPENCODE_API_KEY`) — see
-[Backends](../reference/backends.md) for the full extras list and
+[Backends](../reference/backends.md) for the per-backend extras table and
 [Steer the auto-backend selector](../guides/auto-backend-selector.md) for the
 flags themselves.
 
@@ -80,12 +87,13 @@ flags themselves.
 Two extras carry licence terms you are consenting to by installing them —
 neither is a core or dev dependency, and both are opt-in:
 
-- `parsecraft[pdf]` — PyMuPDF, **AGPL-3.0-or-commercial**.
+- `parsecraft[pymupdf]` — PyMuPDF, **AGPL-3.0-or-commercial**.
 - `parsecraft[mineru]` — MinerU's **conditional** terms: Apache-2.0 code plus
   commercial thresholds (>100M MAU or >USD 20M revenue), an online-service
   attribution duty, and termination-without-notice; the VLM checkpoint and torch
   kit are Apache-2.0; the default Windows/CPU GGUF engine and the ONNX kit
-  declare **no licence**.
+  declare **no licence**. (`parsecraft[pdf-full]` includes both this and
+  PyMuPDF.)
 
 Read the full statement on the [Backends](../reference/backends.md) page before
 installing either.

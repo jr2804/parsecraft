@@ -107,7 +107,7 @@ capability at import time; enforced by an offline import test.
 | `core` | pydantic v2, pydantic-settings, platformdirs, tomlkit, charset-normalizer, typer (CLI), **markdown-it-py** (see §11). No HTTP. |
 | `download` | `huggingface-hub` (all model-asset networking lives here) |
 | `web` | URL fetching/extraction (`httpx`, `trafilatura`) |
-| `pdf-lite` | `pymupdf` |
+| `pymupdf` | AGPL PyMuPDF (extraction) |
 | `liteparse`, `pandoc` | adapters behind extras, pending dependency/licensing review |
 | `ocr-ovis`, `ocr-tele`, `ocr-unlimited`, `ocr-qianfan` | one extra per OCR backend |
 | `vllm` | GPU runtime extra |

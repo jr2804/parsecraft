@@ -2,12 +2,12 @@
 
 ``analyze()`` uses pypdf (core dependency since ADR-0009) so structure
 analysis, encryption detection, and difficulty signals work without the
-AGPL PyMuPDF extra. ``convert()`` extracts text with PyMuPDF (``pdf``
+AGPL PyMuPDF extra. ``convert()`` extracts text with PyMuPDF (``pymupdf``
 extra), loaded via ``import_module`` at conversion time; a missing extra
 yields a typed ``DEPENDENCY_MISSING`` pass failure, never an import crash.
 The descriptor is base-install — registered without an
 ``optional_dependency_group`` — because analysis is core; extraction
-requires ``parsecraft[pdf]`` and surfaces a typed failure if it is absent.
+requires ``parsecraft[pymupdf]`` and surfaces a typed failure if it is absent.
 """
 
 from __future__ import annotations
@@ -142,7 +142,7 @@ class _PymupdfFactory:
             supported_formats=SUPPORTED_FORMATS,
             supports_page_ranges=True,
             supports_multi_page=True,
-            convert_extra="pdf",
+            convert_extra="pymupdf",
         ),
     )
 
@@ -168,7 +168,7 @@ def _extract_pages(source: SourceDocument, data: bytes) -> list[PageResult]:
     try:
         impl = cast(_PymupdfConvertImpl, import_module(_PYMUPDF_CONVERT_MODULE))
     except ImportError as exc:
-        raise DependencyUnavailableError(_PYMUPDF_CONVERT_MODULE, "pdf") from exc
+        raise DependencyUnavailableError(_PYMUPDF_CONVERT_MODULE, "pymupdf") from exc
     pages: list[PageResult] = []
     for number, page in enumerate(impl.page_layouts(data, filetype=filetype), start=1):
         layout = build_chunks(page, page_number=number)

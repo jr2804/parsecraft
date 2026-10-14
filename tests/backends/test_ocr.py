@@ -847,7 +847,7 @@ def test_raster_page_is_a_typed_failure_when_pypdfium2_cannot_open(pdfium: _Pypd
     with pytest.raises(BackendError, match="could not open the PDF") as excinfo:
         _common.count_pages(_PDF_SOURCE)
     message = str(excinfo.value)
-    assert "parsecraft[pdf]" not in message
+    assert "parsecraft[pymupdf]" not in message
     assert "pymupdf" not in message.lower()
     with pytest.raises(BackendError, match="could not open the PDF"):
         _common.rasterize_page(_PDF_SOURCE, 1)
@@ -1047,14 +1047,14 @@ def test_missing_raster_engine_does_not_name_the_agpl_pdf_extra(
     with pytest.raises(BackendError, match="could not open the PDF") as excinfo:
         _common.count_pages(_PDF_SOURCE)
     message = str(excinfo.value)
-    assert "parsecraft[pdf]" not in message
+    assert "parsecraft[pymupdf]" not in message
     assert "pymupdf" not in message.lower()
     # The same typed failure surfaces through convert() as a recorded, not raised, failure:
     result = _convert(_PDF_SOURCE, _request(_PDF_SOURCE), lambda _number, _req: "x")
     assert result.pages == []
     assert result.failures[0].code is FailureCode.INVALID_INPUT
     assert "could not open the PDF" in result.failures[0].detail
-    assert "parsecraft[pdf]" not in result.failures[0].detail
+    assert "parsecraft[pymupdf]" not in result.failures[0].detail
 
 
 def test_convert_passes_the_context_budget_to_inference(pdfium: _Pypdfium2Stub) -> None:

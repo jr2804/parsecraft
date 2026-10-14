@@ -110,7 +110,7 @@ class BackendCapabilities(BaseModel):
     delegated_analysis: bool = False
     #: The optional extra whose import boundary the CONVERT path crosses — its
     #: absence makes conversion un-deliverable on this host (``pymupdf``
-    #: analyzes on core pypdf but converts via ``parsecraft[pdf]``/PyMuPDF).
+    #: analyzes on core pypdf but converts via ``parsecraft[pymupdf]``/PyMuPDF).
     #: ``None`` means convert needs nothing beyond core/base deps. This is the
     #: convert path's import boundary, not every import: analyze()-only imports
     #: never appear here (ADR-0004 A10).

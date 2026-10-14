@@ -31,9 +31,9 @@ to keep the native family light-by-construction.
   through `importlib.import_module` at `_analyze_impl()` (instantiation) and
   `_convert_pdf` (conversion time), never inline (`pyreorder` would hoist an
   inline import to module level and break the offline-import gate).
-- Descriptor: `BACKEND_NAME = "pymupdf"`, `convert_extra = "pdf"`, no
+- Descriptor: `BACKEND_NAME = "pymupdf"`, `convert_extra = "pymupdf"`, no
   `optional_dependency_group` because analysis is core; extraction requires
-  `parsecraft[pdf]` and surfaces a typed `DEPENDENCY_MISSING` pass failure if
+  `parsecraft[pymupdf]` and surfaces a typed `DEPENDENCY_MISSING` pass failure if
   it is absent.
 - **One raster surface, zero PyMuPDF at import** (pc-ct9 / ADR-0003): the
   factory raises if the analyze import fails, but never tries to import
@@ -72,4 +72,4 @@ to keep the native family light-by-construction.
 `tests/backends/test_pymupdf_code_layout.py` (100% coverage gate applies). The
 two integration tests in the latter need the AGPL `pdf` extra and therefore
 skip in the canonical light env; run them with
-`uv run --isolated --extra pdf pytest -k code_block_is_fenced`.
+`uv run --isolated --extra pymupdf pytest -k code_block_is_fenced`.

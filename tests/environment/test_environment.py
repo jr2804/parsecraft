@@ -245,8 +245,8 @@ def test_probe_lists_backends_sorted_from_the_entry_point_group(
     [
         ("ocr", {"transformers"}, True),
         ("ocr", set(), False),
-        ("pdf", {"pymupdf"}, True),
-        ("pdf", set(), False),
+        ("pymupdf", {"pymupdf"}, True),
+        ("pymupdf", set(), False),
     ],
 )
 def test_probe_detects_extras_through_their_import_packages(
@@ -284,7 +284,7 @@ def test_probe_skips_descriptors_without_a_dependency_group(
 
 
 def test_extra_imports_map_covers_the_declared_ocr_and_pdf_groups() -> None:
-    for group in ("ocr", "pdf"):
+    for group in ("ocr", "pymupdf"):
         assert group in EXTRA_IMPORTS
         assert EXTRA_IMPORTS[group]
 

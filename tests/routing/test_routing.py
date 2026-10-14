@@ -1036,7 +1036,7 @@ def good_native(signals_count: int = 1) -> list[PageSignal]:
 
 
 def test_native_pdf_is_demoted_when_pdf_extra_absent() -> None:
-    """A host without ``parsecraft[pdf]`` must not be led by ``pymupdf``.
+    """A host without ``parsecraft[pymupdf]`` must not be led by ``pymupdf``.
 
     knox-1 measured the cost this removes: on the 2026.10.3 tier model,
     ``pymupdf`` led every ``application/pdf`` NATIVE page because its
@@ -1045,7 +1045,7 @@ def test_native_pdf_is_demoted_when_pdf_extra_absent() -> None:
     A10 demotes it into the extra-backed tier for exactly that host.
     """
     candidates = [
-        make_desc("pymupdf", ("application/pdf",), convert_extra="pdf"),
+        make_desc("pymupdf", ("application/pdf",), convert_extra="pymupdf"),
         make_desc("docling", ("application/pdf",), group="docling"),
         make_desc("liteparse", ("application/pdf",), group="liteparse"),
         make_desc("mineru", ("application/pdf",), group="mineru"),
@@ -1063,11 +1063,11 @@ def test_native_pdf_is_demoted_when_pdf_extra_absent() -> None:
 def test_native_pdf_leads_when_pdf_extra_installed() -> None:
     """Regression (2026.10.3): with ``[pdf]`` installed pymupdf is dependency-free and leads."""
     candidates = [
-        make_desc("pymupdf", ("application/pdf",), convert_extra="pdf"),
+        make_desc("pymupdf", ("application/pdf",), convert_extra="pymupdf"),
         make_desc("docling", ("application/pdf",), group="docling"),
         make_desc("ocr-ovis", ("application/pdf",), gpu=True, vram=6.0, group="ocr"),
     ]
-    judge = DeterministicJudge(installed_extras=frozenset({"pdf", "docling", "ocr"}))
+    judge = DeterministicJudge(installed_extras=frozenset({"pymupdf", "docling", "ocr"}))
 
     assert list(judge.rank(Intent.NATIVE, candidates))[0] == "pymupdf"
 
@@ -1082,11 +1082,11 @@ def test_every_base_install_native_backend_is_always_eligible() -> None:
     candidates = [
         make_desc("native-markdown"),
         make_desc("native-text"),
-        make_desc("pymupdf", ("application/pdf",), convert_extra="pdf"),
+        make_desc("pymupdf", ("application/pdf",), convert_extra="pymupdf"),
         make_desc("docling", ("text/plain", "application/pdf"), group="docling"),
     ]
     base = DeterministicJudge(installed_extras=frozenset())
-    with_pdf = DeterministicJudge(installed_extras=frozenset({"pdf", "docling"}))
+    with_pdf = DeterministicJudge(installed_extras=frozenset({"pymupdf", "docling"}))
 
     assert list(base.rank(Intent.NATIVE, candidates))[:2] == ["native-markdown", "native-text"]
     assert list(with_pdf.rank(Intent.NATIVE, candidates))[0] == "native-markdown"  # tier 0 alphabetical; pymupdf is tier 0 too
@@ -1104,12 +1104,12 @@ def test_empty_candidate_set_yields_typed_planner_error() -> None:
 def test_existing_tier_ordering_preserved_when_all_convert_extras_satisfied() -> None:
     """Regression (2026.10.3): a fully-satisfied host keeps the tier model."""
     candidates = [
-        make_desc("pymupdf", ("application/pdf",), convert_extra="pdf"),
+        make_desc("pymupdf", ("application/pdf",), convert_extra="pymupdf"),
         make_desc("docling", ("application/pdf",), group="docling"),
         make_desc("liteparse", ("application/pdf",), group="liteparse"),
         make_desc("ocr-ovis", ("application/pdf",), gpu=True, vram=6.0, group="ocr"),
     ]
-    judge = DeterministicJudge(installed_extras=frozenset({"pdf", "docling", "liteparse", "ocr"}))
+    judge = DeterministicJudge(installed_extras=frozenset({"pymupdf", "docling", "liteparse", "ocr"}))
 
     assert list(judge.rank(Intent.NATIVE, candidates)) == ["pymupdf", "docling", "liteparse", "ocr-ovis"]
 
@@ -1124,7 +1124,7 @@ def test_max_passes_1_does_not_waste_a_native_pdf_lead_on_knox_config() -> None:
     """
     analysis = make_analysis([make_signal(1, native=True)], 1)
     backends = [
-        make_desc("pymupdf", ("application/pdf",), convert_extra="pdf"),
+        make_desc("pymupdf", ("application/pdf",), convert_extra="pymupdf"),
         make_desc("docling", ("application/pdf",), group="docling"),
         make_desc("liteparse", ("application/pdf",), group="liteparse"),
         make_desc("mineru", ("application/pdf",), group="mineru"),

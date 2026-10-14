@@ -43,11 +43,14 @@ smuggled into convenience groups.
 - `pyproject.toml` carries at most one short comment per extra pointing at its
   ADR; rationale lives here, not in the dependency list.
 - Consumers using `pdf-lite`, `download`, `systemone`, or any `ocr-*` extra
-  must switch to the unified groups (`pdf`/`download` content is core now —
-  just remove the extra).
+  must switch to the unified groups (`download` content is core now — just
+  remove the extra). The AGPL extra was renamed `pdf` → `pymupdf` on 2026-10-14
+  (package-named convention; see ADR-0003 amendment); consumers of
+  `parsecraft[pdf]` must switch to `parsecraft[pymupdf]`, or use the new
+  `parsecraft[pdf-full]` shortcut for the full PDF stack.
 - Every declared extra is import-detectable; the `META_EXTRAS` concept is gone.
 - The `auto`, `liteparse` and `pandoc` extras are gone (pc-s7g, same policy): their
   content is base now — `pdf-inspector` and `typesafe-sdk` (the routing seam), the
   `liteparse` library, and `pypandoc` (whose GPL binary was never a pip dependency and
-  is gated by the pandoc engine check instead). Licence-isolated stacks (`pdf`, OCR)
-  stay optional.
+  is gated by the pandoc engine check instead). Licence-isolated stacks
+  (`pymupdf`, `mineru`, OCR) stay optional.

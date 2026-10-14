@@ -34,7 +34,8 @@ EXTRA_IMPORTS: dict[str, tuple[str, ...]] = {
     "marker": ("marker",),  # bring-your-own dependency (ADR-0006): no declared extra
     "mineru": ("mineru",),
     "ocr": ("transformers",),
-    "pdf": ("pymupdf",),
+    "pdf-full": ("pymupdf", "mineru"),  # union bundle: detected iff both contents import
+    "pymupdf": ("pymupdf",),
     "vllm": ("vllm",),
     "web": ("httpx", "trafilatura"),
 }

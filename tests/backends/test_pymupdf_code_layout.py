@@ -43,10 +43,10 @@ def test_real_pdf_code_block_is_fenced_end_to_end() -> None:
 
     Skips in the canonical dev environment, which deliberately lacks the AGPL
     ``pdf`` extra; run it with
-    ``uv run --isolated --extra pdf --extra pdf-lite pytest -k code_block_is_fenced``.
+    ``uv run --isolated --extra pymupdf pytest -k code_block_is_fenced``.
     """
     pytest.importorskip("pymupdf", reason="pdf extra (PyMuPDF, AGPL) not installed")
-    pytest.importorskip("pypdf", reason="pdf-lite extra absent in the light env")
+    pytest.importorskip("pypdf", reason="pypdf absent in the light env")
 
     data = code_pdf()
     backend = pdf_module.factory(BackendConfig(name="pymupdf"))
@@ -70,7 +70,7 @@ def test_real_pdf_code_block_is_fenced_end_to_end() -> None:
 def test_real_pdf_prose_only_page_has_no_code() -> None:
     """The other direction: prose fonts must not be mistaken for code."""
     pytest.importorskip("pymupdf", reason="pdf extra (PyMuPDF, AGPL) not installed")
-    pytest.importorskip("pypdf", reason="pdf-lite extra absent in the light env")
+    pytest.importorskip("pypdf", reason="pypdf absent in the light env")
 
     data = minimal_pdf()
     backend = pdf_module.factory(BackendConfig(name="pymupdf"))

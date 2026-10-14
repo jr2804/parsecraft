@@ -382,7 +382,7 @@ def test_real_pymupdf_extracts_generated_docx_and_pptx_text() -> None:
     """End-to-end with the real engine over real, generated office files.
 
     Skipped without the ``pdf`` extra (the default suite runs light); run it as
-    ``uv run --extra pdf pytest tests/backends/test_pymupdf.py -k real_pymupdf``.
+    ``uv run --extra pymupdf pytest tests/backends/test_pymupdf.py -k real_pymupdf``.
     The fixtures are produced by python-docx/python-pptx because mupdf rejects
     hand-assembled OOXML, so a fabricated package could not exercise this path
     at all.

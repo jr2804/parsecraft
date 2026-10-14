@@ -122,7 +122,7 @@ _COLLECTION_SCRIPT = textwrap.dedent(
     import sys
 
     # Import names of the optional extras the canonical light env does NOT
-    # install (download / web / pdf-lite ARE installed, so huggingface_hub and
+    # install (download / web ARE installed, so huggingface_hub and
     # pypdf stay importable), plus the runtime leaves those extras pull in.
     # pypdfium2 and pillow moved to base deps (ADR-0008 d10/d14) — always
     # installed, so a test module importing them at collection is safe.

@@ -27,12 +27,20 @@ image extraction. `pypdf` is permissive but materially weaker as a parser;
 4. Installing the `pdf` extra is the user's own licence decision; AGPL-3.0
    terms apply to that extra, not to the MIT-licensed core.
 
+   **Amended (2026-10-14, pc-1):** the AGPL extra is renamed `pdf` → `pymupdf` under the
+   package-named convention (matching `docling`/`mineru`/`web`-or-`trafilatura`).
+   Consumers of `parsecraft[pdf]` must switch to `parsecraft[pymupdf]`. A new
+   meta-extra `pdf-full = [pymupdf, mineru]` ships as the convenience bundle
+   (pymupdf is AGPL; mineru is Apache-2.0 weights + source-available code
+   per ADR-0007). The original `pdf` extra is removed in the same commit;
+   `setup-pandoc` was the unrelated previous rename.
+
 ## Consequences
 
-- The `pdf` extra is copyleft and therefore never bundled into the default
+- The `pymupdf` extra is copyleft and therefore never bundled into the default
   distribution or the `all` convenience profile without the same explicit
   acknowledgement.
-- `pymupdf` extraction requires `parsecraft[pdf]`; `pymupdf` analysis
+- `pymupdf` extraction requires `parsecraft[pymupdf]`; `pymupdf` analysis
   works on the core install alone.
 - Any future copyleft dependency follows this same pattern: optional extra +
   addendum + no core/dev install.

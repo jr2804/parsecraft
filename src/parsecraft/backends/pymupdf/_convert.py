@@ -11,7 +11,7 @@ monospace, where they start horizontally, and how far apart they sit
 
 from __future__ import annotations
 
-import pymupdf  # ty: ignore[unresolved-import] — optional: "pdf" extra (AGPL, ADR-0003)
+import pymupdf  # base dep since the pymupdf extra rename (2026-10-14); optional only for the AGPL path
 
 from parsecraft.backends.pymupdf.code_layout import PageText, page_text
 

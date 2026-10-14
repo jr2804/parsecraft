@@ -296,7 +296,7 @@ by:
    sorts earlier (ADR-0009). Dependency-free is a fact about **this host**
    (ADR-0004 A10): a candidate whose declared `convert_extra` is absent from
    the host's installed extras ranks with the extra-backed parsers — demoted,
-   never hidden (`pymupdf` without `parsecraft[pdf]` never leads while a
+   never hidden (`pymupdf` without `parsecraft[pymupdf]` never leads while a
    deliverable parser exists).
 3. Lowest `estimated_vram_gb` (`None` last).
 4. Name, ascending.

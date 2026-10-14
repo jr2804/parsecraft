@@ -277,6 +277,10 @@ path* needs the group (knox-1's structural finding): `pymupdf` declares no
 group because its analysis is core, yet its convert path crosses
 `parsecraft[pdf]`/PyMuPDF. The new `BackendCapabilities.convert_extra` records
 exactly the convert path's import boundary — **not every import**;
+
+**Cross-reference (2026-10-14):** the AGPL extra was renamed `pdf` →
+`pymupdf` (package-named convention; see ADR-0003 amendment). Consumers
+of `parsecraft[pdf]` must switch to `parsecraft[pymupdf]`.
 analyze()-only imports never appear there. `None` (the default) means convert
 needs nothing beyond core/base dependencies.
 
