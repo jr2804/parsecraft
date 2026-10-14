@@ -96,6 +96,12 @@ class RoutingConstraints(BaseModel):
     #: For ``NATIVE`` pages an OCR-capable preferred backend never leads (the
     #: non-OCR lead invariant stands); it slots in directly after the lead.
     preferred_backend: str | None = None
+    #: Per-backend constructor options, keyed by backend name, spread into the
+    #: backend's ``BackendConfig.options`` at dispatch time (e.g.
+    #: ``{"mineru": {"effort": "high"}}``). Options are consumer intent, not
+    #: planning state: they never change eligibility, and they are part of the
+    #: conversion-cache key (a different option is a different conversion).
+    backend_options: dict[str, dict[str, str | int | float | bool]] = Field(default_factory=dict)
 
 
 class PageRoute(BaseModel):

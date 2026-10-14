@@ -19,16 +19,23 @@ def constraints_from_environment(
     max_passes: int = 1,
     preference: RoutingPreference = RoutingPreference.BALANCED,
     preferred_backend: str | None = None,
+    engines: Collection[str] | None = None,
+    backend_options: dict[str, dict[str, str | int | float | bool]] | None = None,
 ) -> RoutingConstraints:
     """Fill :class:`RoutingConstraints` from detected host facts.
 
-    ``formats`` (empty = no format restriction), ``max_passes`` and
-    ``preference`` are plan inputs; ``installed_extras``/``vram_budget_gb``/
-    ``gpu_usable``/``engines``/``offline`` always come from the probe.
-    ``allow_ocr=None`` derives OCR permission from the detected OCR extras **or**
-    a usable engine (ADR-0008 decision 12 — see :func:`_ocr_possible`); an
-    explicit value overrides the derivation (e.g. an operator banning OCR on a
-    GPU-capable host).
+    ``formats`` (empty = no format restriction), ``max_passes``, ``preference``
+    and ``preferred_backend`` are plan inputs; the rest come from the probe.
+    ``preferred_backend`` is a ranking preference (the CLI ``--backend``, or a
+    library caller) — the planner moves it to the front of a page's valid order,
+    and it enters the conversion-cache key so two requests for different
+    preferred backends never share a cached artifact.
+
+    ``engines`` overrides the probed external-engine set, so a caller can
+    restrict which engine-backed backends are eligible without re-probing the
+    host (``None`` keeps the probe's answer). ``backend_options`` are per-backend
+    constructor options spread into ``BackendConfig.options`` at dispatch (e.g.
+    ``{"mineru": {"effort": "high"}}``) and are part of the cache key.
     """
     if allow_ocr is None:
         allow_ocr = _ocr_possible(environment)
@@ -37,13 +44,14 @@ def constraints_from_environment(
         installed_extras=set(environment.installed_extras),
         vram_budget_gb=environment.vram_budget_gb,
         gpu_usable=environment.gpu_usable,
-        engines=environment.engines,
+        engines=environment.engines if engines is None else frozenset(engines),
         cached_assets=set(environment.cached_assets),
         max_passes=max_passes,
         allow_ocr=allow_ocr,
         offline=environment.offline,
         preference=preference,
         preferred_backend=preferred_backend,
+        backend_options=dict(backend_options or {}),
     )
 
 

@@ -90,6 +90,7 @@ def convert_source(
     allow_ocr: bool | None = None,
     preference: RoutingPreference = RoutingPreference.BALANCED,
     use_cache: bool = False,
+    backend_options: dict[str, dict[str, str | int | float | bool]] | None = None,
 ) -> DocumentResult:
     """Analyze, plan, and execute a source, returning the aggregated IR.
 
@@ -144,6 +145,7 @@ def convert_source(
         environment=environment,
         preference=preference,
         preferred_backend=preferred_backend,
+        backend_options=backend_options,
     )
     try:
         cache = ConversionCache() if use_cache else None
@@ -304,6 +306,7 @@ def build_constraints(
     environment: EnvironmentInfo | None = None,
     preference: RoutingPreference = RoutingPreference.BALANCED,
     preferred_backend: str | None = None,
+    backend_options: dict[str, dict[str, str | int | float | bool]] | None = None,
 ) -> RoutingConstraints:
     """Distill detected host facts plus plan inputs into routing constraints.
 
@@ -313,6 +316,8 @@ def build_constraints(
     moves it to the front of a page's valid order when it is eligible for
     that page, and it enters the conversion-cache key so two requests for
     different preferred backends never share a cached artifact.
+    ``backend_options`` are per-backend constructor options (``--backend-option``
+    on the CLI), spread into the backend's ``BackendConfig.options`` at dispatch.
     """
     return constraints_from_environment(
         environment if environment is not None else probe_environment(),
@@ -321,6 +326,7 @@ def build_constraints(
         max_passes=max_passes,
         preference=preference,
         preferred_backend=preferred_backend,
+        backend_options=backend_options,
     )
 
 

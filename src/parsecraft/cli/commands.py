@@ -149,6 +149,16 @@ def convert(
     max_passes: Annotated[int, typer.Option("--max-passes", min=1, help="Fallback passes per page group")] = 1,
     no_ocr: Annotated[bool, typer.Option("--no-ocr", help="Forbid OCR backends")] = False,
     use_cache: Annotated[bool, typer.Option("--cache/--no-cache", help="Reuse a content-addressed conversion cache")] = False,
+    backend_option: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--backend-option",
+            help=(
+                "Backend constructor option KEY=VALUE for the --backend backend (repeatable), "
+                "e.g. --backend mineru --backend-option effort=high"
+            ),
+        ),
+    ] = None,
     output: Annotated[
         Path | None,
         typer.Option("--output", "-o", dir_okay=False, help="Write the result to PATH (UTF-8) instead of stdout; the directory must already exist"),
@@ -159,6 +169,16 @@ def convert(
     if not auto and backend is None:
         typer.echo("error: --no-auto requires --backend", err=True)
         raise typer.Exit(code=2)
+    if backend_option and backend is None:
+        typer.echo("error: --backend-option requires --backend (it configures that backend)", err=True)
+        raise typer.Exit(code=2)
+    options: dict[str, dict[str, str | int | float | bool]] = {}
+    for raw in backend_option or []:
+        key, separator, value = raw.partition("=")
+        if not separator or not key:
+            typer.echo(f"error: --backend-option expects KEY=VALUE, got {raw!r}", err=True)
+            raise typer.Exit(code=2)
+        options.setdefault(backend or "", {})[key] = value
     if output is not None and not output.parent.is_dir():
         # Fail fast as a usage error: never spend minutes converting into a path that cannot be written.
         typer.echo(f"error: output directory does not exist: {output.parent} (create it first)", err=True)
@@ -174,6 +194,7 @@ def convert(
                 allow_ocr=False if no_ocr else None,
                 preference=preference,
                 use_cache=use_cache,
+                backend_options=options or None,
             )
     except ConvertError as exc:
         typer.echo(f"error: {exc}", err=True)

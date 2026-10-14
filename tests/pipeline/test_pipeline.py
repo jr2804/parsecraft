@@ -1178,3 +1178,43 @@ def test_cache_miss_on_changed_judge_cache_identity(monkeypatch: pytest.MonkeyPa
         judge=DeterministicJudge(RoutingPreference.QUALITY), produced_at=PRODUCED, cache=store,
     )
     assert len(calls) == 2  # different preference axes ⇒ different key ⇒ miss, not stale reuse
+
+def test_backend_options_reach_the_backend_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Per-backend options are spread into ``BackendConfig.options`` at dispatch."""
+    registry = make_registry(monkeypatch)
+    seen: list[BackendConfig] = []
+    descriptor = make_descriptor("native-a")
+    inner = _StubFactory(descriptor, echo_ok, [])
+
+    class _CapturingFactory:
+        descriptor = make_descriptor("native-a")
+
+        def __call__(self, config: BackendConfig) -> Any:
+            seen.append(config)
+            return inner(config)
+
+    registry.register("native-a", _CapturingFactory())
+    execute(
+        make_analysis(1),
+        registry,
+        make_constraints(backend_options={"native-a": {"effort": "high", "n": 3}}),
+        make_source(),
+        produced_at=PRODUCED,
+    )
+    assert seen, "the backend factory was never called"
+    assert seen[0].options["effort"] == "high"
+    assert seen[0].options["n"] == 3
+    assert seen[0].options["offline"] is True  # the pipeline's own key survives
+
+
+def test_cache_miss_on_changed_backend_options(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A different backend option is a different conversion: distinct cache keys."""
+    registry = make_registry(monkeypatch)
+    calls = add_stub(registry, make_descriptor("native-a"))
+    store = ConversionCache(root=tmp_path / "conversions")
+    source = make_source()
+
+    execute(make_analysis(1), registry, make_constraints(backend_options={"native-a": {"effort": "flash"}}), source, produced_at=PRODUCED, cache=store)
+    assert len(calls) == 1
+    execute(make_analysis(1), registry, make_constraints(backend_options={"native-a": {"effort": "high"}}), source, produced_at=PRODUCED, cache=store)
+    assert len(calls) == 2  # changed option ⇒ miss, never stale reuse
