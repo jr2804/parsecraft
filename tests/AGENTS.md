@@ -99,6 +99,13 @@ basenames may repeat across groups (`cli/test_config.py` vs
 
 ## Local Contracts
 
+- **Boundary code gets real-object tests.** Where a test exercises a seam that
+  talks to an outside engine (a backend adapter's handoff, a judge wire call, a
+  storage format), construct the outside object with the **library's own types**
+  guarded by `pytest.importorskip` — a stub proves the wiring, not the interface.
+  Never take a fixture's shape as the library's shape: a recorded CLI JSON dump
+  is not the in-memory object. `mise smoke` runs every opt-in CLI path against
+  the real engines as a second net (issue #7 shipped behind stub-only coverage).
 - New tests land in the group submodule matching their `src/parsecraft/`
   package as `test_<feature>.py`; only repo-wide invariants go to the
   `tests/` root. Group submodules are packages (`__init__.py`).

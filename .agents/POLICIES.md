@@ -140,6 +140,30 @@ canonical.
 Pre-commit hooks (`.pre-commit-config.yaml`) run a subset of the above on every
 commit. Run `pre-commit run --all-files` to check the whole tree.
 
+**Boundary code gets real-object tests, always.** A seam that talks to an outside
+engine (a backend adapter's handoff, a judge wire call, a storage format) must be
+exercised against the real object at least once — a stub proves the wiring, not
+the interface. The liteparse vector-graphics crash of 2026.10.7 shipped with
+100 % coverage on top of an untested seam: the suite built the parsed structure
+*after* the handoff, so the function that reads liteparse's real
+`VectorGraphics` dataclass never executed. Coverage counts lines; it says nothing
+about whether the lines match reality.
+
+Three rules that follow, all binding:
+
+1. **Never take a fixture's shape as the library's shape.** Recorded CLI JSON
+   dumps, published examples and stubs are *not* the object in memory — a JSON
+   dump and a dataclass are different interfaces. Construct the record with the
+   library's own types (guarded by `importorskip`) so an upstream change fails
+   in the suite, not in a consumer's conversion.
+2. **A new opt-in CLI path gets a real run before it ships.** `mise smoke`
+   converts a real document through every opt-in path with the real engines
+   (offline, base deps only, seconds). It is part of `mise all`, so a new path
+   that crashes against reality cannot reach a release.
+3. **Run it once yourself.** A hand-built `_ParsedPage`-style test object plus a
+   monkeypatched parse function is not evidence the path works — it is evidence
+   the code after it works.
+
 ## Response format
 
 Concise and specific. No filler, intros, or restated requirements.

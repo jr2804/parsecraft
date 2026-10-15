@@ -21,6 +21,10 @@ run = "uv run pytest -m judge --run-judge"
 description = "Network tier: tests marked `network` (real fetches — honest name, not riding corpus)"
 run = "uv run pytest -m network --run-downloads"
 
+[tasks.smoke]
+description = "Real-engine smoke: every opt-in CLI path, one run each (catches what stub tests cannot)"
+run = "uv run python scripts/smoke.py"
+
 [tasks.bench-docling]
 description = "Docling vs native-pdf measurement (on-demand, NOT part of the gate; full corpus may take hours)"
 run = "uv run --extra docling --extra pymupdf scripts/bench_docling.py .tmp/docling-bench/*.pdf"
@@ -29,6 +33,7 @@ run = "uv run --extra docling --extra pymupdf scripts/bench_docling.py .tmp/docl
 description = "Run all quality checks (format-check gates the tree; nothing rewrites it)"
 depends = [
   "format-check",
+    "smoke",
   "test",
   "typecheck",
   "lint",
