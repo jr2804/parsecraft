@@ -28,6 +28,49 @@ ROOT = Path(__file__).resolve().parent.parent
 _TIMEOUT_S = 180
 
 
+@dataclass(frozen=True, slots=True)
+class _Case:
+    """One opt-in CLI path: what the operator would type, and why it matters."""
+
+    label: str
+    args: tuple[str, ...]
+    why: str
+
+
+def main(argv: list[str]) -> int:
+    verbose = "--verbose" in argv
+    with tempfile.TemporaryDirectory(prefix="parsecraft-smoke-") as work_dir:
+        work = Path(work_dir)
+        pdf = work / "smoke.pdf"
+        pdf.write_bytes(_build_pdf())
+        print(f"smoke: real PDF {pdf.stat().st_size} bytes, {len(_cases(pdf))} paths\n")
+
+        failures: list[str] = []
+        for case in _cases(pdf):
+            output_file = work / f"{abs(hash(case.label))}.json"
+            code, text = _run(case.args, output_file)
+            # The rejection case MUST fail; every other case MUST succeed.
+            expected_failure = "unknown option value" in case.label
+            ok = code != 0 if expected_failure else code == 0
+            detail = "rejected loudly" if expected_failure and code != 0 else _report(output_file)
+            if expected_failure and code == 0:
+                detail = "ACCEPTED a bogus option value"
+            status = "ok  " if ok else "FAIL"
+            print(f"  [{status}] {case.label:<32} exit={code}  {detail}")
+            if verbose or not ok:
+                print(f"         why: {case.why}")
+                if not ok and text.strip():
+                    print("         " + text.strip().splitlines()[-1][:200])
+            if not ok:
+                failures.append(case.label)
+
+    if failures:
+        print(f"\nsmoke FAILED: {len(failures)} path(s): {', '.join(failures)}")
+        return 1
+    print("\nsmoke passed: every opt-in path ran against the real engines")
+    return 0
+
+
 def _build_pdf() -> bytes:
     """A real one-page PDF: a heading, a horizontal rule, a body line.
 
@@ -55,15 +98,6 @@ def _build_pdf() -> bytes:
         out += f"{offset:010d} 00000 n \n".encode()
     out += f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_at}\n%%EOF\n".encode()
     return bytes(out)
-
-
-@dataclass(frozen=True, slots=True)
-class _Case:
-    """One opt-in CLI path: what the operator would type, and why it matters."""
-
-    label: str
-    args: tuple[str, ...]
-    why: str
 
 
 def _cases(pdf: Path) -> list[_Case]:
@@ -128,40 +162,6 @@ def _report(output_file: Path) -> str:
             kinds[kind] = kinds.get(kind, 0) + 1
     census = ", ".join(f"{name}={count}" for name, count in sorted(kinds.items())) or "no blocks"
     return f"{len(pages)} page(s): {census}"
-
-
-def main(argv: list[str]) -> int:
-    verbose = "--verbose" in argv
-    with tempfile.TemporaryDirectory(prefix="parsecraft-smoke-") as work_dir:
-        work = Path(work_dir)
-        pdf = work / "smoke.pdf"
-        pdf.write_bytes(_build_pdf())
-        print(f"smoke: real PDF {pdf.stat().st_size} bytes, {len(_cases(pdf))} paths\n")
-
-        failures: list[str] = []
-        for case in _cases(pdf):
-            output_file = work / f"{abs(hash(case.label))}.json"
-            code, text = _run(case.args, output_file)
-            # The rejection case MUST fail; every other case MUST succeed.
-            expected_failure = "unknown option value" in case.label
-            ok = code != 0 if expected_failure else code == 0
-            detail = "rejected loudly" if expected_failure and code != 0 else _report(output_file)
-            if expected_failure and code == 0:
-                detail = "ACCEPTED a bogus option value"
-            status = "ok  " if ok else "FAIL"
-            print(f"  [{status}] {case.label:<32} exit={code}  {detail}")
-            if verbose or not ok:
-                print(f"         why: {case.why}")
-                if not ok and text.strip():
-                    print("         " + text.strip().splitlines()[-1][:200])
-            if not ok:
-                failures.append(case.label)
-
-    if failures:
-        print(f"\nsmoke FAILED: {len(failures)} path(s): {', '.join(failures)}")
-        return 1
-    print("\nsmoke passed: every opt-in path ran against the real engines")
-    return 0
 
 
 if __name__ == "__main__":
