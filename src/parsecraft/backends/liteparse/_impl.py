@@ -17,14 +17,17 @@ Design notes:
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from time import monotonic
+from types import SimpleNamespace
+from typing import Any
 
 from liteparse import LiteParse
 
 from parsecraft.backends.errors import BackendError
 from parsecraft.backends.liteparse._items import TextItemLike, chunks_for_page
+from parsecraft.backends.liteparse._tables import detect_table_regions
 from parsecraft.backends.liteparse.liteparse import DESCRIPTOR, LITEPARSE_BACKEND_VERSION
 from parsecraft.backends.protocol import (
     AnalysisResult,
@@ -86,11 +89,14 @@ def _coerce_option(value: str | int | float | bool) -> str | int | float | bool:
 
 @dataclass(slots=True)
 class _ParsedPage:
-    """One parsed page: its rendered text, its positioned items, its height."""
+    """One parsed page: its rendered text, positioned items, geometry, vector graphics."""
 
     text: str
     items: list[TextItemLike]
     height: float
+    width: float = 0.0
+    lines: list[Any] = field(default_factory=list)
+    shapes: list[Any] = field(default_factory=list)
 
 
 class LiteparseBackend:
@@ -108,6 +114,9 @@ class LiteparseBackend:
         #: detection (a header repeats verbatim; markdown rendering strips them,
         #: the item list does not). One convert() call threads it across pages.
         self._seen_texts: set[str] = set()
+
+    def _has_vector_graphics(self) -> bool:
+        return bool(self._option_kwargs.get("extract_vector_graphics"))
 
     def _make_parser(self, **overrides: str | int | float | bool) -> LiteParse:
         """A parser carrying the caller's format options plus this call's overrides."""
@@ -192,6 +201,15 @@ class LiteparseBackend:
                 if parsed.items
                 else _fallback_chunks(number, parsed.text)
             )
+            if self._has_vector_graphics():
+                blocks = _append_table_chunks(
+                    blocks,
+                    number=number,
+                    lines=parsed.lines,
+                    items=parsed.items,
+                    page_width=parsed.width,
+                    page_height=parsed.height,
+                )
             used_chars += sum(len(block.content) for block in blocks)
             if request.max_output_chars is not None and used_chars > request.max_output_chars:
                 failures.append(
@@ -240,19 +258,68 @@ def create(config: BackendConfig) -> DocumentBackend:
 
 
 def _parse_page(data: bytes, page_number: int, **overrides: str | int | float | bool) -> _ParsedPage:
-    """One page's rendered text plus its positioned items (both may be absent)."""
+    """One page's rendered text plus its items and vector graphics (the latter only when the caller opted in)."""
     result = _parser(target_pages=str(page_number), **overrides).parse(data)
     if not result.pages:
         msg = f"liteparse returned no content for page {page_number}"
         raise RuntimeError(msg)
     page = result.pages[0]
     rendered = page.markdown or page.text or ""
-    if not isinstance(rendered, str):  # defensive: wire fields are str | None
+    if not isinstance(rendered, str):
         msg = f"unexpected page content type: {type(rendered).__name__}"
         raise TypeError(msg)
     items = [item for item in (getattr(page, "text_items", None) or []) if str(getattr(item, "text", "") or "")]
     height = getattr(page, "height", 0.0)
-    return _ParsedPage(text=rendered, items=items, height=float(height) if isinstance(height, int | float) else 0.0)
+    width = getattr(page, "width", 0.0)
+    lines, shapes = _vector_graphics(page)
+    return _ParsedPage(
+        text=rendered,
+        items=items,
+        height=float(height) if isinstance(height, int | float) else 0.0,
+        width=float(width) if isinstance(width, int | float) else 0.0,
+        lines=lines,
+        shapes=shapes,
+    )
+
+
+def _vector_graphics(page: object) -> tuple[list[object], list[object]]:
+    """Read the liteparse vector-graphics record into a ``(lines, shapes)`` pair."""
+    raw = getattr(page, "vector_graphics", None) or {}
+    lines = [SimpleNamespace(**line) for line in (raw.get("lines") or [])]
+    shapes = list(raw.get("shapes") or [])
+    return lines, shapes
+
+
+def _append_table_chunks(
+    blocks: list[StructuredChunk],
+    *,
+    number: int,
+    lines: list[object],
+    items: list[object],
+    page_width: float,
+    page_height: float,
+) -> list[StructuredChunk]:
+    """Append one ``ChunkKind.TABLE`` per surviving table region to the page's blocks."""
+    if not lines or page_width <= 0:
+        return blocks
+    regions = detect_table_regions(lines, items, page_width=page_width)
+    next_index = len(blocks)
+    for _y_bounds, rows in regions:
+        if not any(cell.strip() for row in rows for cell in row):
+            continue
+        blocks.append(
+            StructuredChunk(
+                id=f"liteparse-p{number}-b{next_index}",
+                kind=ChunkKind.TABLE,
+                content="",
+                page_number=number,
+                reading_order=next_index,
+                metadata={"backend": "liteparse", "rows": [list(row) for row in rows]},
+            )
+        )
+        next_index += 1
+    _ = page_height  # reserved for future position-aware insertion
+    return blocks
 
 
 def _parser(**overrides: object) -> LiteParse:
