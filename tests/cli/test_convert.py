@@ -996,8 +996,16 @@ def test_convert_backend_option_requires_a_backend(tmp_path: Path, registry: Bac
     assert "--backend-option requires --backend" in _text(result)
 
 
-def _text(result: Result) -> str:
-    return f"{result.output}{result.stderr or ''}"
+def test_convert_backend_option_reaches_the_backend(tmp_path: Path, registry: BackendRegistry) -> None:
+    """``--backend-option KEY=VALUE`` is parsed and threaded (and needs ``--backend``)."""
+    _register(registry, _descriptor("native-text", ("text/plain",)))
+    source = _source_file(tmp_path)
+    ok = runner.invoke(app, ["convert", str(source), "--backend", "native-text", "--backend-option", "effort=high"])
+    assert ok.exit_code == 0
+
+    malformed = runner.invoke(app, ["convert", str(source), "--backend", "native-text", "--backend-option", "nonsense"])
+    assert malformed.exit_code == 2
+    assert "--backend-option expects KEY=VALUE" in _text(malformed)
 
 
 def _descriptor(
@@ -1063,3 +1071,14 @@ def _source_file(tmp_path: Path, name: str = "doc.txt", text: str = _LONG_TEXT) 
     path = tmp_path / name
     path.write_text(text, encoding="utf-8")
     return path
+
+
+def test_cache_command_rejects_an_unknown_action() -> None:
+    """`cache clear` is the only positional action; anything else is a usage error."""
+    result = runner.invoke(app, ["cache", "bogus"])
+    assert result.exit_code == 2
+    assert "unknown cache action" in _text(result)
+
+
+def _text(result: Result) -> str:
+    return f"{result.output}{result.stderr or ''}"

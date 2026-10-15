@@ -305,12 +305,13 @@ def cache(
     `cache clear` (positional) is an ergonomic alias for `cache --clear`.
     """
     store = ConversionCache()
+    if action is not None and action != "clear":
+        typer.echo(f"error: unknown cache action {action!r}: only `clear` is supported", err=True)
+        raise typer.Exit(code=_USAGE_EXIT_CODE)
     if action == "clear" or clear:
         removed = store.clear()
         typer.echo(f"removed {removed} conversion cache entries from {store.root}")
         return
-    if action is not None:
-        raise ConvertError(f"unknown cache action {action!r}: only `clear` is supported", exit_code=_USAGE_EXIT_CODE)
     entries = store.entries()
     if as_json:
         payload = {

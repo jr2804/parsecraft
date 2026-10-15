@@ -314,7 +314,10 @@ def _append_table_chunks(
                 content="",
                 page_number=number,
                 reading_order=next_index,
-                metadata={"backend": "liteparse", "rows": [list(row) for row in rows]},
+                metadata={"backend": "liteparse"},
+                # The IR documents rows as tuple-of-tuples; consumers convert
+                # (kompend's TABLE element takes list[list[str]]).
+                rows=tuple(tuple(cell for cell in row) for row in rows),
             )
         )
         next_index += 1

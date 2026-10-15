@@ -11,6 +11,7 @@ import pytest
 
 from parsecraft.backends.liteparse._tables import (
     MECHANISM_COUNTS_10_PAGE,
+    _columns_in_band,
     _horizontal_rules,
     detect_table_regions,
 )
@@ -63,14 +64,6 @@ def test_two_or_more_columns_yields_rows() -> None:
     assert rows[1][1] == "right-bot"
 
 
-def _line(x1: float, y1: float, x2: float, y2: float, *, stroke: bool = True) -> Any:
-    return SimpleNamespace(x1=x1, y1=y1, x2=x2, y2=y2, stroke=stroke, fill=False)
-
-
-def _text(x: float, y: float, text: str, *, width: float = 30.0) -> Any:
-    return SimpleNamespace(x=x, y=y, text=text, width=width)
-
-
 # ── fixture acceptance: the recorded 10-page slice ───────────────────────────
 
 
@@ -121,8 +114,8 @@ def test_mechanism_counts_on_the_recorded_10_page_slice() -> None:
     assert two_or_more_column == MECHANISM_COUNTS_10_PAGE["two_or_more_column_regions"]
 
 
-def _columns_in_band(items: list[Any], y0: float, y1: float) -> int:
-    """Mirror of `_tables._columns_in_band`; duplicated here to keep the test local."""
+def _columns_in_band_mirror(items: list[Any], y0: float, y1: float) -> int:
+    """Mirror of `_tables._columns_in_band`; kept as a cross-check of the module's own."""
     centres: list[float] = []
     for it in items:
         y = float(it.y)
@@ -136,3 +129,61 @@ def _columns_in_band(items: list[Any], y0: float, y1: float) -> int:
         if b - a > 20.0:
             cols += 1
     return cols
+
+
+def test_degenerate_inputs_are_tolerated() -> None:
+    """No rules, no text, vertical-only lines: every degenerate case returns empty."""
+    assert detect_table_regions([], [], page_width=100) == []
+    vertical = SimpleNamespace(x1=10.0, y1=0.0, x2=10.0, y2=100.0, stroke=True, fill=False)
+    assert _horizontal_rules([vertical]) == []
+    assert _columns_in_band([], 0.0, 100.0) == 0
+
+
+def test_nearby_baselines_merge_into_one_band_and_one_row() -> None:
+    lines = [_line(0, 100, 200, 100), _line(0, 200, 200, 200)]
+    assert len(_horizontal_rules(lines)) == 2
+    near = [_line(0, 100, 200, 100), _line(0, 100.5, 200, 100.5)]
+    assert len(_horizontal_rules(near)) == 1
+
+    # Two text baselines within the tolerance are one row, not two.
+    items = [_text(20, 130, "a"), _text(120, 130, "b"), _text(20, 131, "c"), _text(120, 131, "d")]
+    regions = detect_table_regions(lines, items, page_width=200)
+    assert len(regions) == 1
+    assert len(regions[0][1]) == 1
+
+
+def test_a_region_with_no_cell_text_is_not_a_table() -> None:
+    """Columns exist by geometry but no cell has text: nothing is emitted."""
+    lines = [_line(0, 100, 200, 100), _line(0, 200, 200, 200)]
+    items = [_text(20, 130, ""), _text(120, 130, ""), _text(20, 180, ""), _text(120, 180, "")]
+    assert detect_table_regions(lines, items, page_width=200) == []
+
+
+def test_a_single_column_region_among_multi_column_ones_is_skipped() -> None:
+    """TOC suppression does not fire (share < 0.5), so the one-column region is skipped."""
+    lines = [_line(0, y, 200, y) for y in (100, 200, 300, 400)]
+    items = [
+        _text(20, 130, "a"),
+        _text(120, 130, "b"),  # region (100,200): two columns
+        _text(20, 230, "solo"),  # region (200,300): one column
+        _text(20, 330, "c"),
+        _text(120, 330, "d"),  # region (300,400): two columns
+    ]
+    regions = detect_table_regions(lines, items, page_width=200)
+    assert len(regions) == 2
+
+
+def test_an_item_between_the_rule_and_the_row_band_is_left_out_of_the_columns() -> None:
+    """An item inside the rule pair but within the rule tolerance is not a column."""
+    lines = [_line(0, 100, 200, 100), _line(0, 200, 200, 200)]
+    items = [_text(20, 101, "edge"), _text(20, 130, "a"), _text(120, 130, "b")]
+    regions = detect_table_regions(lines, items, page_width=200)
+    assert len(regions) == 1
+
+
+def _line(x1: float, y1: float, x2: float, y2: float, *, stroke: bool = True) -> Any:
+    return SimpleNamespace(x1=x1, y1=y1, x2=x2, y2=y2, stroke=stroke, fill=False)
+
+
+def _text(x: float, y: float, text: str, *, width: float = 30.0) -> Any:
+    return SimpleNamespace(x=x, y=y, text=text, width=width)

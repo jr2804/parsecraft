@@ -11,6 +11,8 @@ import importlib
 import sys
 import time
 from collections.abc import Callable, Iterator
+from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
@@ -24,7 +26,7 @@ from parsecraft.backends.protocol import (
     DocumentBackend,
     SourceDocument,
 )
-from parsecraft.ir.models import FailureCode, PageRange, PassKind
+from parsecraft.ir.models import ChunkKind, FailureCode, PageRange, PassKind
 from tests.fixtures.documents import document_bytes
 
 _PDF_BYTES = document_bytes("pdf")
@@ -106,6 +108,14 @@ class _LiteparseStub:
 
     def LiteParse(self, **kwargs: object) -> _ParserInstance:  # noqa: N802 — mirrors the package API
         return _ParserInstance(self, kwargs)
+
+
+class _OnePageParser:
+    """A parser whose ``is_complex`` reports one text page (convert needs a page count)."""
+
+    @staticmethod
+    def is_complex(_data: bytes) -> list[object]:
+        return [SimpleNamespace(page_number=1, text_length=10, needs_ocr=False, image_block_count=0, is_garbled=False)]
 
 
 # ── Light factory / descriptor (no heavy import anywhere) ────────────────────────
@@ -370,3 +380,92 @@ def liteparse_stub(monkeypatch: pytest.MonkeyPatch) -> Iterator[_LiteparseStub]:
 
 def _backend(config: BackendConfig | None = None) -> DocumentBackend:
     return liteparse_module.factory(config or BackendConfig(name="liteparse"))
+
+
+def test_option_coercion_accepts_cli_strings() -> None:
+    """``--backend-option`` sends strings; LiteParse wants real bools/ints/strings.
+
+    The impl is fetched here, not imported at module level: it imports the real
+    ``liteparse``, and the offline guard asserts tests collect without it.
+    """
+    impl = importlib.import_module("parsecraft.backends.liteparse._impl")
+    assert impl._coerce_option("true") is True
+    assert impl._coerce_option(" On ") is True
+    assert impl._coerce_option("OFF") is False
+    assert impl._coerce_option("no") is False
+    assert impl._coerce_option("3") == 3
+    assert impl._coerce_option("xhigh") == "xhigh"
+    assert impl._coerce_option(5) == 5
+
+
+def test_append_table_chunks_needs_rules_and_a_page_width() -> None:
+    """The table pass is a no-op without rules, or with no page width to span."""
+    impl = importlib.import_module("parsecraft.backends.liteparse._impl")
+    lines = [_table_line(0, 100, 200, 100), _table_line(0, 200, 200, 200)]
+    items = [_table_text(20, 130, "a"), _table_text(120, 130, "b")]
+    assert impl._append_table_chunks([], number=1, lines=[], items=items, page_width=200, page_height=800) == []
+    assert impl._append_table_chunks([], number=1, lines=lines, items=items, page_width=0, page_height=800) == []
+
+    blocks = impl._append_table_chunks([], number=2, lines=lines, items=items, page_width=200, page_height=800)
+    assert len(blocks) == 1
+    assert blocks[0].kind is ChunkKind.TABLE
+    assert blocks[0].page_number == 2
+    assert blocks[0].reading_order == 0
+    assert blocks[0].metadata["backend"] == "liteparse"
+    assert blocks[0].rows == (("a", "b"),)
+
+
+def test_vector_graphics_options_reach_the_parser_and_the_convert_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``extract_vector_graphics=true`` turns the table pass on and a table reaches the IR."""
+    impl = importlib.import_module("parsecraft.backends.liteparse._impl")
+    backend = cast(Any, impl.create(BackendConfig(name="liteparse", options={"extract_vector_graphics": "true"})))
+    assert backend._has_vector_graphics() is True
+    assert backend._make_parser() is not None  # carries the configured option
+
+    parsed = impl._ParsedPage(
+        text="body text",
+        items=[
+            SimpleNamespace(text="a", x=20.0, y=130.0, width=30.0, font_name="Times", font_size=10.0, font_weight=400),
+            SimpleNamespace(text="b", x=120.0, y=130.0, width=30.0, font_name="Times", font_size=10.0, font_weight=400),
+        ],
+        height=800.0,
+        width=200.0,
+        lines=[_table_line(0, 100, 200, 100), _table_line(0, 200, 200, 200)],
+        shapes=[],
+    )
+    monkeypatch.setattr(impl, "_parse_page", lambda *_a, **_k: parsed)
+    monkeypatch.setattr(impl, "_parser", lambda **_k: _OnePageParser())
+
+    result = backend.convert(ConversionRequest(source=_PDF_SOURCE))
+    kinds = [block.kind for page in result.pages for block in page.blocks]
+    assert ChunkKind.TABLE in kinds
+
+
+def _table_text(x: float, y: float, text: str) -> object:
+    return SimpleNamespace(text=text, x=x, y=y, width=30.0, font_name="Times", font_size=10.0, font_weight=400)
+
+
+def test_append_table_chunks_skips_an_empty_region(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Defensive guard: a region whose cells carry no text is not emitted.
+
+    The detector itself drops these, so the guard is exercised by stubbing the
+    detector — it protects the adapter if a future detector returns a region with
+    blank cells.
+    """
+    impl = importlib.import_module("parsecraft.backends.liteparse._impl")
+    monkeypatch.setattr(impl, "detect_table_regions", lambda *_a, **_k: [((100.0, 200.0), (("", ""),))])
+    out = impl._append_table_chunks(
+        [],
+        number=1,
+        lines=[_table_line(0, 100, 200, 100)],
+        items=[],
+        page_width=200.0,
+        page_height=800.0,
+    )
+    assert out == []
+
+
+def _table_line(x1: float, y1: float, x2: float, y2: float) -> object:
+    return SimpleNamespace(x1=x1, y1=y1, x2=x2, y2=y2, stroke=True, fill=False)

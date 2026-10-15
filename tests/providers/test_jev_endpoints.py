@@ -227,3 +227,12 @@ def test_live_zen_ranks_real_candidates() -> None:
     order = list(judge.rank(Intent.OCR_GENERAL, candidates))
     assert sorted(order) == sorted(descriptor.name for descriptor in candidates)
     assert len(order) == len(set(order))
+
+
+def test_judge_cache_identity_names_the_model_and_never_the_key() -> None:
+    """A judge's cache slice carries endpoint + model + axis so two specs differ."""
+    judge = cast(_jev.JevJudge, ollama.load_judge(JudgeSpec(provider="ollama", model="nimble")))
+    identity = judge.cache_identity()
+    assert "model=nimble" in identity
+    other = cast(_jev.JevJudge, ollama.load_judge(JudgeSpec(provider="ollama", model="nimble-x")))
+    assert identity != other.cache_identity()

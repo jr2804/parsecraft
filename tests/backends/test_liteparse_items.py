@@ -10,14 +10,17 @@ from typing import Any
 import pytest
 
 from parsecraft.backends.liteparse._items import (
+    _level_for,
+    _Line,
+    _number,
     chunks_for_page,
     classify_lines,
     lines_of,
 )
 from parsecraft.ir.models import ChunkKind
 
-#: Recorded `lit parse --extract-text-metadata` dumps, if the consumer staged them.
-_FIXTURES = Path("tmp/liteparse-fixtures")
+#: Recorded fixtures (liteparse 2.16.0; provenance in the fixture README).
+_FIXTURES = Path("tests/backends/fixtures/liteparse")
 
 
 def test_same_baseline_items_merge_into_one_line() -> None:
@@ -102,7 +105,7 @@ def test_the_mapping_is_deterministic() -> None:
     assert first == second
 
 
-@pytest.mark.skipif(not (_FIXTURES / "p863_rec_p1-10.items.json").exists(), reason="consumer fixtures not staged")
+@pytest.mark.skipif(not (_FIXTURES / "items.json").exists(), reason="recorded fixture not present in this checkout")
 def test_the_recorded_10_page_slice_reproduces_the_measured_counts() -> None:
     """Acceptance against the recorded dump: 435 items → 265 lines → 26 headings.
 
@@ -110,7 +113,7 @@ def test_the_recorded_10_page_slice_reproduces_the_measured_counts() -> None:
     liteparse 2.16.0 on the polqa-re host; it is staged under a gitignored path,
     so this test skips where it is absent.
     """
-    document = json.loads((_FIXTURES / "p863_rec_p1-10.items.json").read_text(encoding="utf-8"))
+    document = json.loads((_FIXTURES / "items.json").read_text(encoding="utf-8"))
     pages = document.get("pages") or []
     total_items = 0
     total_lines = 0
@@ -155,3 +158,19 @@ def item(text: str, *, x: float = 0.0, y: float = 0.0, size: float = 10.0, bold:
         font_size=size,
         font_weight=700 if bold else 400,
     )
+
+
+def test_wire_values_are_tolerated() -> None:
+    """Non-numeric geometry defaults; empty-text items contribute no chunk."""
+    assert _number(None) == 0.0
+    assert _number(True) == 0.0  # a bool is not geometry
+    assert _number("42") == 0.0  # a string is not geometry
+    assert _number(3.5) == 3.5
+    blank = SimpleNamespace(text="", x=0.0, y=0.0, font_name="Times", font_size=0.0, font_weight=400)
+    assert chunks_for_page([blank], page_number=1) == []
+
+
+def test_no_body_lines_leaves_bold_text_at_level_four() -> None:
+    """``body_size <= 0`` (every line bold) still classifies, as h4."""
+    line = _Line(y=10.0, size=12.0, bold=True, text="Bold heading")
+    assert _level_for(line, 0.0) == 4
