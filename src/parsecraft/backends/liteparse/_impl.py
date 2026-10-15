@@ -17,12 +17,14 @@ Design notes:
 from __future__ import annotations
 
 import hashlib
+from dataclasses import dataclass
 from pathlib import Path
 from time import monotonic
 
 from liteparse import LiteParse
 
 from parsecraft.backends.errors import BackendError
+from parsecraft.backends.liteparse._items import TextItemLike, chunks_for_page
 from parsecraft.backends.liteparse.liteparse import DESCRIPTOR, LITEPARSE_BACKEND_VERSION
 from parsecraft.backends.protocol import (
     AnalysisResult,
@@ -53,6 +55,43 @@ _PARSER_KWARGS: dict[str, object] = {
     "output_format": "markdown",
 }
 
+#: LiteParse constructor keywords a caller may set through ``BackendConfig.options``
+#: (``--backend-option extract_vector_graphics=true`` and friends). Only these are
+#: forwarded: the rest of the constructor surface is not ours to expose.
+_FORMAT_OPTION_KEYS: tuple[str, ...] = (
+    "extract_text_metadata",
+    "extract_vector_graphics",
+    "extract_blocks",
+    "extract_images",
+    "image_mode",
+    "keep_headers_footers",
+    "preserve_small_text",
+)
+
+
+def _coerce_option(value: str | int | float | bool) -> str | int | float | bool:
+    """Config options arrive as strings from the CLI: give LiteParse real values."""
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in ("true", "yes", "on"):
+            return True
+        if lowered in ("false", "no", "off"):
+            return False
+        try:
+            return int(value)
+        except ValueError:
+            return value
+    return value
+
+
+@dataclass(slots=True)
+class _ParsedPage:
+    """One parsed page: its rendered text, its positioned items, its height."""
+
+    text: str
+    items: list[TextItemLike]
+    height: float
+
 
 class LiteparseBackend:
     """Instantiated LiteParse backend: cheap ``is_complex`` analyze + paged convert."""
@@ -62,6 +101,17 @@ class LiteparseBackend:
 
     def __init__(self, config: BackendConfig) -> None:
         self._config = config
+        self._option_kwargs: dict[str, str | int | float | bool] = {
+            key: _coerce_option(config.options[key]) for key in _FORMAT_OPTION_KEYS if key in config.options
+        }
+        #: Texts emitted on earlier pages of this document, for running-header
+        #: detection (a header repeats verbatim; markdown rendering strips them,
+        #: the item list does not). One convert() call threads it across pages.
+        self._seen_texts: set[str] = set()
+
+    def _make_parser(self, **overrides: str | int | float | bool) -> LiteParse:
+        """A parser carrying the caller's format options plus this call's overrides."""
+        return _parser(**{**self._option_kwargs, **overrides})
 
     def convert(self, request: ConversionRequest) -> BackendResult:
         """Bound-checked, per-page conversion into typed IR (never raises per page)."""
@@ -125,7 +175,7 @@ class LiteparseBackend:
                 )
                 break
             try:
-                content = _parse_page(data, number)
+                parsed = _parse_page(data, number, **self._option_kwargs)
             except Exception as exc:  # per-page failures are data, never raised
                 failures.append(
                     _failure(
@@ -137,7 +187,12 @@ class LiteparseBackend:
                     )
                 )
                 continue
-            used_chars += len(content)
+            blocks = (
+                chunks_for_page(parsed.items, page_number=number, page_height=parsed.height, seen_texts=self._seen_texts)
+                if parsed.items
+                else _fallback_chunks(number, parsed.text)
+            )
+            used_chars += sum(len(block.content) for block in blocks)
             if request.max_output_chars is not None and used_chars > request.max_output_chars:
                 failures.append(
                     _failure(
@@ -149,7 +204,7 @@ class LiteparseBackend:
                     )
                 )
                 break
-            kept.append(_page_result(number, content))
+            kept.append(PageResult(page_number=number, blocks=blocks))
         return _result(reference, kept, failures, started)
 
     @staticmethod
@@ -184,9 +239,9 @@ def create(config: BackendConfig) -> DocumentBackend:
     return LiteparseBackend(config)
 
 
-def _parse_page(data: bytes, page_number: int) -> str:
-    """Markdown text of exactly one page (falls back to the plain text field)."""
-    result = _parser(target_pages=str(page_number)).parse(data)
+def _parse_page(data: bytes, page_number: int, **overrides: str | int | float | bool) -> _ParsedPage:
+    """One page's rendered text plus its positioned items (both may be absent)."""
+    result = _parser(target_pages=str(page_number), **overrides).parse(data)
     if not result.pages:
         msg = f"liteparse returned no content for page {page_number}"
         raise RuntimeError(msg)
@@ -195,7 +250,9 @@ def _parse_page(data: bytes, page_number: int) -> str:
     if not isinstance(rendered, str):  # defensive: wire fields are str | None
         msg = f"unexpected page content type: {type(rendered).__name__}"
         raise TypeError(msg)
-    return rendered
+    items = [item for item in (getattr(page, "text_items", None) or []) if str(getattr(item, "text", "") or "")]
+    height = getattr(page, "height", 0.0)
+    return _ParsedPage(text=rendered, items=items, height=float(height) if isinstance(height, int | float) else 0.0)
 
 
 def _parser(**overrides: object) -> LiteParse:
@@ -203,21 +260,18 @@ def _parser(**overrides: object) -> LiteParse:
     return LiteParse(**{**_PARSER_KWARGS, **overrides})
 
 
-def _page_result(page_number: int, content: str) -> PageResult:
-    """One converted page: a single paragraph chunk, ids globally unique."""
-    return PageResult(
-        page_number=page_number,
-        blocks=[
-            StructuredChunk(
-                id=f"liteparse-p{page_number}-b0",
-                kind=ChunkKind.PARAGRAPH,
-                content=content,
-                page_number=page_number,
-                reading_order=0,
-                metadata={"backend": "liteparse"},
-            )
-        ],
-    )
+def _fallback_chunks(page_number: int, content: str) -> list[StructuredChunk]:
+    """The blob mapping: one paragraph per page, for pages without item data."""
+    return [
+        StructuredChunk(
+            id=f"liteparse-p{page_number}-b0",
+            kind=ChunkKind.PARAGRAPH,
+            content=content,
+            page_number=page_number,
+            reading_order=0,
+            metadata={"backend": "liteparse"},
+        )
+    ]
 
 
 def _resolve_window(page_range: PageRange | None, page_count: int) -> tuple[int, int] | None:
