@@ -673,6 +673,21 @@ def test_constraints_reject_invalid_plan_inputs() -> None:
         constraints_from_environment(_environment(), max_passes=0)
 
 
+def test_constraints_engines_override_and_backend_options() -> None:
+    """``engines=`` overrides the probed set without re-probing; ``backend_options``
+    reach the constraints (and therefore the cache key) verbatim.
+    """
+    derived = constraints_from_environment(_environment())
+    assert derived.engines == frozenset({"tesseract"})  # the probe's answer
+
+    restricted = constraints_from_environment(_environment(), engines=())
+    assert restricted.engines == frozenset()  # caller restriction wins
+
+    with_options = constraints_from_environment(_environment(), backend_options={"mineru": {"effort": "high", "parse_mode": "auto"}})
+    assert with_options.backend_options == {"mineru": {"effort": "high", "parse_mode": "auto"}}
+    assert constraints_from_environment(_environment()).backend_options == {}
+
+
 # ── Bridge into RoutingConstraints ──────────────────────────────────────────────
 
 
@@ -686,19 +701,3 @@ def _environment(**overrides: object) -> EnvironmentInfo:
     }
     base.update(overrides)
     return EnvironmentInfo.model_validate(base)
-
-def test_constraints_engines_override_and_backend_options() -> None:
-    """``engines=`` overrides the probed set without re-probing; ``backend_options``
-    reach the constraints (and therefore the cache key) verbatim.
-    """
-    derived = constraints_from_environment(_environment())
-    assert derived.engines == frozenset({"tesseract"})  # the probe's answer
-
-    restricted = constraints_from_environment(_environment(), engines=())
-    assert restricted.engines == frozenset()  # caller restriction wins
-
-    with_options = constraints_from_environment(
-        _environment(), backend_options={"mineru": {"effort": "high", "parse_mode": "auto"}}
-    )
-    assert with_options.backend_options == {"mineru": {"effort": "high", "parse_mode": "auto"}}
-    assert constraints_from_environment(_environment()).backend_options == {}

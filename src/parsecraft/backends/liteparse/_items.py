@@ -57,17 +57,6 @@ _TOC_LEADER = re.compile(r"\.{3,}|…")
 _WHITESPACE = re.compile(r"\s+")
 
 
-class TextItemLike(Protocol):
-    """The slice of one LiteParse ``TextItem`` the mapping reads."""
-
-    text: str | None
-    x: float | None
-    y: float | None
-    font_name: str | None
-    font_size: float | None
-    font_weight: int | None
-
-
 @dataclass(slots=True)
 class _Line:
     """One baseline's worth of items, with the font that dominates it."""
@@ -80,97 +69,15 @@ class _Line:
     parts: list[TextItemLike] = field(default_factory=list)
 
 
-def _number(value: object, default: float = 0.0) -> float:
-    """Coerce a wire value to float; liteparse sends ``None`` for unknown geometry."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return default
-    return float(value)
+class TextItemLike(Protocol):
+    """The slice of one LiteParse ``TextItem`` the mapping reads."""
 
-
-def _is_bold(item: TextItemLike) -> bool:
-    """``font_weight`` when the wire carries it, else a ``Bold`` font-name suffix.
-
-    The CLI's JSON dump omits ``font_weight`` (the Python object has it), so the
-    weight is read optionally and the font name is the fallback.
-    """
-    weight = getattr(item, "font_weight", None)
-    if isinstance(weight, int) and not isinstance(weight, bool):
-        return weight >= BOLD_WEIGHT
-    return "bold" in (getattr(item, "font_name", None) or "").lower()
-
-
-def _is_toc_entry(text: str) -> bool:
-    """A dot leader means a contents entry: it must not become a heading."""
-    return bool(_TOC_LEADER.search(text))
-
-
-def lines_of(items: Iterable[TextItemLike]) -> list[_Line]:
-    """Merge items sharing a baseline into lines, keeping each line's dominant font.
-
-    Items are ordered top-down, left-right; an item joins the current line when
-    its baseline is within :data:`ITEM_Y_TOLERANCE`, and the largest font on the
-    line decides its size and boldness (display headings are the tall runs).
-    """
-    ordered = sorted(items, key=lambda item: (_number(item.y), _number(item.x)))
-    lines: list[_Line] = []
-    for item in ordered:
-        y = _number(item.y)
-        size = _number(item.font_size)
-        bold = _is_bold(item)
-        if lines and abs(y - lines[-1].y) <= ITEM_Y_TOLERANCE:
-            current = lines[-1]
-            current.parts.append(item)
-            current.y = (current.y + y) / 2
-            if size > current.size:
-                current.size = size
-                current.bold = bold
-            continue
-        lines.append(_Line(y=y, size=size, bold=bold, parts=[item]))
-    for line in lines:
-        ordered_parts = sorted(line.parts, key=lambda item: _number(item.x))
-        line.text = _WHITESPACE.sub(" ", " ".join(str(item.text or "") for item in ordered_parts)).strip()
-    return lines
-
-
-def _body_size(lines: Sequence[_Line]) -> float:
-    """The page's body size: the most common size among its non-bold lines."""
-    sizes = [round(line.size, 1) for line in lines if not line.bold and line.size > 0]
-    if not sizes:
-        return 0.0
-    return statistics.mode(sizes)
-
-
-def _level_for(line: _Line, body_size: float) -> int:
-    """``0`` for body text, ``1``..``4`` for headings (relative to the body size)."""
-    if not line.bold or _is_toc_entry(line.text):
-        return 0
-    if body_size <= 0:
-        return 4
-    ratio = line.size / body_size
-    for level, threshold in enumerate(HEADING_RATIOS, start=1):
-        if ratio >= threshold:
-            return level
-    return 4
-
-
-def classify_lines(lines: Sequence[_Line]) -> list[_Line]:
-    """Assign each line its heading level in place (page-relative thresholds)."""
-    body_size = _body_size(lines)
-    for line in lines:
-        line.level = _level_for(line, body_size)
-    return list(lines)
-
-
-def _paragraph_text(lines: Sequence[_Line]) -> str:
-    return " ".join(line.text for line in lines)
-
-
-def _is_running_header(line: _Line, page_height: float, seen: set[str]) -> bool:
-    """A line repeated from an earlier page inside the top/bottom margin band."""
-    if line.text not in seen or page_height <= 0:
-        return False
-    band = page_height * HEADER_BAND
-    return line.y <= band or line.y >= page_height - band
+    text: str | None
+    x: float | None
+    y: float | None
+    font_name: str | None
+    font_size: float | None
+    font_weight: int | None
 
 
 def chunks_for_page(
@@ -208,9 +115,7 @@ def chunks_for_page(
         nonlocal index, pending
         if not pending:
             return
-        chunks.append(
-            _chunk(page_number, index, ChunkKind.PARAGRAPH, _paragraph_text(pending), reading_order=index)
-        )
+        chunks.append(_chunk(page_number, index, ChunkKind.PARAGRAPH, _paragraph_text(pending), reading_order=index))
         index += 1
         pending = []
 
@@ -238,6 +143,99 @@ def chunks_for_page(
         pending.append(line)
     _flush()
     return chunks
+
+
+def lines_of(items: Iterable[TextItemLike]) -> list[_Line]:
+    """Merge items sharing a baseline into lines, keeping each line's dominant font.
+
+    Items are ordered top-down, left-right; an item joins the current line when
+    its baseline is within :data:`ITEM_Y_TOLERANCE`, and the largest font on the
+    line decides its size and boldness (display headings are the tall runs).
+    """
+    ordered = sorted(items, key=lambda item: (_number(item.y), _number(item.x)))
+    lines: list[_Line] = []
+    for item in ordered:
+        y = _number(item.y)
+        size = _number(item.font_size)
+        bold = _is_bold(item)
+        if lines and abs(y - lines[-1].y) <= ITEM_Y_TOLERANCE:
+            current = lines[-1]
+            current.parts.append(item)
+            current.y = (current.y + y) / 2
+            if size > current.size:
+                current.size = size
+                current.bold = bold
+            continue
+        lines.append(_Line(y=y, size=size, bold=bold, parts=[item]))
+    for line in lines:
+        ordered_parts = sorted(line.parts, key=lambda item: _number(item.x))
+        line.text = _WHITESPACE.sub(" ", " ".join(str(item.text or "") for item in ordered_parts)).strip()
+    return lines
+
+
+def _number(value: object, default: float = 0.0) -> float:
+    """Coerce a wire value to float; liteparse sends ``None`` for unknown geometry."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return default
+    return float(value)
+
+
+def _is_bold(item: TextItemLike) -> bool:
+    """``font_weight`` when the wire carries it, else a ``Bold`` font-name suffix.
+
+    The CLI's JSON dump omits ``font_weight`` (the Python object has it), so the
+    weight is read optionally and the font name is the fallback.
+    """
+    weight = getattr(item, "font_weight", None)
+    if isinstance(weight, int) and not isinstance(weight, bool):
+        return weight >= BOLD_WEIGHT
+    return "bold" in (getattr(item, "font_name", None) or "").lower()
+
+
+def classify_lines(lines: Sequence[_Line]) -> list[_Line]:
+    """Assign each line its heading level in place (page-relative thresholds)."""
+    body_size = _body_size(lines)
+    for line in lines:
+        line.level = _level_for(line, body_size)
+    return list(lines)
+
+
+def _body_size(lines: Sequence[_Line]) -> float:
+    """The page's body size: the most common size among its non-bold lines."""
+    sizes = [round(line.size, 1) for line in lines if not line.bold and line.size > 0]
+    if not sizes:
+        return 0.0
+    return statistics.mode(sizes)
+
+
+def _level_for(line: _Line, body_size: float) -> int:
+    """``0`` for body text, ``1``..``4`` for headings (relative to the body size)."""
+    if not line.bold or _is_toc_entry(line.text):
+        return 0
+    if body_size <= 0:
+        return 4
+    ratio = line.size / body_size
+    for level, threshold in enumerate(HEADING_RATIOS, start=1):
+        if ratio >= threshold:
+            return level
+    return 4
+
+
+def _is_toc_entry(text: str) -> bool:
+    """A dot leader means a contents entry: it must not become a heading."""
+    return bool(_TOC_LEADER.search(text))
+
+
+def _paragraph_text(lines: Sequence[_Line]) -> str:
+    return " ".join(line.text for line in lines)
+
+
+def _is_running_header(line: _Line, page_height: float, seen: set[str]) -> bool:
+    """A line repeated from an earlier page inside the top/bottom margin band."""
+    if line.text not in seen or page_height <= 0:
+        return False
+    band = page_height * HEADER_BAND
+    return line.y <= band or line.y >= page_height - band
 
 
 def _chunk(

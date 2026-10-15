@@ -22,6 +22,32 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol
 
+#: A rule is a near-horizontal line whose |y2 - y1| is at or below this many points.
+RULE_Y_TOL = 2.0
+#: Full-width rule: x-span at or above this fraction of the page span.
+FULL_WIDTH_FRACTION = 0.6
+#: A region must have at least this many text columns to be a table (others are
+#: one-column rule pairs, typically section separators or under-boxed headings).
+MIN_COLUMNS = 2
+#: A page is a TOC page when this many of its rule-pair regions are single-column;
+#: when it is, all of its regions are suppressed (the whole page is layout).
+TOC_SINGLE_COLUMN_FRACTION = 0.5
+#: X-centre gap above this many points is a column break in the text columns of
+#: a region.
+COLUMN_GAP = 20.0
+
+
+#: Detector-side mechanism counts on the recorded 10-page slice. The
+# consumer's prototype (polqa-re) reported 7; MinerU reports 2. The detector
+# sits between them by design and is its own pin — a future change that moves
+# a number is the signal, not a regression to bend into parity.
+MECHANISM_COUNTS_10_PAGE = {
+    "rule_bands": 54,
+    "full_width_rules": 48,
+    "raw_regions": 42,
+    "two_or_more_column_regions": 4,
+}
+
 
 class VectorLineLike(Protocol):
     x1: float
@@ -39,21 +65,6 @@ class TextItemLike(Protocol):
     width: float
 
 
-#: A rule is a near-horizontal line whose |y2 - y1| is at or below this many points.
-RULE_Y_TOL = 2.0
-#: Full-width rule: x-span at or above this fraction of the page span.
-FULL_WIDTH_FRACTION = 0.6
-#: A region must have at least this many text columns to be a table (others are
-#: one-column rule pairs, typically section separators or under-boxed headings).
-MIN_COLUMNS = 2
-#: A page is a TOC page when this many of its rule-pair regions are single-column;
-#: when it is, all of its regions are suppressed (the whole page is layout).
-TOC_SINGLE_COLUMN_FRACTION = 0.5
-#: X-centre gap above this many points is a column break in the text columns of
-#: a region.
-COLUMN_GAP = 20.0
-
-
 class _RuleBand:
     __slots__ = ("y", "x1", "x2")
 
@@ -61,6 +72,44 @@ class _RuleBand:
         self.y = y
         self.x1 = x1
         self.x2 = x2
+
+
+def detect_table_regions(
+    lines: Sequence[VectorLineLike],
+    items: Sequence[TextItemLike],
+    page_width: float,
+) -> list[tuple[tuple[float, float], tuple[tuple[str, ...], ...]]]:
+    """One entry per surviving table region: ``(y_top, y_bottom), rows``.
+
+    Two filters: a region is dropped if it is one-column (it is a section
+    separator or under-boxed heading, not a table), and all regions on a
+    page whose raw regions are mostly single-column are suppressed (the page
+    is a table-of-contents layout, not a body of tables).
+    """
+    bands = _horizontal_rules(lines)
+    if not bands:
+        return []
+    page_left = min(band.x1 for band in bands)
+    page_right = max(band.x2 for band in bands)
+    page_span = max(page_right - page_left, 1.0)
+    full = _full_width(bands, page_span)
+    full.sort(key=lambda b: b.y)
+    raw = _raw_regions(full)
+
+    single_column_share = sum(1 for y0, y1 in raw if _columns_in_band(items, y0, y1) < MIN_COLUMNS) / len(raw) if raw else 0.0
+    if single_column_share >= TOC_SINGLE_COLUMN_FRACTION:
+        return []
+
+    result: list[tuple[tuple[float, float], tuple[tuple[str, ...], ...]]] = []
+    for y0, y1 in raw:
+        if _columns_in_band(items, y0, y1) < MIN_COLUMNS:
+            continue
+        x_segments = _column_segments(items, y0, y1, page_left, page_right)
+        row_bands = _row_bands(items, y0, y1)
+        rows = tuple(_cells_for_row(items, y_top, y_bot, x_segments) for y_top, y_bot in row_bands)
+        if any(cell.strip() for row in rows for cell in row):
+            result.append(((round(y0, 1), round(y1, 1)), rows))
+    return result
 
 
 def _horizontal_rules(lines: Sequence[VectorLineLike]) -> list[_RuleBand]:
@@ -149,9 +198,7 @@ def _cells_for_row(
         bits: list[str] = []
         for item in items:
             y = item.y
-            in_row = (
-                y_top - RULE_Y_TOL < y < y_bot + RULE_Y_TOL if symmetric else y_top + RULE_Y_TOL < y < y_bot - RULE_Y_TOL
-            )
+            in_row = y_top - RULE_Y_TOL < y < y_bot + RULE_Y_TOL if symmetric else y_top + RULE_Y_TOL < y < y_bot - RULE_Y_TOL
             if not in_row:
                 continue
             cx = item.x + item.width / 2.0
@@ -184,55 +231,3 @@ def _column_segments(
             edges.append((previous + current) / 2.0)
     edges.append(page_right)
     return tuple(edges)
-
-
-def detect_table_regions(
-    lines: Sequence[VectorLineLike],
-    items: Sequence[TextItemLike],
-    page_width: float,
-) -> list[tuple[tuple[float, float], tuple[tuple[str, ...], ...]]]:
-    """One entry per surviving table region: ``(y_top, y_bottom), rows``.
-
-    Two filters: a region is dropped if it is one-column (it is a section
-    separator or under-boxed heading, not a table), and all regions on a
-    page whose raw regions are mostly single-column are suppressed (the page
-    is a table-of-contents layout, not a body of tables).
-    """
-    bands = _horizontal_rules(lines)
-    if not bands:
-        return []
-    page_left = min(band.x1 for band in bands)
-    page_right = max(band.x2 for band in bands)
-    page_span = max(page_right - page_left, 1.0)
-    full = _full_width(bands, page_span)
-    full.sort(key=lambda b: b.y)
-    raw = _raw_regions(full)
-
-    single_column_share = (
-        sum(1 for y0, y1 in raw if _columns_in_band(items, y0, y1) < MIN_COLUMNS) / len(raw) if raw else 0.0
-    )
-    if single_column_share >= TOC_SINGLE_COLUMN_FRACTION:
-        return []
-
-    result: list[tuple[tuple[float, float], tuple[tuple[str, ...], ...]]] = []
-    for y0, y1 in raw:
-        if _columns_in_band(items, y0, y1) < MIN_COLUMNS:
-            continue
-        x_segments = _column_segments(items, y0, y1, page_left, page_right)
-        row_bands = _row_bands(items, y0, y1)
-        rows = tuple(
-            _cells_for_row(items, y_top, y_bot, x_segments)
-            for y_top, y_bot in row_bands
-        )
-        if any(cell.strip() for row in rows for cell in row):
-            result.append(((round(y0, 1), round(y1, 1)), rows))
-    return result
-
-
-#: Per-page mechanism counts for the recorded 10-page slice.
-MECHANISM_COUNTS_10_PAGE = {
-    "rule_bands": 54,
-    "full_width_rules": 48,
-    "raw_regions": 42,
-    "two_or_more_column_regions": 7,
-}

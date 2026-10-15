@@ -20,18 +20,6 @@ from parsecraft.ir.models import ChunkKind
 _FIXTURES = Path("tmp/liteparse-fixtures")
 
 
-def item(text: str, *, x: float = 0.0, y: float = 0.0, size: float = 10.0, bold: bool = False) -> Any:
-    """One LiteParse-shaped text item (the mapping reads attributes, not a class)."""
-    return SimpleNamespace(
-        text=text,
-        x=x,
-        y=y,
-        font_name="Times-BoldMT" if bold else "TimesNewRomanPSMT",
-        font_size=size,
-        font_weight=700 if bold else 400,
-    )
-
-
 def test_same_baseline_items_merge_into_one_line() -> None:
     """Letter-spaced cover text arrives as many items on one baseline, not many lines."""
     lines = lines_of([item("I", x=0.0, y=84.0, size=12.0), item("T", x=4.0, y=84.5), item("U", x=8.0, y=84.2)])
@@ -155,3 +143,15 @@ def _count(pages: list[dict[str, Any]], *, seen: set[str] | None) -> tuple[int, 
         headings += sum(1 for chunk in chunks if chunk.kind is ChunkKind.HEADING)
         paragraphs += sum(1 for chunk in chunks if chunk.kind is ChunkKind.PARAGRAPH)
     return headings, paragraphs
+
+
+def item(text: str, *, x: float = 0.0, y: float = 0.0, size: float = 10.0, bold: bool = False) -> Any:
+    """One LiteParse-shaped text item (the mapping reads attributes, not a class)."""
+    return SimpleNamespace(
+        text=text,
+        x=x,
+        y=y,
+        font_name="Times-BoldMT" if bold else "TimesNewRomanPSMT",
+        font_size=size,
+        font_weight=700 if bold else 400,
+    )

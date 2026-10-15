@@ -19,14 +19,6 @@ from parsecraft.backends.liteparse._tables import (
 _FIXTURES = Path("tests/backends/fixtures/liteparse")
 
 
-def _line(x1: float, y1: float, x2: float, y2: float, *, stroke: bool = True) -> Any:
-    return SimpleNamespace(x1=x1, y1=y1, x2=x2, y2=y2, stroke=stroke, fill=False)
-
-
-def _text(x: float, y: float, text: str, *, width: float = 30.0) -> Any:
-    return SimpleNamespace(x=x, y=y, text=text, width=width)
-
-
 # ── pure unit tests ───────────────────────────────────────────────────────────
 
 
@@ -71,11 +63,18 @@ def test_two_or_more_columns_yields_rows() -> None:
     assert rows[1][1] == "right-bot"
 
 
+def _line(x1: float, y1: float, x2: float, y2: float, *, stroke: bool = True) -> Any:
+    return SimpleNamespace(x1=x1, y1=y1, x2=x2, y2=y2, stroke=stroke, fill=False)
+
+
+def _text(x: float, y: float, text: str, *, width: float = 30.0) -> Any:
+    return SimpleNamespace(x=x, y=y, text=text, width=width)
+
+
 # ── fixture acceptance: the recorded 10-page slice ───────────────────────────
 
 
-@pytest.mark.skipif(not (_FIXTURES / "items.json").exists() or not (_FIXTURES / "vec.json").exists(),
-                    reason="recorded fixtures not present in this checkout")
+@pytest.mark.skipif(not (_FIXTURES / "items.json").exists() or not (_FIXTURES / "vec.json").exists(), reason="recorded fixtures not present in this checkout")
 def test_mechanism_counts_on_the_recorded_10_page_slice() -> None:
     """The mechanism numbers are pinned: rule bands 54, full-width 48, raw 42, ≥2-col 7.
 
@@ -92,14 +91,14 @@ def test_mechanism_counts_on_the_recorded_10_page_slice() -> None:
         vec_page = vec_doc["pages"][index - 1]
         items = [
             SimpleNamespace(
-                x=it["x"], y=it["y"], text=it.get("text", ""), width=it.get("width", 0.0),
+                x=it["x"],
+                y=it["y"],
+                text=it.get("text", ""),
+                width=it.get("width", 0.0),
             )
             for it in (page.get("text_items") or [])
         ]
-        lines = [
-            SimpleNamespace(**ln)
-            for ln in (vec_page.get("vector_graphics") or {}).get("lines", [])
-        ]
+        lines = [SimpleNamespace(**ln) for ln in (vec_page.get("vector_graphics") or {}).get("lines", [])]
         bands = _horizontal_rules(lines)
         rule_bands += len(bands)
         width = float(page.get("width") or 0.0)
@@ -137,10 +136,3 @@ def _columns_in_band(items: list[Any], y0: float, y1: float) -> int:
         if b - a > 20.0:
             cols += 1
     return cols
-MECHANISM_COUNTS = {
-    "rule_bands": 54,
-    "full_width_rules": 48,
-    "raw_regions": 42,
-    "two_or_more_column_regions": 4,
-}
-MECHANISM_COUNTS_10_PAGE = MECHANISM_COUNTS

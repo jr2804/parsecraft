@@ -1300,6 +1300,112 @@ def test_end_to_end_stub_judge_sees_native_density() -> None:
     assert _chosen(6000) == "native-markdown"  # dense
 
 
+def test_degradation_fields_must_travel_together() -> None:
+    with pytest.raises(ValidationError, match="must appear together"):
+        PageRoute(
+            page_number=1,
+            intent=Intent.NATIVE,
+            candidates=["native-text"],
+            chosen="native-text",
+            reason="r",
+            degradation_code="degraded-short-text",
+        )
+    with pytest.raises(ValidationError, match="must appear together"):
+        PageRoute(
+            page_number=1,
+            intent=Intent.NATIVE,
+            candidates=["native-text"],
+            chosen="native-text",
+            reason="r",
+            degradation_score=0.5,
+        )
+
+
+def test_apply_preference_rotates_eligible_preferred_to_front() -> None:
+    """Preferred backend goes to the front of an eligible order; never wider."""
+    preferred = BackendDescriptor(
+        name="preferred",
+        version="1.0.0",
+        capabilities=BackendCapabilities(supported_formats=["text/plain"]),
+    )
+    other = BackendDescriptor(
+        name="other",
+        version="1.0.0",
+        capabilities=BackendCapabilities(supported_formats=["text/plain"]),
+    )
+    family = [preferred, other]
+    constraints = RoutingConstraints(preferred_backend="preferred")
+    assert _apply_preference(["other", "preferred"], family, Intent.NATIVE, constraints) == ["preferred", "other"]
+    # Not eligible on this page: order is the judge's output, unchanged.
+    assert _apply_preference(["other"], family, Intent.NATIVE, constraints) == ["other"]
+
+
+def test_apply_preference_never_leads_an_ocr_preferred_on_a_native_page() -> None:
+    """Bug 2 regression: an explicit OCR preference on a NATIVE page honours the
+    non-OCR lead invariant by slotting the preferred backend in as the first
+    fallback. The document never aborts because a page can't use the caller's
+    favourite.
+    """
+    native_lead = BackendDescriptor(
+        name="native-lead",
+        version="1.0.0",
+        capabilities=BackendCapabilities(supported_formats=["text/plain"]),
+    )
+    preferred_ocr = BackendDescriptor(
+        name="ocr-tesseract",
+        version="1.0.0",
+        capabilities=BackendCapabilities(supported_formats=["text/plain"], gpu_requirement=GPU_NOT_NEEDED),
+    )
+    other_ocr = BackendDescriptor(
+        name="ocr-other",
+        version="1.0.0",
+        capabilities=BackendCapabilities(supported_formats=["text/plain"], gpu_requirement=GPU_NOT_NEEDED),
+    )
+    family = [native_lead, preferred_ocr, other_ocr]
+    constraints = RoutingConstraints(preferred_backend="ocr-tesseract")
+    result = _apply_preference(["ocr-tesseract", "native-lead", "ocr-other"], family, Intent.NATIVE, constraints)
+    assert result[0] == "native-lead"
+    assert result[1] == "ocr-tesseract"
+
+
+def test_only_backend_pins_the_plan_to_one_backend() -> None:
+    """``only_backend`` is a hard filter; the pinned backend leads every page it covers."""
+    signals = [make_signal(1), make_signal(2, text_chars=0, native=False, blank=True, images=2)]
+    constraints = full_constraints(formats={"text/plain"}, only_backend="native-text")
+    plan = plan_route(
+        make_analysis(signals, 2),
+        [make_desc("native-text"), make_desc("ocr-ovis", ALL_FORMATS, group="ocr-ovis", vram=2.0)],
+        constraints,
+    )
+    # Page 1 is native; page 2 is blank with a figure, so the pin excludes the
+    # OCR family and it degrades to the pinned native backend (content is not
+    # coverage). A page the pin cannot cover at all raises — see the next test.
+    assert [page.chosen for page in plan.pages] == ["native-text", "native-text"]
+
+
+def test_only_backend_that_cannot_serve_raises() -> None:
+    constraints = full_constraints(formats={"text/plain"}, only_backend="native-html")
+    with pytest.raises(NoEligibleBackendError, match="pinned backend 'native-html'"):
+        plan_route(
+            make_analysis([make_signal(1)], 1),
+            [make_desc("native-text"), make_desc("native-html", ("text/html",))],
+            constraints,
+        )
+
+
+def test_only_backend_still_degrades_a_blank_page() -> None:
+    """Coverage is not content: a pinned native backend serves a blank page by degrade."""
+    signal = make_signal(1, text_chars=0, native=False, blank=True, images=0)
+    plan = plan_route(
+        make_analysis([signal], 1),
+        [make_desc("native-text"), make_desc("ocr-ovis", ALL_FORMATS, group="ocr-ovis", vram=2.0)],
+        full_constraints(formats={"text/plain"}, only_backend="native-text"),
+    )
+    page = plan.pages[0]
+    assert page.chosen == "native-text"
+    assert page.degradation_code == DEGRADED_BLANK_PAGE_CODE
+
+
 def full_constraints(**overrides: Any) -> RoutingConstraints:
     base: dict[str, Any] = {
         "installed_extras": set(OCR_EXTRAS),
@@ -1365,102 +1471,3 @@ def make_signal(
         blank=blank,
         replacement_char_ratio=replacement,
     )
-
-
-def test_degradation_fields_must_travel_together() -> None:
-    with pytest.raises(ValidationError, match="must appear together"):
-        PageRoute(
-            page_number=1,
-            intent=Intent.NATIVE,
-            candidates=["native-text"],
-            chosen="native-text",
-            reason="r",
-            degradation_code="degraded-short-text",
-        )
-    with pytest.raises(ValidationError, match="must appear together"):
-        PageRoute(
-            page_number=1,
-            intent=Intent.NATIVE,
-            candidates=["native-text"],
-            chosen="native-text",
-            reason="r",
-            degradation_score=0.5,
-        )
-
-def test_apply_preference_rotates_eligible_preferred_to_front() -> None:
-    """Preferred backend goes to the front of an eligible order; never wider."""
-    preferred = BackendDescriptor(
-        name="preferred", version="1.0.0",
-        capabilities=BackendCapabilities(supported_formats=["text/plain"]),
-    )
-    other = BackendDescriptor(
-        name="other", version="1.0.0",
-        capabilities=BackendCapabilities(supported_formats=["text/plain"]),
-    )
-    family = [preferred, other]
-    constraints = RoutingConstraints(preferred_backend="preferred")
-    assert _apply_preference(["other", "preferred"], family, Intent.NATIVE, constraints) == ["preferred", "other"]
-    # Not eligible on this page: order is the judge's output, unchanged.
-    assert _apply_preference(["other"], family, Intent.NATIVE, constraints) == ["other"]
-
-
-def test_apply_preference_never_leads_an_ocr_preferred_on_a_native_page() -> None:
-    """Bug 2 regression: an explicit OCR preference on a NATIVE page honours the
-    non-OCR lead invariant by slotting the preferred backend in as the first
-    fallback. The document never aborts because a page can't use the caller's
-    favourite.
-    """
-    native_lead = BackendDescriptor(
-        name="native-lead", version="1.0.0",
-        capabilities=BackendCapabilities(supported_formats=["text/plain"]),
-    )
-    preferred_ocr = BackendDescriptor(
-        name="ocr-tesseract", version="1.0.0",
-        capabilities=BackendCapabilities(supported_formats=["text/plain"], gpu_requirement=GPU_NOT_NEEDED),
-    )
-    other_ocr = BackendDescriptor(
-        name="ocr-other", version="1.0.0",
-        capabilities=BackendCapabilities(supported_formats=["text/plain"], gpu_requirement=GPU_NOT_NEEDED),
-    )
-    family = [native_lead, preferred_ocr, other_ocr]
-    constraints = RoutingConstraints(preferred_backend="ocr-tesseract")
-    result = _apply_preference(["ocr-tesseract", "native-lead", "ocr-other"], family, Intent.NATIVE, constraints)
-    assert result[0] == "native-lead"
-    assert result[1] == "ocr-tesseract"
-
-def test_only_backend_pins_the_plan_to_one_backend() -> None:
-    """``only_backend`` is a hard filter; the pinned backend leads every page it covers."""
-    signals = [make_signal(1), make_signal(2, text_chars=0, native=False, blank=True, images=2)]
-    constraints = full_constraints(formats={"text/plain"}, only_backend="native-text")
-    plan = plan_route(
-        make_analysis(signals, 2),
-        [make_desc("native-text"), make_desc("ocr-ovis", ALL_FORMATS, group="ocr-ovis", vram=2.0)],
-        constraints,
-    )
-    # Page 1 is native; page 2 is blank with a figure, so the pin excludes the
-    # OCR family and it degrades to the pinned native backend (content is not
-    # coverage). A page the pin cannot cover at all raises — see the next test.
-    assert [page.chosen for page in plan.pages] == ["native-text", "native-text"]
-
-
-def test_only_backend_that_cannot_serve_raises() -> None:
-    constraints = full_constraints(formats={"text/plain"}, only_backend="native-html")
-    with pytest.raises(NoEligibleBackendError, match="pinned backend 'native-html'"):
-        plan_route(
-            make_analysis([make_signal(1)], 1),
-            [make_desc("native-text"), make_desc("native-html", ("text/html",))],
-            constraints,
-        )
-
-
-def test_only_backend_still_degrades_a_blank_page() -> None:
-    """Coverage is not content: a pinned native backend serves a blank page by degrade."""
-    signal = make_signal(1, text_chars=0, native=False, blank=True, images=0)
-    plan = plan_route(
-        make_analysis([signal], 1),
-        [make_desc("native-text"), make_desc("ocr-ovis", ALL_FORMATS, group="ocr-ovis", vram=2.0)],
-        full_constraints(formats={"text/plain"}, only_backend="native-text"),
-    )
-    page = plan.pages[0]
-    assert page.chosen == "native-text"
-    assert page.degradation_code == DEGRADED_BLANK_PAGE_CODE

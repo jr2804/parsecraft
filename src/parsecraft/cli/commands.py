@@ -110,10 +110,7 @@ def convert(
         typer.Option(
             "--backend",
             "-b",
-            help=(
-                "Prefer this backend for pages where it is eligible; auto routing "
-                "still serves pages where it is not"
-            ),
+            help=("Prefer this backend for pages where it is eligible; auto routing still serves pages where it is not"),
         ),
     ] = None,
     judge: Annotated[
@@ -135,10 +132,7 @@ def convert(
         bool,
         typer.Option(
             "--auto/--no-auto",
-            help=(
-                "Route automatically (default); --no-auto requires --backend, which the "
-                "planner then prefers"
-            ),
+            help=("Route automatically (default); --no-auto requires --backend, which the planner then prefers"),
         ),
     ] = True,
     preference: Annotated[
@@ -153,10 +147,7 @@ def convert(
         list[str] | None,
         typer.Option(
             "--backend-option",
-            help=(
-                "Backend constructor option KEY=VALUE for the --backend backend (repeatable), "
-                "e.g. --backend mineru --backend-option effort=high"
-            ),
+            help=("Backend constructor option KEY=VALUE for the --backend backend (repeatable), e.g. --backend mineru --backend-option effort=high"),
         ),
     ] = None,
     output: Annotated[

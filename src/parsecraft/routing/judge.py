@@ -53,18 +53,6 @@ class JudgeCacheIdentity(Protocol):
     def cache_identity(self) -> str: ...
 
 
-def judge_cache_identity(judge: RoutingJudge) -> str:
-    """Cache-safe judge identity: class path plus ranking state when declared.
-
-    Judges without :class:`JudgeCacheIdentity` fall back to the class path —
-    correct exactly when the class has no ranking state beyond its type.
-    """
-    path = f"{type(judge).__module__}.{type(judge).__qualname__}"
-    if isinstance(judge, JudgeCacheIdentity):
-        return f"{path}:{judge.cache_identity()}"
-    return path
-
-
 @runtime_checkable
 class RoutingJudge(Protocol):
     """Orders eligible candidates best-first; returns backend names.
@@ -219,6 +207,18 @@ class JudgeProviderLoader(Protocol):
         machine: MachineProfile | None = None,
         preference: RoutingPreference = RoutingPreference.BALANCED,
     ) -> RoutingJudge: ...
+
+
+def judge_cache_identity(judge: RoutingJudge) -> str:
+    """Cache-safe judge identity: class path plus ranking state when declared.
+
+    Judges without :class:`JudgeCacheIdentity` fall back to the class path —
+    correct exactly when the class has no ranking state beyond its type.
+    """
+    path = f"{type(judge).__module__}.{type(judge).__qualname__}"
+    if isinstance(judge, JudgeCacheIdentity):
+        return f"{path}:{judge.cache_identity()}"
+    return path
 
 
 def page_context(intent: Intent, signal: PageSignal, hints: FeatureHints) -> PageContext:

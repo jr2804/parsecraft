@@ -259,14 +259,10 @@ def test_preferred_backend_judge_orders_and_rejects() -> None:
     candidates = [_text_descriptor("native-text"), _text_descriptor("other")]
 
     # Preferred, eligible on a NATIVE page → moves to the front.
-    assert _apply_preference(
-        ["native-text", "other"], candidates, Intent.NATIVE, RoutingConstraints(preferred_backend="other")
-    ) == ["other", "native-text"]
+    assert _apply_preference(["native-text", "other"], candidates, Intent.NATIVE, RoutingConstraints(preferred_backend="other")) == ["other", "native-text"]
 
     # Preferred, not eligible on this page → order is the judge's, unchanged.
-    assert _apply_preference(
-        ["native-text"], candidates, Intent.NATIVE, RoutingConstraints(preferred_backend="missing")
-    ) == ["native-text"]
+    assert _apply_preference(["native-text"], candidates, Intent.NATIVE, RoutingConstraints(preferred_backend="missing")) == ["native-text"]
 
     # An OCR preferred on a NATIVE page never leads the non-OCR family.
     ocr_candidates = [
@@ -282,7 +278,6 @@ def test_preferred_backend_judge_orders_and_rejects() -> None:
     )
     assert rotated[0] == "native-text"
     assert rotated[1] == "ocr-tesseract"
-
 
 
 def test_convert_auto_native_markdown(tmp_path: Path, registry: BackendRegistry) -> None:
@@ -402,17 +397,13 @@ def test_convert_backend_preferred_name_unknown_is_usage_error(tmp_path: Path, r
     assert "not a registered backend" in _text(result)
 
 
-def test_convert_backend_preferred_page_ineligible_falls_back_to_normal_order(
-    tmp_path: Path, registry: BackendRegistry
-) -> None:
+def test_convert_backend_preferred_page_ineligible_falls_back_to_normal_order(tmp_path: Path, registry: BackendRegistry) -> None:
     """An installed preferred backend that is not eligible for this page's
     family is silently dropped: the document does NOT abort, the page uses
     the normal order. (The old judge raised; the planner no longer does.)
     """
     _register(registry, _descriptor("native-text", ("text/plain",)), content="stub content")
-    result = runner.invoke(
-        app, ["convert", str(_source_file(tmp_path)), "--backend", "native-html"]
-    )
+    result = runner.invoke(app, ["convert", str(_source_file(tmp_path)), "--backend", "native-html"])
     assert result.exit_code == 0
     # The eligible stub ran (the preferred native-html was dropped because it
     # does not claim text/plain), so the page carries the stub's content.
@@ -947,10 +938,6 @@ def test_no_judge_spec_resolves_no_provider(registry: BackendRegistry, tmp_path:
     assert resolved == []
 
 
-def _text(result: Result) -> str:
-    return f"{result.output}{result.stderr or ''}"
-
-
 @pytest.fixture
 def pdf_registry(registry: BackendRegistry, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A PDF source plus two native candidates and one OCR candidate (all PDF).
@@ -979,6 +966,38 @@ def test_render_json_and_markdown(tmp_path: Path, registry: BackendRegistry) -> 
     assert "render me" in convert_module.render(document, as_json=False)
     as_json = cast("dict[str, object]", json.loads(convert_module.render(document, as_json=True)))
     assert "pages" in as_json
+
+
+def test_convert_no_auto_pins_the_backend(tmp_path: Path, registry: BackendRegistry) -> None:
+    """``--no-auto --backend X`` is a pin: a page X cannot serve fails loudly.
+
+    Preference mode (``--auto --backend X``) may mix backends; a pinned run is
+    only interpretable if every page used that backend, so it must not silently
+    fall back (polqa-re).
+    """
+    _register(registry, _descriptor("native-text", ("text/plain",)))
+    _register(registry, _descriptor("native-html", ("text/html",)))
+    source = _source_file(tmp_path)
+
+    pinned_ok = runner.invoke(app, ["convert", str(source), "--backend", "native-text", "--no-auto"])
+    assert pinned_ok.exit_code == 0
+
+    # native-html cannot serve text/plain: the pin fails instead of converting
+    # the page with native-text behind the caller's back.
+    pinned_bad = runner.invoke(app, ["convert", str(source), "--backend", "native-html", "--no-auto"])
+    assert pinned_bad.exit_code == 1
+    assert "pinned backend 'native-html'" in _text(pinned_bad)
+
+
+def test_convert_backend_option_requires_a_backend(tmp_path: Path, registry: BackendRegistry) -> None:
+    _register(registry, _descriptor("native-text", ("text/plain",)))
+    result = runner.invoke(app, ["convert", str(_source_file(tmp_path)), "--backend-option", "effort=high"])
+    assert result.exit_code == 2
+    assert "--backend-option requires --backend" in _text(result)
+
+
+def _text(result: Result) -> str:
+    return f"{result.output}{result.stderr or ''}"
 
 
 def _descriptor(
@@ -1044,30 +1063,3 @@ def _source_file(tmp_path: Path, name: str = "doc.txt", text: str = _LONG_TEXT) 
     path = tmp_path / name
     path.write_text(text, encoding="utf-8")
     return path
-
-def test_convert_no_auto_pins_the_backend(tmp_path: Path, registry: BackendRegistry) -> None:
-    """``--no-auto --backend X`` is a pin: a page X cannot serve fails loudly.
-
-    Preference mode (``--auto --backend X``) may mix backends; a pinned run is
-    only interpretable if every page used that backend, so it must not silently
-    fall back (polqa-re).
-    """
-    _register(registry, _descriptor("native-text", ("text/plain",)))
-    _register(registry, _descriptor("native-html", ("text/html",)))
-    source = _source_file(tmp_path)
-
-    pinned_ok = runner.invoke(app, ["convert", str(source), "--backend", "native-text", "--no-auto"])
-    assert pinned_ok.exit_code == 0
-
-    # native-html cannot serve text/plain: the pin fails instead of converting
-    # the page with native-text behind the caller's back.
-    pinned_bad = runner.invoke(app, ["convert", str(source), "--backend", "native-html", "--no-auto"])
-    assert pinned_bad.exit_code == 1
-    assert "pinned backend 'native-html'" in _text(pinned_bad)
-
-
-def test_convert_backend_option_requires_a_backend(tmp_path: Path, registry: BackendRegistry) -> None:
-    _register(registry, _descriptor("native-text", ("text/plain",)))
-    result = runner.invoke(app, ["convert", str(_source_file(tmp_path)), "--backend-option", "effort=high"])
-    assert result.exit_code == 2
-    assert "--backend-option requires --backend" in _text(result)

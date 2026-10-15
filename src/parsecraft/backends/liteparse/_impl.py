@@ -72,21 +72,6 @@ _FORMAT_OPTION_KEYS: tuple[str, ...] = (
 )
 
 
-def _coerce_option(value: str | int | float | bool) -> str | int | float | bool:
-    """Config options arrive as strings from the CLI: give LiteParse real values."""
-    if isinstance(value, str):
-        lowered = value.strip().lower()
-        if lowered in ("true", "yes", "on"):
-            return True
-        if lowered in ("false", "no", "off"):
-            return False
-        try:
-            return int(value)
-        except ValueError:
-            return value
-    return value
-
-
 @dataclass(slots=True)
 class _ParsedPage:
     """One parsed page: its rendered text, positioned items, geometry, vector graphics."""
@@ -114,13 +99,6 @@ class LiteparseBackend:
         #: detection (a header repeats verbatim; markdown rendering strips them,
         #: the item list does not). One convert() call threads it across pages.
         self._seen_texts: set[str] = set()
-
-    def _has_vector_graphics(self) -> bool:
-        return bool(self._option_kwargs.get("extract_vector_graphics"))
-
-    def _make_parser(self, **overrides: str | int | float | bool) -> LiteParse:
-        """A parser carrying the caller's format options plus this call's overrides."""
-        return _parser(**{**self._option_kwargs, **overrides})
 
     def convert(self, request: ConversionRequest) -> BackendResult:
         """Bound-checked, per-page conversion into typed IR (never raises per page)."""
@@ -250,6 +228,28 @@ class LiteparseBackend:
             page_count=len(stats),
             signals=signals,
         )
+
+    def _has_vector_graphics(self) -> bool:
+        return bool(self._option_kwargs.get("extract_vector_graphics"))
+
+    def _make_parser(self, **overrides: str | int | float | bool) -> LiteParse:
+        """A parser carrying the caller's format options plus this call's overrides."""
+        return _parser(**{**self._option_kwargs, **overrides})
+
+
+def _coerce_option(value: str | int | float | bool) -> str | int | float | bool:
+    """Config options arrive as strings from the CLI: give LiteParse real values."""
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in ("true", "yes", "on"):
+            return True
+        if lowered in ("false", "no", "off"):
+            return False
+        try:
+            return int(value)
+        except ValueError:
+            return value
+    return value
 
 
 def create(config: BackendConfig) -> DocumentBackend:
