@@ -21,6 +21,7 @@ from parsecraft.routing.rules import (
     classify_page,
     degradation_for,
     extract_hints,
+    extraction_tier,
     in_intent_family,
     is_hard_eligible,
     is_ocr,
@@ -64,6 +65,9 @@ def plan_route(
     for signal in sorted(analysis.signals, key=lambda s: s.page_number):
         intent = classify_page(signal, analysis.page_count, hints)
         family = [descriptor for descriptor in eligible if in_intent_family(intent, descriptor)]
+        # Per page, not per document: a caller's preferred backend may be eligible
+        # for one page and not another, and the cap must follow the family.
+        lead_tier_cap = _lead_tier_cap(constraints, family)
         degraded = False
         unavailable = ""
         degradation_code: str | None = None
@@ -91,13 +95,15 @@ def plan_route(
             family = [descriptor for descriptor in eligible if in_intent_family(intent, descriptor)]
         if not family:
             raise NoEligibleBackendError(intent, "intent family empty after hard constraints")
-        if intent is Intent.NATIVE and all(is_ocr(descriptor) for descriptor in family):
-            # NATIVE-intent pages must never silently route to OCR: the format
-            # needs a native-capable lead backend (see routing/AGENTS.md).
+        if intent is Intent.NATIVE and lead_tier_cap is None and all(is_ocr(descriptor) for descriptor in family):
+            # Only OCR can answer a NATIVE page and the caller named nothing, so the
+            # cap stays at the family's cheapest tier — which is 2, the tier this
+            # guard exists to prevent. Keep the old hard failure: a native page must
+            # never silently become a VLM run.
             raise NoEligibleBackendError(intent, "no native backend covers the source format")
         order = list(active_judge.rank(intent, family, page_context(intent, signal, hints)))
         order = _apply_preference(order, family, intent, constraints)
-        _validate_order(order, family, intent)
+        _validate_order(order, family, intent, lead_tier_cap)
         candidates = order[: constraints.max_passes]
         pages.append(
             PageRoute(
@@ -114,27 +120,23 @@ def plan_route(
 
 
 def _apply_preference(order: list[str], family: list[BackendDescriptor], intent: Intent, constraints: RoutingConstraints) -> list[str]:
-    """Move ``constraints.preferred_backend`` to the front when that is valid.
+    """Move ``constraints.preferred_backend`` to the front.
 
-    Preference is a ranking input, never a hard constraint: a preferred
-    backend that is not eligible for this page leaves the order untouched
-    (the normal order serves the page — a document never aborts because one
-    page cannot use the caller's favourite), and a preferred OCR backend on a
-    ``NATIVE`` page never *leads* (the non-OCR lead invariant,
-    ``_validate_native_fallbacks``): it slots in directly after the first
-    non-OCR candidate so an explicit OCR preference is still honoured as the
-    first fallback.
+    Preference is a ranking input, never a hard constraint: a preferred backend
+    that is not eligible for this page leaves the order untouched (the normal
+    order serves the page - a document never aborts because one page cannot use
+    the caller's favourite).
+
+    Naming a backend is the caller choosing, and an OCR choice on a ``NATIVE``
+    page is a legitimate choice: the OCR family is the high-accuracy harness for
+    figures, tables and equations, and a caller who names it has paid for that
+    tier (pc-4u7.41). The *unpriced* case is not handled here - it is the lead
+    tier cap in :func:`_validate_order`, which no caller preference can bypass by
+    omission and no judge can bypass at all.
     """
     preferred = constraints.preferred_backend
     if preferred is None or preferred not in order:
         return order
-    if intent is Intent.NATIVE:
-        ocr_names = {descriptor.name for descriptor in family if is_ocr(descriptor)}
-        if preferred in ocr_names:
-            lead = next((name for name in order if name not in ocr_names), None)
-            if lead is not None:
-                rest = [name for name in order if name not in (lead, preferred)]
-                return [lead, preferred, *rest]
     return [preferred, *(name for name in order if name != preferred)]
 
 
@@ -149,7 +151,18 @@ def _nothing_to_lose(signal: PageSignal) -> bool:
     return signal.blank and signal.image_count == 0
 
 
-def _validate_order(order: list[str], family: list[BackendDescriptor], intent: Intent) -> None:
+def _validate_order(
+    order: list[str],
+    family: list[BackendDescriptor],
+    intent: Intent,
+    lead_tier_cap: int | None = None,
+) -> None:
+    """One candidate order: subset of the family, no duplicates, tier cap honoured.
+
+    ``lead_tier_cap`` is caller-level and computed per page (a caller's preferred
+    backend may be eligible for one page and not another): no judge may lead a
+    NATIVE page above the caller's tier.
+    """
     if not order:
         raise JudgeViolationError("", "judge returned an empty order", intent)
     allowed = {descriptor.name for descriptor in family}
@@ -160,27 +173,71 @@ def _validate_order(order: list[str], family: list[BackendDescriptor], intent: I
         if name in seen:
             raise JudgeViolationError(name, "duplicate candidate", intent)
         seen.add(name)
-    _validate_native_fallbacks(order, family, intent)
+    _validate_native_fallbacks(order, family, intent, lead_tier_cap)
 
 
-def _validate_native_fallbacks(order: list[str], family: list[BackendDescriptor], intent: Intent) -> None:
-    """A NATIVE page must be led by a native-capable candidate.
+def _validate_native_fallbacks(
+    order: list[str],
+    family: list[BackendDescriptor],
+    intent: Intent,
+    lead_tier_cap: int | None = None,
+) -> None:
+    """A NATIVE page's lead may not exceed the tier the caller asked for.
 
-    The rules admit OCR backends into a NATIVE page's family as *fallbacks*, and
-    a judge reorders that family — so without this check a provider judge could
-    lead a page the rule table called native with a VLM, spending minutes on
-    text a native backend reads in milliseconds. Contract, not ranking advice:
-    the deterministic judge happens to sort native first, and a provider judge
-    must honour the same rule or its order is rejected.
+    The cap defaults to the CHEAPEST tier present in the family, which is what the
+    original guard meant: a native page is led by a native candidate unless the
+    caller says otherwise, so a provider judge cannot spend GPU minutes on text a
+    native backend reads in milliseconds (the reason this rule exists at all).
+
+    The cap is NOT a prohibition on the quality tier. An explicit backend
+    preference is the caller paying for that tier, so the cap rises to the tier of
+    ``constraints.preferred_backend`` when it is in this page's family — which is
+    what makes ``--backend ocr-ovis`` legal on a digital PDF (pc-4u7.41). The OCR
+    family is the deliberate high-accuracy harness for figures, tables and
+    equations; the rule protects against an unpriced surprise, never against the
+    caller's own choice.
     """
     if intent is not Intent.NATIVE:
         return
     by_name = {descriptor.name: descriptor for descriptor in family}
-    ocr_positions = [index for index, name in enumerate(order) if is_ocr(by_name[name])]
-    native_positions = [index for index, name in enumerate(order) if not is_ocr(by_name[name])]
-    if ocr_positions and native_positions and min(ocr_positions) < max(native_positions):
-        offending = order[min(ocr_positions)]
-        raise JudgeViolationError(offending, "an OCR backend may not lead a NATIVE page (native-capable candidates first)", intent)
+    lead = order[0]
+    cap = lead_tier_cap if lead_tier_cap is not None else _default_lead_cap(family)
+    if extraction_tier(by_name[lead]) > cap:
+        raise JudgeViolationError(
+            lead,
+            (f"leads above the caller's extraction tier (tier {extraction_tier(by_name[lead])} > {cap}); name the backend to choose it"),
+            intent,
+        )
+
+
+def _default_lead_cap(family: Sequence[BackendDescriptor]) -> int:
+    """The cap when the caller names no backend: OCR/VLM requires a name.
+
+    Tiers 0 and 1 lead freely (a native or an intelligent parser may win the
+    deterministic ranking); tier 2 is the only one that must be asked for, which
+    is precisely the rule the old binary guard expressed. If the family holds
+    nothing below tier 2, the cap follows the family rather than rejecting the
+    only candidate that can answer.
+    """
+    tiers = {extraction_tier(descriptor) for descriptor in family}
+    if tiers & {0, 1}:
+        return 1
+    return max(tiers, default=1)
+
+
+def _lead_tier_cap(constraints: RoutingConstraints, family: Sequence[BackendDescriptor]) -> int | None:
+    """The highest tier the caller asked for, or ``None`` for the default cap.
+
+    An explicit backend preference raises the cap to that backend's tier. Nothing
+    else moves it: no host fact, no judge opinion. The default (``None``) is the
+    cheapest tier available in the family, applied inside the validator.
+    """
+    if constraints.preferred_backend is None:
+        return None
+    for descriptor in family:
+        if descriptor.name == constraints.preferred_backend:
+            return extraction_tier(descriptor)
+    return None
 
 
 def _primary(pages: list[PageRoute]) -> str:

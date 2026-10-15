@@ -348,6 +348,14 @@ prose names `density` so the prompt and the state agree. The field defaults
 to `0.0` — the honest "no text signal" for a context constructed without a
 page behind it.
 
+> **Amended 2026-10-15 (pc-4u7.41):** the NATIVE-lead rule is a *tier cap*, not a
+> prohibition. `extraction_tier` (rules.py) grades each backend 0 (native) → 1
+> (intelligent parser) → 2 (OCR/document-VLM); a judge may not lead above the cap
+> when the caller named no backend, and naming one (`preferred_backend`) raises
+> the cap to that backend's tier. "Native before OCR" therefore survives as the
+> *default*, while the VLM harness stays reachable for digital PDFs when the
+> caller asks for it. `_sort_key`'s host-aware ranking (A10) is unchanged.
+
 **Released-artifact scope (verified 2026-10-13).** This widening is on `main`
 **only**: the `2026.10.3` tag still carries the old rule —
 `page_context()` there returns `None` for every NATIVE intent and contains no

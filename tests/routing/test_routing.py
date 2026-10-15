@@ -11,7 +11,6 @@ import pytest
 from pydantic import ValidationError
 
 from parsecraft.backends.protocol import (
-    GPU_NOT_NEEDED,
     AnalysisResult,
     BackendCapabilities,
     BackendDescriptor,
@@ -603,7 +602,7 @@ def test_plan_rejects_a_judge_that_leads_a_native_page_with_ocr() -> None:
             others = [descriptor.name for descriptor in candidates if descriptor.name != "ocr-unlimited"]
             return ["ocr-unlimited", *others]
 
-    with pytest.raises(JudgeViolationError, match="may not lead a NATIVE page"):
+    with pytest.raises(JudgeViolationError, match="leads above the caller"):
         plan_route(
             make_analysis(good_native(), 1),
             all_backends(),
@@ -1340,32 +1339,22 @@ def test_apply_preference_rotates_eligible_preferred_to_front() -> None:
     assert _apply_preference(["other"], family, Intent.NATIVE, constraints) == ["other"]
 
 
-def test_apply_preference_never_leads_an_ocr_preferred_on_a_native_page() -> None:
-    """Bug 2 regression: an explicit OCR preference on a NATIVE page honours the
-    non-OCR lead invariant by slotting the preferred backend in as the first
-    fallback. The document never aborts because a page can't use the caller's
-    favourite.
+def test_apply_preference_moves_a_named_ocr_backend_to_the_front() -> None:
+    """Naming an OCR backend is the caller paying for its tier (pc-4u7.41).
+
+    The old rule parked a named OCR backend behind a native lead, which made the
+    quality tier unreachable on digital PDFs. Naming the backend is an explicit
+    choice, so it leads; the guard that remains is against the UNPRICED case (a
+    judge leading with a VLM nobody asked for), covered by
+    ``test_plan_rejects_a_judge_that_leads_a_native_page_with_ocr``.
     """
-    native_lead = BackendDescriptor(
-        name="native-lead",
-        version="1.0.0",
-        capabilities=BackendCapabilities(supported_formats=["text/plain"]),
-    )
-    preferred_ocr = BackendDescriptor(
-        name="ocr-tesseract",
-        version="1.0.0",
-        capabilities=BackendCapabilities(supported_formats=["text/plain"], gpu_requirement=GPU_NOT_NEEDED),
-    )
-    other_ocr = BackendDescriptor(
-        name="ocr-other",
-        version="1.0.0",
-        capabilities=BackendCapabilities(supported_formats=["text/plain"], gpu_requirement=GPU_NOT_NEEDED),
-    )
-    family = [native_lead, preferred_ocr, other_ocr]
-    constraints = RoutingConstraints(preferred_backend="ocr-tesseract")
-    result = _apply_preference(["ocr-tesseract", "native-lead", "ocr-other"], family, Intent.NATIVE, constraints)
-    assert result[0] == "native-lead"
-    assert result[1] == "ocr-tesseract"
+    family = native_only_family()
+    constraints = full_constraints(formats=ALL_FORMATS, preferred_backend="ocr-tesseract")
+    assert _apply_preference(["ocr-tesseract", "native-lead", "ocr-other"], family, Intent.NATIVE, constraints) == [
+        "ocr-tesseract",
+        "native-lead",
+        "ocr-other",
+    ]
 
 
 def test_only_backend_pins_the_plan_to_one_backend() -> None:
@@ -1406,6 +1395,37 @@ def test_only_backend_still_degrades_a_blank_page() -> None:
     assert page.degradation_code == DEGRADED_BLANK_PAGE_CODE
 
 
+def test_a_named_ocr_backend_may_lead_a_native_page() -> None:
+    """The correction (pc-4u7.41): naming an OCR backend PAYS for its tier.
+
+    The OCR family is the deliberate high-accuracy harness for figures, tables and
+    equations, reachable on digital PDFs too. The default guard stays (a judge
+    cannot spend a VLM on text a native backend reads in milliseconds), and it is
+    overridden by the caller's own choice - never by the judge.
+    """
+    signal = make_signal(1)  # native intent: real text, no images
+    constraints = full_constraints(formats={"application/pdf"}, preferred_backend="ocr-ovis")
+    plan = plan_route(
+        make_analysis([signal], 1),
+        [make_desc("native-pdf", ("application/pdf",)), make_desc("ocr-ovis", ("application/pdf",))],
+        constraints,
+    )
+    page = plan.pages[0]
+    assert page.intent is Intent.NATIVE
+    assert page.chosen == "ocr-ovis"
+
+
+def test_a_native_backend_still_leads_without_a_name() -> None:
+    """The default guard, unchanged: with nothing named, tier 2 cannot lead."""
+    signal = make_signal(1)
+    plan = plan_route(
+        make_analysis([signal], 1),
+        [make_desc("native-pdf", ("application/pdf",)), make_desc("ocr-ovis", ("application/pdf",))],
+        full_constraints(formats={"application/pdf"}),
+    )
+    assert plan.pages[0].chosen == "native-pdf"
+
+
 def full_constraints(**overrides: Any) -> RoutingConstraints:
     base: dict[str, Any] = {
         "installed_extras": set(OCR_EXTRAS),
@@ -1422,6 +1442,28 @@ def full_constraints(**overrides: Any) -> RoutingConstraints:
 def make_analysis(signals: list[PageSignal], page_count: int, codes: tuple[str, ...] = ()) -> AnalysisResult:
     diagnostics = [Diagnostic(level=DiagnosticLevel.INFO, code=code, message=f"synthetic hint {code}") for code in codes]
     return AnalysisResult(source_hash="0" * 64, page_count=page_count, signals=signals, diagnostics=diagnostics)
+
+
+def make_signal(
+    page: int = 1, *, text_chars: int = 500, native: bool = True, blank: bool = False, replacement: float | None = None, images: int = 0
+) -> PageSignal:
+    return PageSignal(
+        page_number=page,
+        has_native_text=native,
+        text_chars=text_chars,
+        image_count=images,
+        blank=blank,
+        replacement_char_ratio=replacement,
+    )
+
+
+def native_only_family() -> list[Any]:
+    """A NATIVE page's family: one native candidate and two OCR candidates."""
+    return [
+        make_desc("native-lead", ALL_FORMATS),
+        make_desc("ocr-tesseract", ALL_FORMATS, vram=1.0),
+        make_desc("ocr-other", ALL_FORMATS, vram=2.0),
+    ]
 
 
 def make_desc(
@@ -1457,17 +1499,4 @@ def make_desc(
             required_engine=required_engine,
             convert_extra=convert_extra,
         ),
-    )
-
-
-def make_signal(
-    page: int = 1, *, text_chars: int = 500, native: bool = True, blank: bool = False, replacement: float | None = None, images: int = 0
-) -> PageSignal:
-    return PageSignal(
-        page_number=page,
-        has_native_text=native,
-        text_chars=text_chars,
-        image_count=images,
-        blank=blank,
-        replacement_char_ratio=replacement,
     )

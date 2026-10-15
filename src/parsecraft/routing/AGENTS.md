@@ -74,7 +74,7 @@ identical plan.
   an injected judge carries its own policy, resolved by the caller with the same
   value. `QUALITY` flips the VRAM direction — a **documented proxy** for model
   strength, not a measurement (an undeclared size sorts last either way).
-- Degradation is the mirror of the NATIVE-lead guard: when an OCR-intent
+- Degradation is the mirror of the NATIVE-lead tier cap: when an OCR-intent
   page finds no OCR family (missing extras / `allow_ocr` off / no usable GPU)
   but native can tell the truth about it, `plan_route` degrades that page to
   NATIVE with a recorded reason ("OCR unavailable … degraded to native …")

@@ -264,20 +264,20 @@ def test_preferred_backend_judge_orders_and_rejects() -> None:
     # Preferred, not eligible on this page → order is the judge's, unchanged.
     assert _apply_preference(["native-text"], candidates, Intent.NATIVE, RoutingConstraints(preferred_backend="missing")) == ["native-text"]
 
-    # An OCR preferred on a NATIVE page never leads the non-OCR family.
+    # An OCR preferred on a NATIVE page leads: naming it is the caller
+    # paying for that tier (pc-4u7.41). The guard that remains is the
+    # UNPRICED case - a judge leading with a VLM nobody asked for.
     ocr_candidates = [
         _descriptor("native-text", ("text/plain",)),
         _descriptor("ocr-tesseract", ("text/plain",)),
         _descriptor("ocr-other", ("text/plain",)),
     ]
-    rotated = _apply_preference(
-        ["ocr-tesseract", "native-text", "ocr-other"],
+    assert _apply_preference(
+        ["native-text", "ocr-tesseract", "ocr-other"],
         ocr_candidates,
         Intent.NATIVE,
         RoutingConstraints(preferred_backend="ocr-tesseract"),
-    )
-    assert rotated[0] == "native-text"
-    assert rotated[1] == "ocr-tesseract"
+    ) == ["ocr-tesseract", "native-text", "ocr-other"]
 
 
 def test_convert_auto_native_markdown(tmp_path: Path, registry: BackendRegistry) -> None:
@@ -748,7 +748,7 @@ def test_convert_rejects_a_judge_that_leads_a_native_page_with_ocr(pdf_registry:
     register_judge_provider("cli-ocr-first-judge", _load_ocr_leading_judge)
     result = runner.invoke(app, ["convert", str(pdf_registry), "--judge", "cli-ocr-first-judge/j"])
     assert result.exit_code == 1
-    assert "may not lead a NATIVE page" in _text(result)
+    assert "extraction tier" in _text(result)
 
 
 def test_convert_preference_reaches_the_resolved_judge(pdf_registry: Path) -> None:

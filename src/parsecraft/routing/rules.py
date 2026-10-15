@@ -126,6 +126,28 @@ def is_hard_eligible(descriptor: BackendDescriptor, constraints: RoutingConstrai
     return ocr_allowed and extra_installed and gpu_ok and formats_covered and offline_ok and language_ok and engine_ok
 
 
+def extraction_tier(descriptor: BackendDescriptor) -> int:
+    """A backend's extraction tier: how much modelling stands behind its extraction.
+
+    ``0`` — the dependency-free native family (deterministic text/markdown/html/pdf
+    extraction: milliseconds, no model weights).
+    ``1`` — an extra-backed intelligent parser (liteparse, docling, pandoc, mineru):
+    real structural extraction, no document-VLM.
+    ``2`` — an OCR/document-VLM harness (ocr-unlimited, ocr-ovis, ocr-qianfan,
+    ocr-tele, plus any future hybrid): the tier chosen for structure extraction on
+    figures, tables and equations *regardless of whether the page is native*.
+
+    One source of truth: the ranking order AND the NATIVE-lead rule both read this,
+    so "native before OCR" cannot mean two different things in two places. It is a
+    quality ladder, not a binary: a hybrid engine that reads both sits at the tier
+    its descriptor declares, and the design space between deterministic extraction
+    and a document-VLM is expected to grow.
+    """
+    if is_ocr(descriptor):
+        return 2
+    return 0 if descriptor.capabilities.optional_dependency_group is None else 1
+
+
 def in_intent_family(intent: Intent, descriptor: BackendDescriptor) -> bool:
     """OCR intents accept only OCR backends; NATIVE admits native + OCR fallbacks.
 
