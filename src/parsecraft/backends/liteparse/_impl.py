@@ -21,13 +21,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from time import monotonic
 from types import SimpleNamespace
-from typing import Any
 
 from liteparse import LiteParse
 
 from parsecraft.backends.errors import BackendError
 from parsecraft.backends.liteparse._items import TextItemLike, chunks_for_page
-from parsecraft.backends.liteparse._tables import detect_table_regions
+from parsecraft.backends.liteparse._tables import VectorLineLike, detect_table_regions
 from parsecraft.backends.liteparse.liteparse import DESCRIPTOR, LITEPARSE_BACKEND_VERSION
 from parsecraft.backends.protocol import (
     AnalysisResult,
@@ -80,8 +79,10 @@ class _ParsedPage:
     items: list[TextItemLike]
     height: float
     width: float = 0.0
-    lines: list[Any] = field(default_factory=list)
-    shapes: list[Any] = field(default_factory=list)
+    #: JSON records straight from liteparse: rule lines are read structurally
+    #: (:class:`VectorLineLike`), shapes stay the decoded JSON objects they are.
+    lines: list[VectorLineLike] = field(default_factory=list)
+    shapes: list[dict[str, object]] = field(default_factory=list)
 
 
 class LiteparseBackend:
@@ -282,7 +283,7 @@ def _parse_page(data: bytes, page_number: int, **overrides: str | int | float | 
     )
 
 
-def _vector_graphics(page: object) -> tuple[list[object], list[object]]:
+def _vector_graphics(page: object) -> tuple[list[VectorLineLike], list[dict[str, object]]]:
     """Read the liteparse vector-graphics record into a ``(lines, shapes)`` pair."""
     raw = getattr(page, "vector_graphics", None) or {}
     lines = [SimpleNamespace(**line) for line in (raw.get("lines") or [])]
@@ -294,8 +295,8 @@ def _append_table_chunks(
     blocks: list[StructuredChunk],
     *,
     number: int,
-    lines: list[object],
-    items: list[object],
+    lines: list[VectorLineLike],
+    items: list[TextItemLike],
     page_width: float,
     page_height: float,
 ) -> list[StructuredChunk]:
@@ -325,7 +326,7 @@ def _append_table_chunks(
     return blocks
 
 
-def _parser(**overrides: object) -> LiteParse:
+def _parser(**overrides: str | int | float | bool) -> LiteParse:
     """A fresh quiet parser (construction is config-only; the work is in parse())."""
     return LiteParse(**{**_PARSER_KWARGS, **overrides})
 

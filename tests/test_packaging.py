@@ -86,7 +86,7 @@ def wheel_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     if uv is None:
         pytest.skip("uv not available for wheel build")
     out_dir = tmp_path_factory.mktemp("wheel")
-    proc = subprocess.run(  # noqa: S603
+    proc = subprocess.run(  # noqa: S603 - trusted local interpreter, fixed argv, no shell
         [uv, "build", "--wheel", "--out-dir", str(out_dir)],
         capture_output=True,
         text=True,

@@ -203,7 +203,7 @@ _COLLECTION_SCRIPT = textwrap.dedent(
 
 
 def test_package_imports_offline_without_heavy_runtimes() -> None:
-    proc = subprocess.run(  # noqa: S603
+    proc = subprocess.run(  # noqa: S603 - trusted local interpreter, fixed argv, no shell
         [sys.executable, "-c", _SCRIPT],
         capture_output=True,
         text=True,
@@ -223,7 +223,7 @@ def test_every_test_module_collects_without_heavy_packages() -> None:
     re-imported from a clean subprocess with the sanctioned heavy set blocked
     through a ``sys.meta_path`` finder, and none of them may touch it.
     """
-    proc = subprocess.run(  # noqa: S603
+    proc = subprocess.run(  # noqa: S603 - trusted local interpreter, fixed argv, no shell
         [sys.executable, "-c", _COLLECTION_SCRIPT],
         capture_output=True,
         text=True,

@@ -204,7 +204,7 @@ def _detect_vram_gb() -> float:
     """First NVIDIA GPU's total VRAM in GiB; missing/failing nvidia-smi → 0.0."""
     try:
         # Fixed argv, no shell, bounded timeout — nothing untrusted reaches the exec.
-        completed = run(_NVIDIA_SMI_QUERY, capture_output=True, text=True, timeout=_SMI_TIMEOUT_S, check=False)  # noqa: S603
+        completed = run(_NVIDIA_SMI_QUERY, capture_output=True, text=True, timeout=_SMI_TIMEOUT_S, check=False)  # noqa: S603 - trusted local interpreter, fixed argv, no shell
     except (OSError, TimeoutExpired):
         return 0.0
     if completed.returncode != 0:

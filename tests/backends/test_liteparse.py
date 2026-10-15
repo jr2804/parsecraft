@@ -19,6 +19,8 @@ import pytest
 from parsecraft.backends import registry as registry_module
 from parsecraft.backends.errors import BackendError
 from parsecraft.backends.liteparse import liteparse as liteparse_module
+from parsecraft.backends.liteparse._items import TextItemLike
+from parsecraft.backends.liteparse._tables import VectorLineLike
 from parsecraft.backends.protocol import (
     BackendConfig,
     BackendResult,
@@ -443,8 +445,11 @@ def test_vector_graphics_options_reach_the_parser_and_the_convert_path(
     assert ChunkKind.TABLE in kinds
 
 
-def _table_text(x: float, y: float, text: str) -> object:
-    return SimpleNamespace(text=text, x=x, y=y, width=30.0, font_name="Times", font_size=10.0, font_weight=400)
+def _table_text(x: float, y: float, text: str) -> TextItemLike:
+    return cast(
+        TextItemLike,
+        SimpleNamespace(text=text, x=x, y=y, width=30.0, font_name="Times", font_size=10.0, font_weight=400),
+    )
 
 
 def test_append_table_chunks_skips_an_empty_region(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -467,5 +472,5 @@ def test_append_table_chunks_skips_an_empty_region(monkeypatch: pytest.MonkeyPat
     assert out == []
 
 
-def _table_line(x1: float, y1: float, x2: float, y2: float) -> object:
-    return SimpleNamespace(x1=x1, y1=y1, x2=x2, y2=y2, stroke=True, fill=False)
+def _table_line(x1: float, y1: float, x2: float, y2: float) -> VectorLineLike:
+    return cast(VectorLineLike, SimpleNamespace(x1=x1, y1=y1, x2=x2, y2=y2, stroke=True, fill=False))

@@ -163,7 +163,7 @@ def _ollama_available() -> str | None:
     if find_spec("typesafe_sdk") is None:
         return "the 'systemone' extra is not installed (run: uv run --isolated --extra systemone pytest -m judge --run-judge)"
     try:
-        with urllib.request.urlopen("http://localhost:11434/api/tags", timeout=5) as response:  # noqa: S310
+        with urllib.request.urlopen("http://localhost:11434/api/tags", timeout=5) as response:  # noqa: S310 - local Ollama endpoint, opt-in judge tier
             tags = json.loads(response.read().decode("utf-8"))
     except (OSError, ValueError) as exc:
         return f"no Ollama daemon at http://localhost:11434 ({exc})"

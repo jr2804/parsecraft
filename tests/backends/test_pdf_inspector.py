@@ -397,7 +397,7 @@ def _install_stub(stub: _Stub, monkeypatch: pytest.MonkeyPatch) -> types.ModuleT
     module = types.ModuleType("pdf_inspector")
     module.PageMarkdown = _PageMarkdown  # ty: ignore[unresolved-attribute]
 
-    def extract_pages_markdown_bytes(_data: bytes, pages: list[int] | None = None) -> _PagesExtractionResult:  # noqa: ANN202
+    def extract_pages_markdown_bytes(_data: bytes, pages: list[int] | None = None) -> _PagesExtractionResult:  # noqa: ANN202 - stub mirrors the upstream signature
         stub.extract_pages_args.append(pages)
         if stub.extract_error is not None:
             raise stub.extract_error

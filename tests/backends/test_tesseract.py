@@ -154,7 +154,7 @@ def test_the_engine_is_asked_for_the_declared_languages_and_psm(monkeypatch: pyt
     calls: list[list[str]] = []
     monkeypatch.setattr(tesseract, "resolve_tesseract_cmd", lambda: "/usr/bin/tesseract")
 
-    def fake_run(argv: list[str], **kwargs: Any) -> _Completed:  # noqa: ARG001
+    def fake_run(argv: list[str], **kwargs: Any) -> _Completed:  # noqa: ARG001 - fake mirrors the real call signature
         calls.append(argv)
         Path(argv[1]).write_bytes(_PNG)
         return _Completed()

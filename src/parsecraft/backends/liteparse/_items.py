@@ -173,7 +173,7 @@ def lines_of(items: Iterable[TextItemLike]) -> list[_Line]:
     return lines
 
 
-def _number(value: object, default: float = 0.0) -> float:
+def _number(value: str | int | float | bool | None, default: float = 0.0) -> float:
     """Coerce a wire value to float; liteparse sends ``None`` for unknown geometry."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return default

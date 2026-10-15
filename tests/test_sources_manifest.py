@@ -309,7 +309,7 @@ def test_corpus_cold_cache_refresh_stays_within_budget() -> None:
 
 def test_gated_tiers_are_skipped_without_their_opt_in_flags() -> None:
     """The default run must stay offline and fast: corpus/network skip by default."""
-    proc = subprocess.run(  # noqa: S603
+    proc = subprocess.run(  # noqa: S603 - trusted local interpreter, fixed argv, no shell
         [
             sys.executable,
             "-m",

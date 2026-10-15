@@ -687,7 +687,7 @@ def test_assets_import_is_clean_without_heavy_modules() -> None:
         print("ASSETS_IMPORTS_OK")
         """
     )
-    proc = subprocess.run(  # noqa: S603
+    proc = subprocess.run(  # noqa: S603 - trusted local interpreter, fixed argv, no shell
         [sys.executable, "-c", script],
         capture_output=True,
         text=True,

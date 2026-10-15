@@ -14,7 +14,7 @@ fetched.
 Usage::
 
     uv run --extra docling --extra pymupdf \
-        python scripts/bench_docling.py .tmp/docling-bench/*.pdf
+        uv run --extra docling --extra pymupdf scripts/bench_docling.py .tmp/docling-bench/*.pdf
 """
 
 from __future__ import annotations
