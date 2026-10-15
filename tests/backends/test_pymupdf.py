@@ -347,6 +347,7 @@ def test_office_conversion_names_the_format_to_the_stream_opener(monkeypatch: py
     media type keeps the PDF filetype — the behaviour every earlier fixture
     relied on.
     """
+    pytest.importorskip("pptx", reason="the office scaffold needs python-pptx (test extra)")
     seen: list[tuple[int, str]] = []
 
     class FakeImpl:

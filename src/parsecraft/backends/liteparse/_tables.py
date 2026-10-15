@@ -58,6 +58,33 @@ class VectorLineLike(Protocol):
     fill: bool
 
 
+class VectorShapeLike(Protocol):
+    """One vector shape: a bounding box and its stroke/fill flags.
+
+    A Protocol (not a dict) because liteparse hands back dataclasses: its
+    ``VectorGraphics.shapes`` holds ``VectorShape`` records, so the adapter must
+    read attributes. Shapes are not consumed by the detector yet — they are
+    handed through for the follow-up that segments header rows and cell borders.
+    """
+
+    bbox: tuple[float, float, float, float]
+    stroke: bool
+    fill: bool
+
+
+class VectorGraphicsLike(Protocol):
+    """The slice of liteparse's ``VectorGraphics`` record the adapter reads.
+
+    ``VectorGraphics`` is a dataclass, so ``lines``/``shapes`` are ATTRIBUTES.
+    Reading them dict-style (``record.get("lines")``) raised AttributeError on
+    every page and made the whole table path unreachable (issue #7) — the shape
+    of this record is liteparse's, not the CLI JSON dump's.
+    """
+
+    lines: Sequence[VectorLineLike]
+    shapes: Sequence[VectorShapeLike]
+
+
 class TextItemLike(Protocol):
     x: float
     y: float

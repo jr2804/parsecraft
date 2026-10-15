@@ -13,12 +13,18 @@ from __future__ import annotations
 import io
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from importlib import import_module
 from pathlib import Path
 
-import openpyxl
-from docx import Document
-from pptx import Presentation
-from pptx.util import Inches
+#: Document producers, resolved on demand. They live in the test extra, and a
+#: module-level import here makes the ENTIRE suite fail collection (pytest
+#: imports fixtures eagerly) whenever the extra is absent — a light dev env,
+#: or any environment pruned back to the light set. Only the three builders
+#: below need them.
+_DOCX_MODULE = "docx"
+_PPTX_MODULE = "pptx"
+_PPTX_UTIL_MODULE = "pptx.util"
+_OPENPYXL_MODULE = "openpyxl"
 
 #: Suffixes the scaffold can generate without explicit caller content.
 #: Office formats are deliberately NOT here: this tuple is the vocabulary the
@@ -317,7 +323,7 @@ def docx_bytes() -> bytes:
     the only scaffold PyMuPDF will read. NOT byte-deterministic (pc-93d):
     python-docx stamps the template's core properties with the wall clock.
     """
-    document = Document()
+    document = import_module(_DOCX_MODULE).Document()
     document.add_heading(DOCX_TEXTS[0], level=1)
     document.add_paragraph(DOCX_TEXTS[1])
     table = document.add_table(rows=1, cols=2)
@@ -336,11 +342,12 @@ def pptx_bytes() -> bytes:
     and was removed — nothing consumes that guarantee, and a needless repack of
     OOXML is a needless risk. Tests assert on extracted content.
     """
-    presentation = Presentation()
+    presentation = import_module(_PPTX_MODULE).Presentation()
     for title, body in ((PPTX_TEXTS[0], PPTX_TEXTS[1]), (PPTX_TEXTS[2], PPTX_TEXTS[3])):
         slide = presentation.slides.add_slide(presentation.slide_layouts[5])
         slide.shapes.title.text = title
-        box = slide.shapes.add_textbox(Inches(1), Inches(2), Inches(4), Inches(1))
+        inches = import_module(_PPTX_UTIL_MODULE).Inches
+        box = slide.shapes.add_textbox(inches(1), inches(2), inches(4), inches(1))
         box.text_frame.text = body
     buffer = io.BytesIO()
     presentation.save(buffer)
@@ -362,7 +369,7 @@ def xlsx_bytes() -> bytes:
     ``properties.created/modified`` does not survive the save. Tests assert on
     the CONTENT the backend extracts, never on bytes.
     """
-    workbook = openpyxl.Workbook()
+    workbook = import_module(_OPENPYXL_MODULE).Workbook()
     sheet = workbook.active
     sheet.title = XLSX_SHEET
     sheet.append([XLSX_TEXTS[0], XLSX_TEXTS[1]])

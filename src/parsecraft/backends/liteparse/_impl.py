@@ -20,13 +20,18 @@ import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from time import monotonic
-from types import SimpleNamespace
+from typing import cast
 
 from liteparse import LiteParse
 
 from parsecraft.backends.errors import BackendError
 from parsecraft.backends.liteparse._items import TextItemLike, chunks_for_page
-from parsecraft.backends.liteparse._tables import VectorLineLike, detect_table_regions
+from parsecraft.backends.liteparse._tables import (
+    VectorGraphicsLike,
+    VectorLineLike,
+    VectorShapeLike,
+    detect_table_regions,
+)
 from parsecraft.backends.liteparse.liteparse import DESCRIPTOR, LITEPARSE_BACKEND_VERSION
 from parsecraft.backends.protocol import (
     AnalysisResult,
@@ -79,10 +84,10 @@ class _ParsedPage:
     items: list[TextItemLike]
     height: float
     width: float = 0.0
-    #: JSON records straight from liteparse: rule lines are read structurally
-    #: (:class:`VectorLineLike`), shapes stay the decoded JSON objects they are.
+    #: Vector records read off the page: rule lines are consumed structurally
+    #: (:class:`VectorLineLike`), shapes are carried for a later pass.
     lines: list[VectorLineLike] = field(default_factory=list)
-    shapes: list[dict[str, object]] = field(default_factory=list)
+    shapes: list[VectorShapeLike] = field(default_factory=list)
 
 
 class LiteparseBackend:
@@ -283,12 +288,18 @@ def _parse_page(data: bytes, page_number: int, **overrides: str | int | float | 
     )
 
 
-def _vector_graphics(page: object) -> tuple[list[VectorLineLike], list[dict[str, object]]]:
-    """Read the liteparse vector-graphics record into a ``(lines, shapes)`` pair."""
-    raw = getattr(page, "vector_graphics", None) or {}
-    lines = [SimpleNamespace(**line) for line in (raw.get("lines") or [])]
-    shapes = list(raw.get("shapes") or [])
-    return lines, shapes
+def _vector_graphics(page: object) -> tuple[list[VectorLineLike], list[VectorShapeLike]]:
+    """Read the page's ``VectorGraphics`` record into a ``(lines, shapes)`` pair.
+
+    liteparse hands back a dataclass whose ``lines``/``shapes`` are ATTRIBUTES;
+    a page converted without the option carries ``None``, which yields the empty
+    pair (issue #7: reading the record dict-style made every table page fail).
+    """
+    raw = getattr(page, "vector_graphics", None)
+    if raw is None:
+        return [], []
+    record = cast(VectorGraphicsLike, raw)
+    return list(record.lines), list(record.shapes)
 
 
 def _append_table_chunks(

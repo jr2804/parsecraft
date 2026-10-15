@@ -474,3 +474,53 @@ def test_append_table_chunks_skips_an_empty_region(monkeypatch: pytest.MonkeyPat
 
 def _table_line(x1: float, y1: float, x2: float, y2: float) -> VectorLineLike:
     return cast(VectorLineLike, SimpleNamespace(x1=x1, y1=y1, x2=x2, y2=y2, stroke=True, fill=False))
+
+
+def test_vector_graphics_are_read_as_the_real_liteparse_dataclasses() -> None:
+    """Regression (issue #7): ``VectorGraphics`` is a dataclass, not a dict.
+
+    The adapter read ``.lines``/``.shapes`` dict-style, so every page raised
+    ``AttributeError: 'VectorGraphics' object has no attribute 'get'`` and the
+    whole table path was unreachable in a released build. The earlier tests
+    missed it because they built a ``_ParsedPage`` directly with a hand-made
+    line list, bypassing this handoff — so this test deliberately constructs the
+    record with liteparse's OWN types: if liteparse changes the record's shape,
+    this fails here instead of inside a consumer's conversion.
+
+    Needs the real ``liteparse`` types, so it skips where the engine is absent.
+    """
+    types = pytest.importorskip("liteparse.types")
+    impl = importlib.import_module("parsecraft.backends.liteparse._impl")
+
+    record = types.VectorGraphics(
+        shapes=[
+            types.VectorShape(
+                bbox=(0.0, 0.0, 10.0, 1.0),
+                stroke=False,
+                stroke_color=None,
+                fill=True,
+                fill_color="ff000000",
+                has_curve=False,
+            )
+        ],
+        lines=[
+            types.VectorLine(
+                x1=0.0,
+                y1=5.0,
+                x2=200.0,
+                y2=5.0,
+                stroke=True,
+                stroke_width=1.0,
+                stroke_color="ff000000",
+                fill=False,
+                fill_color=None,
+            )
+        ],
+    )
+    lines, shapes = impl._vector_graphics(SimpleNamespace(vector_graphics=record))
+    assert [line.x2 for line in lines] == [200.0]
+    assert [shape.bbox for shape in shapes] == [(0.0, 0.0, 10.0, 1.0)]
+
+    # A page converted without the option carries no record: the empty pair is
+    # what keeps the blob fallback working.
+    assert impl._vector_graphics(SimpleNamespace()) == ([], [])
