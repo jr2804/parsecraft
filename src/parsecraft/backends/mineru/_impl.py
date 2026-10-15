@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+from enum import StrEnum
 from html.parser import HTMLParser
 from pathlib import Path
 from time import monotonic
@@ -87,8 +88,23 @@ _ITEM_KINDS: dict[str, ChunkKind] = {
 }
 
 _MINERU_MEDIA_TYPE = "application/pdf"
-_DEFAULT_EFFORT = "flash"
-_EFFORTS = ("flash", "medium", "high", "xhigh")
+
+
+class MineruEffort(StrEnum):
+    """MinerU's pluggable parse effort — the ``effort`` option's value domain.
+
+    ``flash`` is the weight-free text path; ``medium``/``high``/``xhigh``
+    escalate to the VLM. A StrEnum (not ``Literal``) per the type-rigor rule:
+    the domain is one closed, named set its validator and error message share.
+    """
+
+    FLASH = "flash"
+    MEDIUM = "medium"
+    HIGH = "high"
+    XHIGH = "xhigh"
+
+
+_DEFAULT_EFFORT = MineruEffort.FLASH
 
 
 class MineruBackend:
@@ -201,13 +217,15 @@ def configure_mineru_env() -> None:
     os.environ["MINERU_HOME"] = str(model_revision_dir(default_cache_dir(), asset.model_id, asset.model_revision))
 
 
-def _effort(config: BackendConfig) -> str:
+def _effort(config: BackendConfig) -> MineruEffort:
     """Validate the pluggable ``effort`` option; defaults to the verified ``flash``."""
     raw = config.options.get("effort", _DEFAULT_EFFORT)
-    if not isinstance(raw, str) or raw not in _EFFORTS:
-        msg = f"unknown effort {raw!r}; expected one of: {', '.join(_EFFORTS)}"
-        raise BackendError(msg)
-    return raw
+    try:
+        return MineruEffort(raw)
+    except ValueError:
+        expected = ", ".join(member.value for member in MineruEffort)
+        msg = f"unknown effort {raw!r}; expected one of: {expected}"
+        raise BackendError(msg) from None
 
 
 def _image_analysis(config: BackendConfig) -> bool:

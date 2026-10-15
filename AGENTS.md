@@ -93,7 +93,9 @@ change. Summary:
 _Always-injected_ — keep minimal. Everything else → `.agents/` files.
 
 1. **Type rigor:** concrete types only — no `Any`, no `hasattr`/`isinstance`
-   duck-typing outside public `Protocol`s. Schemas are pydantic v2. See
+   duck-typing outside public `Protocol`s. Schemas are pydantic v2. Closed
+   value sets are `StrEnum`s: `Literal[...]` and ad-hoc literal-string domains
+   (bare `("a", "b")` validation tuples) are forbidden. See
    `docs/adr/0001-phase-0-decisions.md` (§9).
 2. **Agents never push — the user pushes.** Agents may create local commits
    in logical, reviewable units (the user groups and reviews history);

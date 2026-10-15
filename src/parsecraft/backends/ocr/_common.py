@@ -29,6 +29,7 @@ import hashlib
 import importlib
 import time
 from collections.abc import Callable
+from enum import StrEnum
 from importlib.metadata import version as _package_version
 from io import BytesIO
 from math import sqrt
@@ -67,8 +68,20 @@ from parsecraft.ir.models import (
     utcnow,
 )
 
-#: Runtimes a backend may select through the ``runtime`` config option.
-RUNTIMES: tuple[str, ...] = ("transformers", "vllm")
+
+class OcrRuntime(StrEnum):
+    """Runtimes an OCR backend may select through the ``runtime`` option.
+
+    A StrEnum (not a bare string tuple) per the type-rigor rule: the domain,
+    its validator and its error message all read one named set.
+    """
+
+    TRANSFORMERS = "transformers"
+    VLLM = "vllm"
+
+
+#: Runtime names as plain strings, for callers that only need the domain's values.
+RUNTIMES: tuple[str, ...] = tuple(member.value for member in OcrRuntime)
 
 #: The load kwarg that corrects a known-broken Mistral-family tokenizer regex.
 #: Several VLM repos ship a pre-tokenizer whose Split pattern mishandles case
@@ -111,7 +124,7 @@ _POINTS_PER_INCH = 72
 #: the measured areas in the module docstring.
 MAX_RASTER_PIXELS = 40_000_000
 
-_DEFAULT_RUNTIME = "transformers"
+_DEFAULT_RUNTIME = OcrRuntime.TRANSFORMERS
 _PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 _JPEG_MAGIC = b"\xff\xd8\xff"
 #: TIFF has two byte-order marks: ``II*\0`` (little-endian) and ``MM\0*`` (big).
