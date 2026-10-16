@@ -127,18 +127,31 @@ jobs:
         generate_release_notes: true
 
     # AI release notes (LLM-summarised, deterministic fallback). Cosmetic only:
-    # `continue-on-error` keeps the release intact if the API is unreachable,
-    # unconfigured, or returns a bad summary — the auto-generated notes stay.
+    # `continue-on-error` keeps the release intact if the API is unreachable or
+    # returns a bad summary — the auto-generated notes stay.
+    #
+    # Skipped ENTIRELY unless BOTH are configured by the operator:
+    #   secret   OPENROUTER_API_KEY  — the credential
+    #   variable OPENROUTER_MODEL    — the model id to call
+    # There is deliberately no built-in default model: an unset variable means the
+    # operator wants this step off, not that some model should be picked for them.
+    # The `if` gates on the variable because `secrets` is NOT an allowed context in
+    # a step-level condition; a configured model without a key is handled inside
+    # the step, as a notice rather than a failure.
     - name: AI release notes (OpenRouter)
-      if: env.OPENROUTER_API_KEY != ''
+      if: vars.OPENROUTER_MODEL != ''
       continue-on-error: true
       env:
         OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-        OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'openai/gpt-4o-mini' }}
+        OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
         GH_TOKEN: ${{ github.token }}
       run: |
         set -euo pipefail
         version="${{ steps.version.outputs.version }}"
+        if [ -z "${OPENROUTER_API_KEY:-}" ]; then
+          echo "::notice::OPENROUTER_MODEL is set but OPENROUTER_API_KEY is not; skipping AI release notes"
+          exit 0
+        fi
         prev="$(git tag --sort=-version:refname | grep -E '^[0-9]{4}\.[0-9]{1,2}\.[0-9]+$' | sed -n '2p' || true)"
         range="${prev:+$prev..}$version"
         git log "$range" --format='- %s' | head -n 120 > commits.txt
