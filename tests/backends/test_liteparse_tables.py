@@ -11,6 +11,7 @@ import pytest
 
 from parsecraft.backends.liteparse._tables import (
     MECHANISM_COUNTS_10_PAGE,
+    _bold_row_has_column_partners,
     _columns_in_band,
     _horizontal_rules,
     detect_table_regions,
@@ -310,28 +311,34 @@ def test_a_numbered_row_continues_the_run_despite_column_mismatch() -> None:
     assert len(regions[0][1]) == 3
 
 
-def test_a_labelled_row_starts_a_new_table_not_a_continuation() -> None:
-    """The page-19 guarantee: a header row between same-width tables keeps them two.
+def test_page19_stays_two_tables_via_the_caption_band() -> None:
+    """Round 4: a column-aligned bold header EXTENDS (page 2's shaded row); the
+    page-19 split comes from the caption band between the two tables.
 
-    The real page-19 mechanism is the SEPARATOR, not the column model: the two
-    gain tables have identical columns, so geometry alone would merge them — what
-    keeps them apart is their bold header row ("Frequency (Hz) | Narrowband gain"),
-    which heading classification reports as a separator. The continuation rule is
-    for data rows only and never fires here.
+    The partner rule means boldness alone never closes a run when the bold items
+    sit inside the model's columns — the highlighted-row evidence. What keeps
+    page 19 at two tables is its "Table 7 - Definition of..." caption: a bold
+    single-column band with no partners, which closes the run.
     """
-    lines = [_line(0, y, 200, y) for y in (100.0, 130.0, 160.0, 190.0)]
+    lines = [_line(0, y, 200, y) for y in (100.0, 130.0, 160.0, 190.0, 220.0, 250.0)]
     items = [
         _text(20, 110, "1"),
         _text(100, 110, "1328"),
-        _text(20, 140, "Frequency (Hz)"),  # bold header row of the next table
+        _text(20, 140, "Frequency (Hz)"),  # bold-in-the-real-doc, column-aligned
         _text(100, 140, "Narrowband gain"),
         _text(20, 170, "50"),
         _text(100, 170, "1.5"),
+        # caption band: one wide centred item, no column partners -> closes the run
+        _text(60, 205, "Table 8 - Definition of narrowband terms"),
+        _text(20, 235, "1"),
+        _text(100, 235, "16000"),
     ]
-    assert len(detect_table_regions(lines, items, page_width=200, separators=(140.0,))) == 2
-    # Without the separator the geometry alone cannot tell them apart - which is
-    # precisely why the structural signal exists (pc-4u7.42, the reporter's option 1).
-    assert len(detect_table_regions(lines, items, page_width=200)) == 1
+    # The header row merges into the run above (partners); the caption band is
+    # single-column and closes it: two tables.
+    assert len(detect_table_regions(lines, items, page_width=200, separators=(140.0, 205.0))) == 2
+    # Without separators the caption still closes it - a single-column band is
+    # non-tabular on its own, which is why the caption mechanism is robust.
+    assert len(detect_table_regions(lines, items, page_width=200)) == 2
 
 
 def test_a_band_of_only_whitespace_items_does_not_continue_a_run() -> None:
@@ -351,9 +358,91 @@ def test_a_band_of_only_whitespace_items_does_not_continue_a_run() -> None:
     assert len(detect_table_regions(lines, items, page_width=200)) == 1
 
 
+def test_a_curved_shape_page_yields_no_tables() -> None:
+    """pc-4u7.42 round 4: curved vector shapes are figure content, not tables.
+
+    Measured on the corpus: the flowchart/timing-diagram pages (Figures 5/6) carry
+    1-12 curved shapes while every table page carries none - so one curved shape
+    excludes the page's rule bands, which are the figure's boxes.
+    """
+    lines = [_line(0, 100, 200, 100), _line(0, 160, 200, 160)]
+    items = [_text(20, 130, "a"), _text(120, 130, "b")]
+    assert detect_table_regions(lines, items, page_width=200, shapes=(_shape(True),)) == []
+    # The same geometry without curves is a table - the shapes are the signal.
+    assert len(detect_table_regions(lines, items, page_width=200, shapes=(_shape(),))) == 1
+
+
+def _shape(has_curve: bool = False) -> Any:
+    return SimpleNamespace(bbox=(0.0, 0.0, 10.0, 10.0), stroke=False, fill=True, has_curve=has_curve)
+
+
+def test_a_shaded_bold_row_with_column_partners_extends_the_run() -> None:
+    """pc-4u7.42 round 4: page 2's highlighted P.800 row is a row, not a heading.
+
+    A bold row whose placeable items sit inside the model's columns rejoins the
+    table even though membership failed (the shaded row adds a wrapped label that
+    shifts the measured columns). Boldness alone must not close a run.
+    """
+    lines = [_line(0, y, 200, y) for y in (100.0, 130.0, 160.0)]
+    items = [
+        _text(20, 110, "label"),
+        _text(120, 110, "value"),
+        _bold_text(20, 140, "Methods for objective"),  # bold, inside column 1
+        _bold_text(60, 140, "assessment"),  # bold, inside column 1 (drifts edges -> membership fails)
+        _bold_text(120, 140, "P.800"),  # bold, inside column 2
+    ]
+    assert len(detect_table_regions(lines, items, page_width=200, separators=(140.0,))) == 1
+
+
+def test_a_bold_section_gap_taller_than_a_row_still_closes() -> None:
+    """The partner rule is for row-height bands: a 70 pt gap is a section, not a row."""
+    lines = [_line(0, y, 200, y) for y in (100.0, 130.0, 200.0, 230.0)]
+    items = [
+        _text(20, 110, "label"),
+        _text(120, 110, "value"),
+        _bold_text(20, 165, "A.2.2"),  # bold heading in a tall gap
+        _bold_text(60, 165, "Conformance requirements"),
+        _text(20, 215, "x"),
+        _text(120, 215, "y"),
+    ]
+    assert len(detect_table_regions(lines, items, page_width=200, separators=(165.0,))) == 2
+
+
 def _line(x1: float, y1: float, x2: float, y2: float, *, stroke: bool = True) -> Any:
     return SimpleNamespace(x1=x1, y1=y1, x2=x2, y2=y2, stroke=stroke, fill=False)
 
 
+def test_partner_rule_edge_branches() -> None:
+    """The three ways `_bold_row_has_column_partners` says no.
+
+    A separator band holding no bold item at all (line 1), a wide wrapped label
+    exempt from the placement test (line 2), and a small bold item whose centre
+    falls outside every column (line 3) - the last is what keeps a bold line that
+    ignores the table's columns classified as a heading.
+    """
+
+    model = (0.0, 85.0, 200.0)
+    # No bold items in the band: no partners.
+    assert _bold_row_has_column_partners(model, [_text(20, 140, "plain")], 130.0, 160.0) is False
+    # A wide wrapped label (width > WRAPPED_LABEL_WIDTH) is exempt, and the small
+    # bold item beside it places the row.
+    assert (
+        _bold_row_has_column_partners(
+            model,
+            [_bold_text(20, 140, "wide wrapped label", width=300.0), _bold_text(120, 140, "P.800")],
+            130.0,
+            160.0,
+        )
+        is True
+    )
+    # A small bold item outside every column (centred on the page, between the
+    # model's columns but on no column's interior): no partners.
+    assert _bold_row_has_column_partners(model, [_bold_text(83, 140, "x", width=4.0)], 130.0, 160.0) is False
+
+
 def _text(x: float, y: float, text: str, *, width: float = 30.0) -> Any:
     return SimpleNamespace(x=x, y=y, text=text, width=width)
+
+
+def _bold_text(x: float, y: float, text: str, *, width: float = 30.0) -> Any:
+    return SimpleNamespace(x=x, y=y, text=text, width=width, font_name="Times-Bold", font_size=10.0, font_weight=700)

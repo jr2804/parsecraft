@@ -194,6 +194,7 @@ class LiteparseBackend:
                     items=parsed.items,
                     page_width=parsed.width,
                     page_height=parsed.height,
+                    shapes=parsed.shapes,
                 )
             used_chars += sum(len(block.content) for block in blocks)
             if request.max_output_chars is not None and used_chars > request.max_output_chars:
@@ -301,13 +302,21 @@ def _append_table_chunks(
     items: list[TextItemLike],
     page_width: float,
     page_height: float,
+    shapes: list[VectorShapeLike] | None = None,
 ) -> list[StructuredChunk]:
     """Append one ``ChunkKind.TABLE`` per surviving table region to the page's blocks."""
     if not lines or page_width <= 0:
         return blocks
     # Heading-classified lines are structural separators: a bold header row or
-    # an intervening section heading ends a table run (pc-4u7.42).
-    regions = detect_table_regions(lines, items, page_width=page_width, separators=heading_ys(items))
+    # an intervening section heading ends a table run (pc-4u7.42). Curved vector
+    # shapes mark a page as figure content, which carries no tables at all.
+    regions = detect_table_regions(
+        lines,
+        items,
+        page_width=page_width,
+        separators=heading_ys(items),
+        shapes=shapes or (),
+    )
     next_index = len(blocks)
     for _y_bounds, rows in regions:
         if not any(cell.strip() for row in rows for cell in row):

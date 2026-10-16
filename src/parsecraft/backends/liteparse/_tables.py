@@ -65,6 +65,18 @@ MECHANISM_COUNTS_10_PAGE = {
 }
 
 
+#: Bold is font_weight at or above this value (mirrors _items, which owns the
+#: heading classification; duplicated here so the partner test stands alone).
+BOLD_WEIGHT = 600
+#: A bold band taller than this is a section gap, not a shaded row: the partner
+#: rule (which would rejoin it to the table above) applies to row-height bands
+#: only (measured: shaded/header rows are 12-22 pt, section gaps 100+ pt).
+PARTNER_BAND_MAX_HEIGHT = 40.0
+#: A bold item wider than this is a wrapped label spanning columns: its centre
+#: can sit on a boundary, so it is exempt from the placement test.
+WRAPPED_LABEL_WIDTH = 2.0 * COLUMN_GAP
+
+
 class VectorLineLike(Protocol):
     x1: float
     y1: float
@@ -75,17 +87,20 @@ class VectorLineLike(Protocol):
 
 
 class VectorShapeLike(Protocol):
-    """One vector shape: a bounding box and its stroke/fill flags.
+    """One vector shape: a bounding box, stroke/fill flags, and curve flag.
 
     A Protocol (not a dict) because liteparse hands back dataclasses: its
     ``VectorGraphics.shapes`` holds ``VectorShape`` records, so the adapter must
-    read attributes. Shapes are not consumed by the detector yet — they are
-    handed through for the follow-up that segments header rows and cell borders.
+    read attributes. ``has_curve`` is the figure signal: the recorder emits flow
+    arrows and diagram strokes as CURVED shapes (measured: figure pages carry 1-12
+    curved shapes, table pages zero), which is how the detector excludes figure
+    geometry from table detection.
     """
 
     bbox: tuple[float, float, float, float]
     stroke: bool
     fill: bool
+    has_curve: bool
 
 
 class VectorGraphicsLike(Protocol):
@@ -122,6 +137,7 @@ def detect_table_regions(
     items: Sequence[TextItemLike],
     page_width: float,
     separators: Sequence[float] | None = None,
+    shapes: Sequence[VectorShapeLike] = (),
 ) -> list[tuple[tuple[float, float], tuple[tuple[str, ...], ...]]]:
     """One entry per surviving table region: ``(y_top, y_bottom), rows``.
 
@@ -131,6 +147,13 @@ def detect_table_regions(
     is a table-of-contents layout, not a body of tables). Regions are then
     MERGED along a rule run so one table is one chunk (pc-4u7.42).
     """
+    if any(shape.has_curve for shape in shapes):
+        # A page with CURVED vector shapes is figure content (measured: flowcharts
+        # and timing diagrams carry 1-12 curved shapes — arrows, brackets — while
+        # table pages carry none). Its rule bands are the figure's boxes, not
+        # tables, so the page yields no regions at all (pc-4u7.42 round 4: pages
+        # 31/35 are Figures 5/6, and the right count there is 0).
+        return []
     bands = _horizontal_rules(lines)
     if not bands:
         return []
@@ -189,21 +212,62 @@ def _rule_runs(
             # either side happen to line up.
             model = None
             continue
-        if any(upper.y < y < lower.y for y in separators):
-            # A heading-classified line sits in this band. A table's rows are not
-            # headings, so the band is a header row or an intervening section
-            # heading: the previous table ends here, and this band is furniture,
-            # not a region.
-            model = None
-            continue
         segments = _column_segments(items, upper.y, lower.y, page_left, page_right)
-        if model is not None and (_same_columns(model, segments) or _continues_numbered_run(items, upper.y, lower.y)):
+        has_separator = any(upper.y < y < lower.y for y in separators)
+        if model is not None and (
+            _same_columns(model, segments)
+            or _continues_numbered_run(items, upper.y, lower.y)
+            or (has_separator and lower.y - upper.y <= PARTNER_BAND_MAX_HEIGHT and _bold_row_has_column_partners(model, items, upper.y, lower.y))
+        ):
+            # Membership first: a bold row whose items sit inside the model's
+            # columns is a shaded row of THIS table (page 2's highlighted
+            # P.800 row), so boldness alone must not close the run — only a bold
+            # line WITHOUT column partners is a heading (pc-4u7.42 round 4).
             model = _absorb(model, segments)
             runs[-1] = (runs[-1][0], lower.y, model)
+            continue
+        if has_separator:
+            # Bold and membership failed: a real heading or a caption. The band is
+            # furniture — it closes the run and starts no region.
+            model = None
             continue
         model = segments
         runs.append((upper.y, lower.y, segments))
     return runs
+
+
+def _bold_row_has_column_partners(
+    model: tuple[float, ...],
+    items: Sequence[TextItemLike],
+    y0: float,
+    y1: float,
+) -> bool:
+    """Does a bold row sit inside the table's columns (a shaded row, not a heading)?
+
+    The reporter's rendered evidence: page 2's bold row is the P-series box's
+    CURRENT-recommendation row, highlighted — same columns as its neighbours —
+    while a real heading spans the page or ignores the columns. Partner means
+    every bold item's centre falls strictly inside one of the model's columns
+    (between two adjacent boundaries), so a wide wrapped label still counts
+    (its centre is what places it).
+    """
+    bold = [
+        item
+        for item in items
+        if y0 + RULE_Y_TOL < item.y < y1 - RULE_Y_TOL and str(item.text).strip() and (getattr(item, "font_weight", 0) or 0) >= BOLD_WEIGHT
+    ]
+    if not bold:
+        return False
+    for item in bold:
+        if float(item.width) > WRAPPED_LABEL_WIDTH:
+            # A wide wrapped label spans several columns; its centre can sit on a
+            # boundary, so the small items beside it are what place the row.
+            continue
+        cx = float(item.x) + float(item.width) / 2.0
+        inside = any(left + COLUMN_MATCH_TOL < cx < right - COLUMN_MATCH_TOL for left, right in zip(model, model[1:], strict=False))
+        if not inside:
+            return False
+    return True
 
 
 def _continues_numbered_run(items: Sequence[TextItemLike], y0: float, y1: float) -> bool:
