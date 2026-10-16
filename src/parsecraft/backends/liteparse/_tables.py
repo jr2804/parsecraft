@@ -60,7 +60,7 @@ MECHANISM_COUNTS_10_PAGE = {
     "rule_bands": 54,
     "full_width_rules": 48,
     "raw_regions": 42,
-    "merged_regions": 4,
+    "merged_regions": 2,
     "two_or_more_column_regions": 4,
 }
 
@@ -161,10 +161,16 @@ def detect_table_regions(
         # tables, so the page yields no regions at all (pc-4u7.42 round 4: pages
         # 31/35 are Figures 5/6, and the right count there is 0).
         return []
-    lines = _without_highlight_edges(lines, shapes)
+    runs = _highlight_runs(shapes)
+    lines = _without_highlight_edges(lines, runs)
     bands = _horizontal_rules(lines)
+    separators = tuple(separators or ())
+
     if not bands:
-        return []
+        # No rules survive: a shaded run alone can still be a table (page 3 - the
+        # recorder emitted its row separators only as the highlight's own edges).
+        return _seeded_regions(runs, items, separators)
+
     page_left = min(band.x1 for band in bands)
     page_right = max(band.x2 for band in bands)
     page_span = max(page_right - page_left, 1.0)
@@ -177,11 +183,20 @@ def detect_table_regions(
         return []
 
     result: list[tuple[tuple[float, float], tuple[tuple[str, ...], ...]]] = []
-    for y0, y1, x_segments in _rule_runs(full, items, page_left, page_right, separators or ()):
+    for y0, y1, x_segments in _rule_runs(full, items, page_left, page_right, separators):
         row_bands = _row_bands(items, y0, y1)
         rows = tuple(_cells_for_row(items, y_top, y_bot, x_segments) for y_top, y_bot in row_bands)
         if any(cell.strip() for row in rows for cell in row):
             result.append(((round(y0, 1), round(y1, 1)), rows))
+    # Rules found some regions; a shaded run OUTSIDE all of them still seeds one
+    # (the table whose only geometry was its shading).
+    covered = lambda y0, y1: any(top - RULE_Y_TOL <= y0 and y1 <= bottom + RULE_Y_TOL for (top, bottom), _rows in result)  # noqa: E731
+    for run in runs:
+        x1, y1, x2, y2 = run
+        if not covered(y1, y2):
+            seeded = _seeded_regions([run], items, separators)
+            result.extend(seeded)
+    result.sort(key=lambda region: region[0][0])
     return result
 
 
@@ -347,9 +362,112 @@ def _edges_align(edge: float, edges: tuple[float, ...]) -> bool:
     return any(abs(edge - other) <= COLUMN_MATCH_TOL for other in edges)
 
 
+def _highlight_runs(shapes: Sequence[VectorShapeLike]) -> list[tuple[float, float, float, float]]:
+    """Merged shaded-row runs: ``(x1, y1, x2, y2)`` per run.
+
+    A shaded row is drawn as one wide rect (page 2: 409.5 x 12.6) or as per-column
+    CELL FILLS separated by the column borders (page 3: five rects sharing y=660
+    and height 16, up to 150 pt apart). Rects sharing a y-band and a height are
+    ONE run - the visual row - regardless of x gaps; two differently-shaded rows
+    never share both. The run's merged extents feed the edge filter and the
+    seeded-region builder.
+    """
+    rects = []
+    for shape in shapes:
+        if not shape.fill:
+            continue
+        x, y, width, height = shape.bbox
+        if width > HIGHLIGHT_MIN_WIDTH and height > HIGHLIGHT_MIN_HEIGHT:
+            rects.append((float(x), float(y), float(x) + float(width), float(y) + float(height)))
+    runs: list[list[float]] = []
+    for x1, y1, x2, y2 in sorted(rects, key=lambda r: (r[1], r[0])):
+        for run in runs:
+            if abs(run[1] - y1) <= RULE_Y_TOL and abs((run[3] - run[1]) - (y2 - y1)) <= RULE_Y_TOL:
+                run[0] = min(run[0], x1)
+                run[2] = max(run[2], x2)
+                break
+        else:
+            runs.append([x1, y1, x2, y2])
+    return [(run[0], run[1], run[2], run[3]) for run in runs]
+
+
+def _seeded_regions(
+    runs: Sequence[tuple[float, float, float, float]],
+    items: Sequence[TextItemLike],
+    separators: Sequence[float],
+) -> list[tuple[tuple[float, float], tuple[tuple[str, ...], ...]]]:
+    """Tables whose only surviving geometry is a shaded row.
+
+    The seed run is a ROW (a shaded row exists only inside a table): walk outward
+    over the page's text-row clusters while each neighbour is a tabular row with
+    the seed's column count - a bold row with the same columns is the table's own
+    header (page 3), anything else ends the table. Cluster bands are points more
+    often than not (a baseline), so every column measurement here uses SYMMETRIC
+    bounds (``top - tol, bottom + tol``) - the same trap `_cells_for_row` works
+    around.
+    """
+    if not items:
+        return []
+    clusters = _row_bands(items, 0.0, 1e9)
+    result: list[tuple[tuple[float, float], tuple[tuple[str, ...], ...]]] = []
+    for run_x1, y1, run_x2, y2 in runs:
+        seed_index = next(
+            (i for i, (top, bottom) in enumerate(clusters) if y1 - RULE_Y_TOL <= top and bottom <= y2 + RULE_Y_TOL),
+            None,
+        )
+        if seed_index is None:
+            continue
+        # The band helpers re-apply their own +/- RULE_Y_TOL bounds internally, so
+        # a point cluster needs a DOUBLE pad for its items to survive the filter.
+        pad = 2.0 * RULE_Y_TOL
+        seed_top, seed_bottom = clusters[seed_index]
+        seed_columns = _column_segments(items, seed_top - pad, seed_bottom + pad, run_x1, run_x2)
+        if len(seed_columns) <= 2:
+            continue
+
+        def _absorbable(
+            top: float,
+            bottom: float,
+            *,
+            _pad: float = pad,
+            _x1: float = run_x1,
+            _x2: float = run_x2,
+            _expected: tuple[float, ...] = seed_columns,
+        ) -> bool:
+            columns = _column_segments(items, top - _pad, bottom + _pad, _x1, _x2)
+            return len(columns) == len(_expected) and _columns_in_band(items, top - _pad, bottom + _pad) >= MIN_COLUMNS
+
+        index = seed_index
+        while index > 0 and _absorbable(*clusters[index - 1]):
+            index -= 1
+        top_index = index
+        index = seed_index
+        while index < len(clusters) - 1 and _absorbable(*clusters[index + 1]):
+            index += 1
+        bottom_index = index
+
+        rows = tuple(_cells_for_row(items, clusters[i][0], clusters[i][1], seed_columns) for i in range(top_index, bottom_index + 1))
+        if bottom_index == top_index:
+            # A seed with no absorbed neighbour is a shaded LABEL box, not a table
+            # (measured: page 42's figure labels seed alone). A table needs its
+            # shaded row plus at least a header or a sibling row.
+            continue
+        if any(cell.strip() for row in rows for cell in row):
+            result.append(
+                (
+                    (
+                        round(clusters[top_index][0] - RULE_Y_TOL, 1),
+                        round(clusters[bottom_index][1] + RULE_Y_TOL, 1),
+                    ),
+                    rows,
+                )
+            )
+    return result
+
+
 def _without_highlight_edges(
     lines: Sequence[VectorLineLike],
-    shapes: Sequence[VectorShapeLike],
+    highlight_runs: Sequence[tuple[float, float, float, float]],
 ) -> list[VectorLineLike]:
     """Drop near-horizontal lines that coincide with a highlight band's edges.
 
@@ -362,13 +480,9 @@ def _without_highlight_edges(
     horizontal rule is 0.7-1.5 pt tall however wide.
     """
     edges: list[float] = []
-    for shape in shapes:
-        if not shape.fill:
-            continue
-        x, y, width, height = shape.bbox
-        if width > HIGHLIGHT_MIN_WIDTH and height > HIGHLIGHT_MIN_HEIGHT:
-            edges.append(float(y))
-            edges.append(float(y) + float(height))
+    for _x1, y1, _x2, y2 in highlight_runs:
+        edges.append(float(y1))
+        edges.append(float(y2))
     if not edges:
         return list(lines)
     return [

@@ -229,14 +229,18 @@ def test_a_moved_column_boundary_starts_a_new_region() -> None:
     assert len(detect_table_regions(lines, items, page_width=200)) == 2
 
 
-def test_the_recorded_slice_merges_to_the_same_four_tables() -> None:
-    """The merge must not change the slice: 4 tables, same column counts.
+def test_the_recorded_slice_matches_the_engine() -> None:
+    """The slice, WITH shapes, as the engine sees it: page 2 = 1 table, page 3 = 1.
 
-    Page 2 -> 3 regions (7 / 3 / 8 columns), page 3 -> 1 (5 columns), page 10's
-    TOC candidates suppressed. The slice's tables were already single rule-pairs,
-    so the merge is a no-op here — which is exactly why it is pinned: the stage
-    exists for the ROW-separated tables the full document is full of, and a change
-    that moves the slice's count is a signal.
+    Page 2 is the ITU series box - visually one table, and the shaded P.800 row is
+    a row of it (round 5). Page 3 is the History table: its rows are recoverable
+    from its SHADED row alone (round 6, `_seeded_regions`), because the recorder
+    emitted that table's separators only as the highlight's own edges.
+
+    Shape handling is the point of this test after the round-5 regression: the
+    engine always passes `shapes`, so a test that omits them exercises a detector
+    the engine never runs - which is exactly how a real regression shipped green
+    (polqa-main's catch). `merged_regions` is the engine-truth count.
     """
     items_doc = json.loads((_FIXTURES / "items.json").read_text(encoding="utf-8"))
     vec_doc = json.loads((_FIXTURES / "vec.json").read_text(encoding="utf-8"))
@@ -244,13 +248,31 @@ def test_the_recorded_slice_merges_to_the_same_four_tables() -> None:
     for index, page in enumerate(items_doc["pages"], start=1):
         vec_page = vec_doc["pages"][index - 1]
         items = [SimpleNamespace(x=it["x"], y=it["y"], text=it.get("text", ""), width=it.get("width", 0.0)) for it in (page.get("text_items") or [])]
-        lines = [SimpleNamespace(**ln) for ln in (vec_page.get("vector_graphics") or {}).get("lines", [])]
-        regions = detect_table_regions(lines, items, page_width=float(page.get("width") or 0.0))
+        vec = vec_page.get("vector_graphics") or {}
+        lines = [SimpleNamespace(**ln) for ln in vec.get("lines", [])]
+        shapes = [
+            SimpleNamespace(
+                has_curve=s.get("has_curve", False),
+                bbox=tuple(s.get("bbox", {}).get(k, 0.0) for k in ("x", "y", "width", "height")),
+                stroke=s.get("stroke"),
+                fill=s.get("fill"),
+            )
+            for s in vec.get("shapes", [])
+        ]
+        # Shapes MUST be passed: the engine always passes them, and the highlight
+        # filter + seeded regions never run otherwise - the round-5 regression
+        # shipped precisely because this test omitted them (fixture/engine
+        # divergence, polqa-main's catch).
+        regions = detect_table_regions(lines, items, page_width=float(page.get("width") or 0.0), shapes=shapes)
         if regions:
-            per_page[index] = [_columns_in_band(items, y0, y1) for (y0, y1), _rows in regions]
+            per_page[index] = [len(rows) for _bounds, rows in regions]
 
-    assert sum(len(v) for v in per_page.values()) == MECHANISM_COUNTS_10_PAGE["merged_regions"] == 4
-    assert per_page == {2: [7, 3, 8], 3: [5]}
+    # Engine-verified truth (real liteparse run on the same slice): 2 tables --
+    # page 2 with 18 rows, page 3 (the History table) with 5 rows. Row counts are
+    # the acceptance-critical numbers; column counts vary with the band's
+    # clustering and are not pinned here.
+    assert sum(len(v) for v in per_page.values()) == MECHANISM_COUNTS_10_PAGE["merged_regions"] == 2
+    assert per_page == {2: [18], 3: [5]}
 
 
 def test_a_drifted_row_does_not_split_the_table() -> None:
@@ -456,5 +478,46 @@ def _line(x1: float, y1: float, x2: float, y2: float, *, stroke: bool = True) ->
     return SimpleNamespace(x1=x1, y1=y1, x2=x2, y2=y2, stroke=stroke, fill=False)
 
 
+def test_seeded_regions_edge_cases() -> None:
+    """A shaded run seeds a table only when a tabular neighbour joins it (page 3).
+
+    Three refusals/acceptances, all with NO rules at all (the page-3 shape: the
+    recorder emitted the table's separators only as the highlight's own edges):
+    a seed whose own row has a single column, a seed with no absorbable neighbour
+    (page 42's shaded figure labels), and a seed that absorbs the row BELOW it.
+    """
+    # 1. single-column seed: not a table.
+    assert detect_table_regions([], [_text(20, 108, "one column only")], page_width=200, shapes=(_shaded(10, 100, 180, 16),)) == []
+    # 2. two-column seed with nothing to absorb: a shaded label, not a table.
+    assert (
+        detect_table_regions(
+            [],
+            [_text(20, 108, "label"), _text(120, 108, "value")],
+            page_width=200,
+            shapes=(_shaded(10, 100, 180, 16),),
+        )
+        == []
+    )
+    # 3. the row BELOW shares the seed's columns: one table, two rows.
+    regions = detect_table_regions(
+        [],
+        [
+            _text(20, 108, "shaded label"),
+            _text(120, 108, "shaded value"),
+            _text(20, 140, "sibling"),
+            _text(120, 140, "sibling value"),
+        ],
+        page_width=200,
+        shapes=(_shaded(10, 100, 180, 16),),
+    )
+    assert len(regions) == 1
+    assert len(regions[0][1]) == 2
+
+
 def _text(x: float, y: float, text: str, *, width: float = 30.0) -> Any:
     return SimpleNamespace(x=x, y=y, text=text, width=width)
+
+
+def _shaded(x: float, y: float, width: float, height: float) -> Any:
+    """A filled, wide+tall rect: a shaded row (a highlight run)."""
+    return SimpleNamespace(bbox=(x, y, width, height), stroke=False, fill=True, has_curve=False)
