@@ -11,10 +11,12 @@ import parsecraft.cli.convert as convert_module
 from parsecraft.backends import BackendConfig, BackendDescriptor, BackendRegistry, DocumentBackend, coerce_option_value
 from parsecraft.cli.app import app
 from parsecraft.environment import EnvironmentInfo
-
-runner = CliRunner()
+from tests.cli.test_convert import _descriptor as cli_descriptor
+from tests.cli.test_convert import _StubFactory
 
 _LONG_TEXT = "first paragraph with enough characters to route natively.\n\nsecond paragraph, also long enough."
+
+runner = CliRunner()
 
 
 def test_boolean_tokens_become_real_booleans() -> None:
@@ -41,12 +43,6 @@ def test_library_callers_values_pass_through_untouched() -> None:
     assert coerce_option_value(2.5) == 2.5
 
 
-def _descriptor(name: str, formats: tuple[str, ...]) -> BackendDescriptor:
-    from tests.cli.test_convert import _descriptor as cli_descriptor
-
-    return cli_descriptor(name, formats)
-
-
 def test_the_cli_hands_adapters_real_types(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """End-to-end: `--backend-option x=true` reaches a validating adapter as a bool.
 
@@ -55,7 +51,6 @@ def test_the_cli_hands_adapters_real_types(tmp_path: Path, monkeypatch: pytest.M
     `extract_vector_graphics=true` worked because LiteParse coerced internally).
     The factory here plays the strict adapter, so a regression fails the run.
     """
-    from tests.cli.test_convert import _StubFactory
 
     registry = BackendRegistry()
     monkeypatch.setattr(convert_module, "default_registry", registry)
@@ -94,3 +89,8 @@ def test_the_cli_hands_adapters_real_types(tmp_path: Path, monkeypatch: pytest.M
         ["convert", str(source), "--backend", "native-text", "--backend-option", "image_analysis=true"],
     )
     assert result.exit_code == 0, f"{result.output}{result.stderr or ''}"
+
+
+def _descriptor(name: str, formats: tuple[str, ...]) -> BackendDescriptor:
+
+    return cli_descriptor(name, formats)

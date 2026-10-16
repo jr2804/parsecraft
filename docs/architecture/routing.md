@@ -310,6 +310,14 @@ pages (scans, blank, image-only) are untouched: their family is OCR by
 definition. Blank pages still degrade to native rather than costing anything
 (see [Degradation](#per-page-dispatch-and-fallbacks)).
 
+**A pin is not a raise.** `--no-auto --backend X` (`constraints.only_backend`)
+works by *narrowing the family* to X, not by lifting the cap: the cap then falls
+out of that one-backend family, so a pinned tier-2 backend leads because nothing
+else is in the family at all. That distinction is easy to miss when reading
+`_lead_tier_cap` (which consults only `preferred_backend`) — and it is why a pin
+fails loudly for a page the pinned backend cannot serve, while a preference never
+does.
+
 ## Judge seam
 
 `RoutingJudge` is a `runtime_checkable Protocol`:
