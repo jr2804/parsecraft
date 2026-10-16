@@ -71,6 +71,13 @@ BOLD_WEIGHT = 600
 #: A bold band taller than this is a section gap, not a shaded row: the partner
 #: rule (which would rejoin it to the table above) applies to row-height bands
 #: only (measured: shaded/header rows are 12-22 pt, section gaps 100+ pt).
+#: A FILLED rectangle both wider and taller than these is a highlight band
+#: behind a shaded row, not a rule: its top/bottom edges are the row's extents,
+#: and treating them as rules split one table at the shaded row (pc-4u7.42,
+#: page 2: the highlight is 409.5 x 12.6 pt; real rules are 0.7-1.5 pt thin and
+#: vertical borders are 0.5-0.7 pt wide but tall, so BOTH bounds are needed).
+HIGHLIGHT_MIN_WIDTH = 5.0
+HIGHLIGHT_MIN_HEIGHT = 3.0
 PARTNER_BAND_MAX_HEIGHT = 40.0
 #: A bold item wider than this is a wrapped label spanning columns: its centre
 #: can sit on a boundary, so it is exempt from the placement test.
@@ -149,11 +156,12 @@ def detect_table_regions(
     """
     if any(shape.has_curve for shape in shapes):
         # A page with CURVED vector shapes is figure content (measured: flowcharts
-        # and timing diagrams carry 1-12 curved shapes — arrows, brackets — while
+        # and timing diagrams carry 1-12 curved shapes - arrows, brackets - while
         # table pages carry none). Its rule bands are the figure's boxes, not
         # tables, so the page yields no regions at all (pc-4u7.42 round 4: pages
         # 31/35 are Figures 5/6, and the right count there is 0).
         return []
+    lines = _without_highlight_edges(lines, shapes)
     bands = _horizontal_rules(lines)
     if not bands:
         return []
@@ -226,7 +234,11 @@ def _rule_runs(
             model = _absorb(model, segments)
             runs[-1] = (runs[-1][0], lower.y, model)
             continue
-        if has_separator:
+        if has_separator and model is not None:
+            # With a run open, bold-after-failed-membership is a heading/caption:
+            # furniture that closes the run. With NO run open it does not veto the
+            # start - a table's own shaded or header row sits inside its first band
+            # (the page-2 lesson: the whole-table band holds the highlight row).
             # Bold and membership failed: a real heading or a caption. The band is
             # furniture — it closes the run and starts no region.
             model = None
@@ -333,6 +345,37 @@ def _same_columns(reference: tuple[float, ...], candidate: tuple[float, ...]) ->
 def _edges_align(edge: float, edges: tuple[float, ...]) -> bool:
     """Is one boundary within tolerance of some boundary on the other side?"""
     return any(abs(edge - other) <= COLUMN_MATCH_TOL for other in edges)
+
+
+def _without_highlight_edges(
+    lines: Sequence[VectorLineLike],
+    shapes: Sequence[VectorShapeLike],
+) -> list[VectorLineLike]:
+    """Drop near-horizontal lines that coincide with a highlight band's edges.
+
+    On these Word-generated PDFs every primitive is a thin filled rectangle, so a
+    shaded row's highlight (a wide, tall filled rect) appears in ``lines`` as two
+    thin rules at its top and bottom. A rule does not contain a text line; the
+    highlight does — so those two "rules" are the band, and keeping them split one
+    table at the shaded row (the reporter's page-2 evidence). Only BOTH-dimension
+    rects count: a vertical border is 0.5-0.7 pt wide however tall, and a real
+    horizontal rule is 0.7-1.5 pt tall however wide.
+    """
+    edges: list[float] = []
+    for shape in shapes:
+        if not shape.fill:
+            continue
+        x, y, width, height = shape.bbox
+        if width > HIGHLIGHT_MIN_WIDTH and height > HIGHLIGHT_MIN_HEIGHT:
+            edges.append(float(y))
+            edges.append(float(y) + float(height))
+    if not edges:
+        return list(lines)
+    return [
+        line
+        for line in lines
+        if not (abs(float(line.y2) - float(line.y1)) <= RULE_Y_TOL and any(abs((float(line.y1) + float(line.y2)) / 2.0 - edge) <= RULE_Y_TOL for edge in edges))
+    ]
 
 
 def _horizontal_rules(lines: Sequence[VectorLineLike]) -> list[_RuleBand]:

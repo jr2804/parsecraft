@@ -408,10 +408,6 @@ def test_a_bold_section_gap_taller_than_a_row_still_closes() -> None:
     assert len(detect_table_regions(lines, items, page_width=200, separators=(165.0,))) == 2
 
 
-def _line(x1: float, y1: float, x2: float, y2: float, *, stroke: bool = True) -> Any:
-    return SimpleNamespace(x1=x1, y1=y1, x2=x2, y2=y2, stroke=stroke, fill=False)
-
-
 def test_partner_rule_edge_branches() -> None:
     """The three ways `_bold_row_has_column_partners` says no.
 
@@ -420,7 +416,6 @@ def test_partner_rule_edge_branches() -> None:
     falls outside every column (line 3) - the last is what keeps a bold line that
     ignores the table's columns classified as a heading.
     """
-
     model = (0.0, 85.0, 200.0)
     # No bold items in the band: no partners.
     assert _bold_row_has_column_partners(model, [_text(20, 140, "plain")], 130.0, 160.0) is False
@@ -440,9 +435,26 @@ def test_partner_rule_edge_branches() -> None:
     assert _bold_row_has_column_partners(model, [_bold_text(83, 140, "x", width=4.0)], 130.0, 160.0) is False
 
 
-def _text(x: float, y: float, text: str, *, width: float = 30.0) -> Any:
-    return SimpleNamespace(x=x, y=y, text=text, width=width)
-
-
 def _bold_text(x: float, y: float, text: str, *, width: float = 30.0) -> Any:
     return SimpleNamespace(x=x, y=y, text=text, width=width, font_name="Times-Bold", font_size=10.0, font_weight=700)
+
+
+def test_a_non_filled_rectangle_is_not_a_highlight() -> None:
+    """Only FILLED wide+tall rects are highlights; a stroked box keeps its rules.
+
+    The page-2 highlight is a filled rectangle; an unfilled (stroked) box of the
+    same size is a border whose rules must survive - e.g. a boxed figure's frame
+    on a page the curve test has not excluded.
+    """
+    lines = [_line(0, 100, 200, 100), _line(0, 130, 200, 130), _line(0, 160, 200, 160)]
+    items = [_text(20, 115, "a"), _text(120, 115, "b"), _text(20, 145, "c"), _text(120, 145, "d")]
+    stroked_box = SimpleNamespace(bbox=(0.0, 100.0, 200.0, 60.0), stroke=True, fill=False, has_curve=False)
+    assert len(detect_table_regions(lines, items, page_width=200, shapes=(stroked_box,))) == 1
+
+
+def _line(x1: float, y1: float, x2: float, y2: float, *, stroke: bool = True) -> Any:
+    return SimpleNamespace(x1=x1, y1=y1, x2=x2, y2=y2, stroke=stroke, fill=False)
+
+
+def _text(x: float, y: float, text: str, *, width: float = 30.0) -> Any:
+    return SimpleNamespace(x=x, y=y, text=text, width=width)
