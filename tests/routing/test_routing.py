@@ -31,7 +31,7 @@ from parsecraft.routing import (
     plan_route,
 )
 from parsecraft.routing.judge import DENSITY_REFERENCE_CHARS, PREFERRED_BACKENDS, RoutingJudge, page_context
-from parsecraft.routing.planner import _apply_preference
+from parsecraft.routing.planner import _apply_preference, _default_lead_cap, _lead_tier_cap
 from parsecraft.routing.rules import (
     DEGRADED_BLANK_PAGE_CODE,
     FEATURE_EQUATIONS_CODE,
@@ -1426,19 +1426,6 @@ def test_a_native_backend_still_leads_without_a_name() -> None:
     assert plan.pages[0].chosen == "native-pdf"
 
 
-def full_constraints(**overrides: Any) -> RoutingConstraints:
-    base: dict[str, Any] = {
-        "installed_extras": set(OCR_EXTRAS),
-        "vram_budget_gb": 8.0,
-        # These fixtures model a GPU host whose runtime can actually use it;
-        # the unusable-runtime case is covered on its own below.
-        "gpu_usable": True,
-        "max_passes": 3,
-    }
-    base.update(overrides)
-    return RoutingConstraints(**base)
-
-
 def make_analysis(signals: list[PageSignal], page_count: int, codes: tuple[str, ...] = ()) -> AnalysisResult:
     diagnostics = [Diagnostic(level=DiagnosticLevel.INFO, code=code, message=f"synthetic hint {code}") for code in codes]
     return AnalysisResult(source_hash="0" * 64, page_count=page_count, signals=signals, diagnostics=diagnostics)
@@ -1464,6 +1451,47 @@ def native_only_family() -> list[Any]:
         make_desc("ocr-tesseract", ALL_FORMATS, vram=1.0),
         make_desc("ocr-other", ALL_FORMATS, vram=2.0),
     ]
+
+
+def test_default_lead_cap_follows_an_all_ocr_family() -> None:
+    """An all-tier-2 family caps at its own tier instead of rejecting the only option.
+
+    Covered directly rather than through a routing scenario: the earlier CI run
+    measured planner.py:225 uncovered on ubuntu/3.14 while a Windows run covered
+    it, which means the only path reaching it was platform-dependent - the
+    helper is pure, so pin it as one.
+    """
+
+    ocr_only = [make_desc("ocr-ovis", ALL_FORMATS), make_desc("ocr-tesseract", ALL_FORMATS)]
+    assert _default_lead_cap(ocr_only) == 2
+
+    # Tiers 0 and 1 lead freely: the cap is 1 whenever anything below 2 exists.
+    mixed = [make_desc("native-pdf", ALL_FORMATS), make_desc("ocr-ovis", ALL_FORMATS)]
+    assert _default_lead_cap(mixed) == 1
+    tier_one_only = [make_desc("docling", ALL_FORMATS)]
+    assert _default_lead_cap(tier_one_only) == 1
+
+
+def test_lead_tier_cap_is_none_unless_the_named_backend_is_in_the_family() -> None:
+    """A name outside this page's family leaves the default cap in place."""
+
+    family = [make_desc("native-pdf", ALL_FORMATS), make_desc("ocr-ovis", ALL_FORMATS)]
+    assert _lead_tier_cap(full_constraints(formats=ALL_FORMATS), family) is None
+    assert _lead_tier_cap(full_constraints(formats=ALL_FORMATS, preferred_backend="ocr-ovis"), family) == 2
+    assert _lead_tier_cap(full_constraints(formats=ALL_FORMATS, preferred_backend="absent"), family) is None
+
+
+def full_constraints(**overrides: Any) -> RoutingConstraints:
+    base: dict[str, Any] = {
+        "installed_extras": set(OCR_EXTRAS),
+        "vram_budget_gb": 8.0,
+        # These fixtures model a GPU host whose runtime can actually use it;
+        # the unusable-runtime case is covered on its own below.
+        "gpu_usable": True,
+        "max_passes": 3,
+    }
+    base.update(overrides)
+    return RoutingConstraints(**base)
 
 
 def make_desc(
