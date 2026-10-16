@@ -283,6 +283,74 @@ def test_a_drifted_row_does_not_split_the_table() -> None:
     assert len(regions[0][1]) == 3  # three rows, one table
 
 
+def test_a_numbered_row_continues_the_run_despite_column_mismatch() -> None:
+    """pc-4u7.42 option 3: a numbered data row names its row of the table above.
+
+    The consumer's evidence: page 57's row 1 measured 5 columns while row 2
+    measured 6 (a wrapped cell added a detected item), and row 7 ("7 | No data
+    set defined...") of the same numbered test-case table arrived as its own
+    chunk. A first cell that is a data value (7, 6.3, 0.0001) continues the run;
+    only a label first cell starts a new table.
+    """
+    lines = [_line(0, y, 200, y) for y in (100.0, 130.0, 160.0, 190.0)]
+    items = [
+        _text(20, 110, "1"),
+        _text(100, 110, "1328"),
+        _text(180, 110, "case one"),
+        _text(20, 140, "2"),  # first cell is a data value
+        _text(70, 140, "40"),  # wrapped cell: columns drifted AND count changed
+        _text(100, 140, "b"),
+        _text(180, 140, "case two"),
+        _text(20, 170, "3"),
+        _text(100, 170, "1328"),
+        _text(180, 170, "case three"),
+    ]
+    regions = detect_table_regions(lines, items, page_width=200)
+    assert len(regions) == 1
+    assert len(regions[0][1]) == 3
+
+
+def test_a_labelled_row_starts_a_new_table_not_a_continuation() -> None:
+    """The page-19 guarantee: a header row between same-width tables keeps them two.
+
+    The real page-19 mechanism is the SEPARATOR, not the column model: the two
+    gain tables have identical columns, so geometry alone would merge them — what
+    keeps them apart is their bold header row ("Frequency (Hz) | Narrowband gain"),
+    which heading classification reports as a separator. The continuation rule is
+    for data rows only and never fires here.
+    """
+    lines = [_line(0, y, 200, y) for y in (100.0, 130.0, 160.0, 190.0)]
+    items = [
+        _text(20, 110, "1"),
+        _text(100, 110, "1328"),
+        _text(20, 140, "Frequency (Hz)"),  # bold header row of the next table
+        _text(100, 140, "Narrowband gain"),
+        _text(20, 170, "50"),
+        _text(100, 170, "1.5"),
+    ]
+    assert len(detect_table_regions(lines, items, page_width=200, separators=(140.0,))) == 2
+    # Without the separator the geometry alone cannot tell them apart - which is
+    # precisely why the structural signal exists (pc-4u7.42, the reporter's option 1).
+    assert len(detect_table_regions(lines, items, page_width=200)) == 1
+
+
+def test_a_band_of_only_whitespace_items_does_not_continue_a_run() -> None:
+    """A band whose every item is whitespace has no first cell to name a row.
+
+    Its columns still count (geometry does not need text), so the run close falls
+    to the continuation rule - which must decline, not crash, when there is no
+    leftmost text item to read.
+    """
+    lines = [_line(0, y, 200, y) for y in (100.0, 130.0, 160.0)]
+    items = [
+        _text(20, 110, "1"),
+        _text(100, 110, "1328"),
+        _text(20, 140, "   "),
+        _text(120, 140, "  "),  # columns drifted; every cell empty
+    ]
+    assert len(detect_table_regions(lines, items, page_width=200)) == 1
+
+
 def _line(x1: float, y1: float, x2: float, y2: float, *, stroke: bool = True) -> Any:
     return SimpleNamespace(x1=x1, y1=y1, x2=x2, y2=y2, stroke=stroke, fill=False)
 

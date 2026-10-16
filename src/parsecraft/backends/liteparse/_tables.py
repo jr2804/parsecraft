@@ -23,8 +23,14 @@ MinerU's 2 on the same slice is a reference, not a target — a broader notion o
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from typing import Protocol
+
+#: A data-value first cell: a number, optionally signed, with a decimal comma or
+#: point, optionally percent, anchored at the start. Trailing text after the
+#: number still names a data row (a unit, a continuation of the label).
+_NUMERIC_FIRST_CELL = re.compile(r"[-+]?\d+(?:[.,]\d+)?%?")
 
 #: A rule is a near-horizontal line whose |y2 - y1| is at or below this many points.
 RULE_Y_TOL = 2.0
@@ -115,6 +121,7 @@ def detect_table_regions(
     lines: Sequence[VectorLineLike],
     items: Sequence[TextItemLike],
     page_width: float,
+    separators: Sequence[float] | None = None,
 ) -> list[tuple[tuple[float, float], tuple[tuple[str, ...], ...]]]:
     """One entry per surviving table region: ``(y_top, y_bottom), rows``.
 
@@ -139,7 +146,7 @@ def detect_table_regions(
         return []
 
     result: list[tuple[tuple[float, float], tuple[tuple[str, ...], ...]]] = []
-    for y0, y1, x_segments in _rule_runs(full, items, page_left, page_right):
+    for y0, y1, x_segments in _rule_runs(full, items, page_left, page_right, separators or ()):
         row_bands = _row_bands(items, y0, y1)
         rows = tuple(_cells_for_row(items, y_top, y_bot, x_segments) for y_top, y_bot in row_bands)
         if any(cell.strip() for row in rows for cell in row):
@@ -152,71 +159,116 @@ def _rule_runs(
     items: Sequence[TextItemLike],
     page_left: float,
     page_right: float,
+    separators: Sequence[float],
 ) -> list[tuple[float, float, tuple[float, ...]]]:
     """One entry per table: ``(y_top, y_bottom, column boundaries)``.
 
-    A run starts at a rule pair that holds at least :data:`MIN_COLUMNS` text
-    columns and extends while the next pair matches the run's **accumulated**
-    column model — the element-wise median of the pairs already accepted, not the
-    previous pair and not a frozen anchor. That distinction is what the consumer's
-    evidence pinned: a wrapped cell (``NB_ERIC_Field_GSM_``) shifts one interior
-    boundary, and comparing against a fixed model split one 30-row table into 12
-    chunks at exactly those rows. A pair that holds no table row (a one-column
-    band, a section separator) CLOSES the run: the region ends at the last rule
-    before a non-tabular gap.
+    Three things close a run, in the order the consumer's evidence established
+    them (pc-4u7.42):
+
+    - a rule pair holding no table row (a one-column band, a section separator):
+      the region ends at the last rule before a non-tabular gap;
+    - a rule pair whose band holds a HEADING-classified line (``separators``,
+      the y of every bold non-TOC line on the page — a table's own bold header
+      row, or a section heading between tables): structure, not geometry;
+    - a rule pair whose columns do not match the run's accumulated model.
+
+    The model is count-agnostic and self-refining: a wrapped cell can add or lose
+    a detected column (the consumer measured a row at 5 columns followed by 6),
+    so a pair belongs when its outer boundaries match and a MAJORITY of the
+    interior boundaries match in both directions — a genuinely different table
+    moves most of them. Each accepted pair then nudges the model toward itself
+    (nearest-match averaging), so drift moves the model instead of ending the run.
     """
     runs: list[tuple[float, float, tuple[float, ...]]] = []
-    accepted: list[tuple[float, ...]] = []
+    model: tuple[float, ...] | None = None
     for upper, lower in zip(full, full[1:], strict=False):
         if lower.y - upper.y <= RULE_Y_TOL or _columns_in_band(items, upper.y, lower.y) < MIN_COLUMNS:
-            # A rule pair that holds no table row closes the current run. Skipping
-            # it without closing would let one run span a section break just
-            # because the columns on either side happen to line up.
-            accepted = []
+            # No table row in this pair: close the run. Skipping without closing
+            # would let one run span a section break just because the columns on
+            # either side happen to line up.
+            model = None
+            continue
+        if any(upper.y < y < lower.y for y in separators):
+            # A heading-classified line sits in this band. A table's rows are not
+            # headings, so the band is a header row or an intervening section
+            # heading: the previous table ends here, and this band is furniture,
+            # not a region.
+            model = None
             continue
         segments = _column_segments(items, upper.y, lower.y, page_left, page_right)
-        if accepted and _same_columns(_median_edges(accepted), segments):
-            accepted.append(segments)
-            runs[-1] = (runs[-1][0], lower.y, _median_edges(accepted))
+        if model is not None and (_same_columns(model, segments) or _continues_numbered_run(items, upper.y, lower.y)):
+            model = _absorb(model, segments)
+            runs[-1] = (runs[-1][0], lower.y, model)
             continue
-        accepted = [segments]
+        model = segments
         runs.append((upper.y, lower.y, segments))
     return runs
 
 
-def _median_edges(models: Sequence[tuple[float, ...]]) -> tuple[float, ...]:
-    """Element-wise median of the column models a run has accepted so far.
+def _continues_numbered_run(items: Sequence[TextItemLike], y0: float, y1: float) -> bool:
+    """Does this band carry a numbered DATA row of the run above?
 
-    The run's model is the majority, not its first sample: one drifted row moves
-    the model instead of breaking the run.
+    The reporter's continuation rule (pc-4u7.42, option 3): a row whose first
+    cell is a data value (``7``, ``6.3``, ``0.0001``) belongs to the table above
+    it even when its measured columns drifted — wrapped cells and merged cells
+    change the measured count, but a numbered first cell names its row of a
+    numbered test-case table. A label first cell (``Frequency (Hz)``) is a new
+    table's header, which is exactly the distinction page 19 needs to stay two
+    tables. A bold header row never reaches this check: separators close the run
+    first.
     """
-    if len(models) == 1:
-        return models[0]
+    first = min(
+        (item for item in items if y0 + RULE_Y_TOL < item.y < y1 - RULE_Y_TOL and str(item.text).strip()),
+        key=lambda item: float(item.x),
+        default=None,
+    )
+    if first is None:
+        return False
+    return _NUMERIC_FIRST_CELL.match(str(first.text).strip()) is not None
+
+
+def _absorb(model: tuple[float, ...], candidate: tuple[float, ...]) -> tuple[float, ...]:
+    """Refine the run's model with an accepted pair's edges.
+
+    Each model edge drifts halfway toward the mean of the candidate edges within
+    :data:`COLUMN_MATCH_TOL` of it; unmatched edges keep their position (an extra
+    candidate edge from a wrapped cell is noise, not structure).
+    """
     out: list[float] = []
-    for index in range(len(models[0])):
-        column = sorted(model[index] for model in models)
-        middle = len(column) // 2
-        out.append(column[middle] if len(column) % 2 else (column[middle - 1] + column[middle]) / 2.0)
+    for edge in model:
+        near = [value for value in candidate if abs(value - edge) <= COLUMN_MATCH_TOL]
+        if near:
+            out.append((edge + sum(near) / len(near)) / 2.0)
+        else:
+            out.append(edge)
     return tuple(out)
 
 
 def _same_columns(reference: tuple[float, ...], candidate: tuple[float, ...]) -> bool:
-    """Does a rule pair belong to the run? Same column count, model respected.
+    """Does a rule pair belong to the run? Count-agnostic mutual-majority match.
 
-    The OUTER boundaries must match — a table's left and right edges do not move —
-    and at least half of the interior boundaries must: one wrapped cell shifts one
-    interior edge, while a different table moves most of them or changes the count.
-    A two-edge model (one column) has no interior, so both edges must match —
-    which the general rule already says: zero interior boundaries trivially meet
-    the majority test, and the outer check IS the two-edge check. (The branch that
-    spelled this out separately was unreachable: a run only exists where
-    :data:`MIN_COLUMNS` columns were counted, so a model has at least three edges.)
+    The OUTER boundaries must match (a table's left and right edges do not move),
+    and at least half of EACH side's interior boundaries must find a partner
+    within :data:`COLUMN_MATCH_TOL` — reference-majority so a sparse row still
+    matches a rich model, candidate-majority so a wrapped row's extra column does
+    not smuggle in a different structure. A different table changes the count or
+    moves most of the interiors, failing one of the two majorities.
     """
-    if len(reference) != len(candidate):
-        return False
-    outer = abs(reference[0] - candidate[0]) <= COLUMN_MATCH_TOL and abs(reference[-1] - candidate[-1]) <= COLUMN_MATCH_TOL
-    matching = sum(1 for a, b in zip(reference[1:-1], candidate[1:-1], strict=False) if abs(a - b) <= COLUMN_MATCH_TOL)
-    return outer and matching * 2 >= len(reference) - 2
+    # No outer-edge check: _column_segments pins the first and last edges to the
+    # page bounds, so reference[0]/[-1] and candidate[0]/[-1] are the same values
+    # by construction and comparing them is vacuous. The mutual interior majority
+    # below is the whole decision.
+    matched_reference = sum(1 for edge in reference[1:-1] if _edges_align(edge, candidate))
+    matched_candidate = sum(1 for edge in candidate[1:-1] if _edges_align(edge, reference))
+    reference_interiors = len(reference) - 2
+    candidate_interiors = len(candidate) - 2
+    return matched_reference * 2 >= reference_interiors and matched_candidate * 2 >= candidate_interiors
+
+
+def _edges_align(edge: float, edges: tuple[float, ...]) -> bool:
+    """Is one boundary within tolerance of some boundary on the other side?"""
+    return any(abs(edge - other) <= COLUMN_MATCH_TOL for other in edges)
 
 
 def _horizontal_rules(lines: Sequence[VectorLineLike]) -> list[_RuleBand]:

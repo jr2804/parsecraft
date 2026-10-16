@@ -145,6 +145,18 @@ def chunks_for_page(
     return chunks
 
 
+def heading_ys(items: Iterable[TextItemLike]) -> list[float]:
+    """Y of every heading-classified line on a page — the table-run separator set.
+
+    A table's data rows are body text, so a bold non-TOC line between two rules is
+    a header row or an intervening section heading: structure that ends a table
+    (pc-4u7.42, the reporter's preferred signal). Heading levels 1-4 are all bold
+    by construction, and a table's own bold header row closing the run above it is
+    exactly right — the header belongs to the NEXT table.
+    """
+    return [line.y for line in classify_lines(lines_of(items)) if line.level > 0]
+
+
 def lines_of(items: Iterable[TextItemLike]) -> list[_Line]:
     """Merge items sharing a baseline into lines, keeping each line's dominant font.
 

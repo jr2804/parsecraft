@@ -25,7 +25,7 @@ from typing import cast
 from liteparse import LiteParse
 
 from parsecraft.backends.errors import BackendError
-from parsecraft.backends.liteparse._items import TextItemLike, chunks_for_page
+from parsecraft.backends.liteparse._items import TextItemLike, chunks_for_page, heading_ys
 from parsecraft.backends.liteparse._tables import (
     VectorGraphicsLike,
     VectorLineLike,
@@ -305,7 +305,9 @@ def _append_table_chunks(
     """Append one ``ChunkKind.TABLE`` per surviving table region to the page's blocks."""
     if not lines or page_width <= 0:
         return blocks
-    regions = detect_table_regions(lines, items, page_width=page_width)
+    # Heading-classified lines are structural separators: a bold header row or
+    # an intervening section heading ends a table run (pc-4u7.42).
+    regions = detect_table_regions(lines, items, page_width=page_width, separators=heading_ys(items))
     next_index = len(blocks)
     for _y_bounds, rows in regions:
         if not any(cell.strip() for row in rows for cell in row):
