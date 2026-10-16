@@ -7,6 +7,7 @@ docling and LiteParse families.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import importlib
 import importlib.util
@@ -534,28 +535,6 @@ def test_convert_reports_the_model_reference(mineru_stub: _State) -> None:
     assert reference.model_revision == mineru_module.MINERU_ASSET.model_revision
 
 
-def _backend(config: BackendConfig | None = None) -> DocumentBackend:
-    return _impl().create(config or BackendConfig(name="mineru"))
-
-
-def _convert(
-    backend: DocumentBackend,
-    *,
-    page_range: PageRange | None = None,
-    max_output_chars: int | None = None,
-    timeout_s: float | None = None,
-    cancel: bool = False,
-) -> BackendResult:
-    request = ConversionRequest(
-        source=_PDF_SOURCE,
-        page_range=page_range,
-        max_output_chars=max_output_chars,
-        timeout_s=timeout_s,
-        cancellation=(lambda: True) if cancel else None,
-    )
-    return backend.convert(request)
-
-
 def test_table_text_extractor_handles_nested_markup(mineru_stub: _State) -> None:
     extractor = _impl()._TableTextExtractor()
     extractor.feed("<table><tr><td><b>bold</b> cell</td><td>second</td></tr></table>")
@@ -586,6 +565,114 @@ def test_map_item_returns_none_for_unknown_types(mineru_stub: _State) -> None:
 def test_page_number_is_the_single_normalization_point(mineru_stub: _State) -> None:
     assert _impl()._page_number({"page_idx": 0}) == 1
     assert _impl()._page_number({"page_idx": 79}) == 80
+
+
+@pytest.mark.skipif(
+    not importlib.util.find_spec("mineru") or not importlib.util.find_spec("pypdf"),
+    reason="mineru extra (and pypdf to build the document) not installed",
+)
+def test_console_script_spawn_guard_survives_docvortex(tmp_path: Path) -> None:
+    """A console-script entry point must not re-run the conversion in spawn children.
+
+    docvortex rasterizes page images through ``multiprocessing.get_context("spawn")``,
+    and spawn re-imports the parent's ``__main__`` as ``__mp_main__``. An unguarded
+    module body therefore re-executes the whole workload inside every render worker;
+    the ``if __name__ == "__main__"`` guard is what keeps the backend's own module
+    body inert. Verified here end to end: the guarded worker prints ``RESULT`` once,
+    the unguarded control prints it more than once.
+    """
+    guarded = _run_spawn_worker(tmp_path, _SPAWN_GUARDED, "guarded.py")
+    assert len(guarded) == 1, f"the guard did not hold: {guarded}"
+    unguarded = _run_spawn_worker(tmp_path, _SPAWN_UNGUARDED, "unguarded.py")
+    assert len(unguarded) > 1, (
+        "the negative control ran only once, so this environment no longer re-imports "
+        "__main__ in spawn children — the hazard this test pins has changed upstream "
+        f"(revisit the guard requirement): {unguarded}"
+    )
+
+
+def _run_spawn_worker(tmp_path: Path, script: str, name: str) -> list[str]:
+    """Run a worker script as a real subprocess; return its ``RESULT`` lines."""
+    source = script.replace("__SRC__", str(Path(__file__).resolve().parents[2] / "src"))
+    source = source.replace("__PAGES__", str(_SPAWN_PAGES))
+    script_path = tmp_path / name
+    script_path.write_text(source, encoding="utf-8")
+    env = {**os.environ, "MINERU_HOME": str(tmp_path / "mineru-home")}
+    completed = subprocess.run(  # noqa: S603 — fixed interpreter, repo-local worker script
+        [sys.executable, str(script_path), str(tmp_path / f"{name}.pdf")],
+        capture_output=True,
+        text=True,
+        timeout=900,
+        env=env,
+        check=False,
+    )
+    return [line for line in completed.stdout.splitlines() if line.startswith("RESULT")]
+
+
+def test_assets_carry_a_content_hash_for_an_inline_payload(mineru_stub: _State) -> None:
+    """`sha256` is the decoded payload's hash - what a content-addressed cache wants.
+
+    A data URI is hashed from its bytes; a written path is deliberately left None
+    (the file may be megabytes and the cache layer owns that decision).
+    """
+    payload = b"\x89PNG-not-really"
+    uri = "data:image/png;base64," + base64.b64encode(payload).decode()
+    mineru_stub.items = [{"type": "image", "image_base64": uri, "page_idx": 0}]
+    asset = _convert(_backend()).pages[0].assets[0]
+    assert asset.sha256 == hashlib.sha256(payload).hexdigest()
+
+    mineru_stub.items = [{"type": "image", "img_path": "figures/f1.png", "page_idx": 0}]
+    assert _convert(_backend()).pages[0].assets[0].sha256 is None
+
+
+def test_assets_carry_the_bbox_when_the_item_has_one(mineru_stub: _State) -> None:
+    """A well-formed ``bbox`` maps onto the IR's BBox; anything odd yields None.
+
+    A figure without a box is still a figure, so a malformed box must not fail the
+    conversion (the IR's BBox validator would otherwise raise on unordered corners).
+    """
+    mineru_stub.items = [
+        {"type": "image", "img_path": "f.png", "bbox": [10, 20, 200, 300], "page_idx": 0},
+    ]
+    asset = _convert(_backend()).pages[0].assets[0]
+    assert asset.bbox is not None
+    assert (asset.bbox.x0, asset.bbox.y0, asset.bbox.x1, asset.bbox.y1) == (10.0, 20.0, 200.0, 300.0)
+
+    for bad in ([1, 2, 3], "nope", [300, 20, 10, 5], [1, 2, "x", 4], None):
+        mineru_stub.items = [{"type": "image", "img_path": "f.png", "bbox": bad, "page_idx": 0}]
+        assert _convert(_backend()).pages[0].assets[0].bbox is None
+
+
+def test_assets_tolerate_a_malformed_inline_payload(mineru_stub: _State) -> None:
+    """A data URI with no payload after the comma hashes to None, not to an error."""
+    mineru_stub.items = [
+        {"type": "image", "image_base64": "data:image/png;base64,", "page_idx": 0},
+        {"type": "image", "image_base64": "data:image/png;base64,!!!not-base64!!!", "page_idx": 0},
+    ]
+    assets = _convert(_backend()).pages[0].assets
+    assert [asset.sha256 for asset in assets] == [None, None]
+
+
+def _backend(config: BackendConfig | None = None) -> DocumentBackend:
+    return _impl().create(config or BackendConfig(name="mineru"))
+
+
+def _convert(
+    backend: DocumentBackend,
+    *,
+    page_range: PageRange | None = None,
+    max_output_chars: int | None = None,
+    timeout_s: float | None = None,
+    cancel: bool = False,
+) -> BackendResult:
+    request = ConversionRequest(
+        source=_PDF_SOURCE,
+        page_range=page_range,
+        max_output_chars=max_output_chars,
+        timeout_s=timeout_s,
+        cancellation=(lambda: True) if cancel else None,
+    )
+    return backend.convert(request)
 
 
 @pytest.fixture
@@ -647,45 +734,3 @@ def mineru_stub(monkeypatch: pytest.MonkeyPatch) -> Iterator[_State]:
 
 def _impl() -> types.ModuleType:
     return importlib.import_module(_IMPL_MODULE)
-
-
-@pytest.mark.skipif(
-    not importlib.util.find_spec("mineru") or not importlib.util.find_spec("pypdf"),
-    reason="mineru extra (and pypdf to build the document) not installed",
-)
-def test_console_script_spawn_guard_survives_docvortex(tmp_path: Path) -> None:
-    """A console-script entry point must not re-run the conversion in spawn children.
-
-    docvortex rasterizes page images through ``multiprocessing.get_context("spawn")``,
-    and spawn re-imports the parent's ``__main__`` as ``__mp_main__``. An unguarded
-    module body therefore re-executes the whole workload inside every render worker;
-    the ``if __name__ == "__main__"`` guard is what keeps the backend's own module
-    body inert. Verified here end to end: the guarded worker prints ``RESULT`` once,
-    the unguarded control prints it more than once.
-    """
-    guarded = _run_spawn_worker(tmp_path, _SPAWN_GUARDED, "guarded.py")
-    assert len(guarded) == 1, f"the guard did not hold: {guarded}"
-    unguarded = _run_spawn_worker(tmp_path, _SPAWN_UNGUARDED, "unguarded.py")
-    assert len(unguarded) > 1, (
-        "the negative control ran only once, so this environment no longer re-imports "
-        "__main__ in spawn children — the hazard this test pins has changed upstream "
-        f"(revisit the guard requirement): {unguarded}"
-    )
-
-
-def _run_spawn_worker(tmp_path: Path, script: str, name: str) -> list[str]:
-    """Run a worker script as a real subprocess; return its ``RESULT`` lines."""
-    source = script.replace("__SRC__", str(Path(__file__).resolve().parents[2] / "src"))
-    source = source.replace("__PAGES__", str(_SPAWN_PAGES))
-    script_path = tmp_path / name
-    script_path.write_text(source, encoding="utf-8")
-    env = {**os.environ, "MINERU_HOME": str(tmp_path / "mineru-home")}
-    completed = subprocess.run(  # noqa: S603 — fixed interpreter, repo-local worker script
-        [sys.executable, str(script_path), str(tmp_path / f"{name}.pdf")],
-        capture_output=True,
-        text=True,
-        timeout=900,
-        env=env,
-        check=False,
-    )
-    return [line for line in completed.stdout.splitlines() if line.startswith("RESULT")]

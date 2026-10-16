@@ -32,6 +32,7 @@ Design notes:
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import os
 from enum import StrEnum
@@ -66,6 +67,7 @@ from parsecraft.backends.protocol import (
 from parsecraft.backends.source import path_from_file_uri
 from parsecraft.ir.models import (
     AssetKind,
+    BBox,
     ChunkKind,
     ExtractedAsset,
     FailureCode,
@@ -411,7 +413,52 @@ def _image_asset(item: dict[str, Any], page_number: int, index: int) -> Extracte
         kind=AssetKind.IMAGE,
         media_type=media_type,
         uri=uri,
+        bbox=_item_bbox(item),
+        sha256=_payload_sha256(raw),
     )
+
+
+def _item_bbox(item: dict[str, Any]) -> BBox | None:
+    """The figure's box on the page, when the content list carries one.
+
+    MinerU's Content List V1 puts a 4-number ``bbox`` on the item; it is mapped
+    straight onto the IR's ``BBox`` (x0, y0, x1, y1, points). Anything unshaped -
+    missing, the wrong length, non-numeric, or unordered - yields ``None`` rather
+    than raising: a figure without a box is still a figure, and the ordering
+    validator would otherwise turn a source quirk into a failed conversion.
+    """
+    raw = item.get("bbox")
+    if not isinstance(raw, (list, tuple)) or len(raw) != 4:
+        return None
+    numbers: list[float] = []
+    for value in raw:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        numbers.append(float(value))
+    x0, y0, x1, y1 = numbers
+    if x1 < x0 or y1 < y0:
+        return None
+    return BBox(x0=x0, y0=y0, x1=x1, y1=y1)
+
+
+def _payload_sha256(raw: str) -> str | None:
+    """Content hash of an inline payload; ``None`` for a written path.
+
+    A data URI is hashed from its decoded bytes, which is what a content-addressed
+    cache or dedup key needs. A FILE path is deliberately not read here: the image
+    may be megabytes and the cache layer is the place that decides to hash it (and
+    already keys on the source document).
+    """
+    if not raw.startswith("data:"):
+        return None
+    _, _, encoded = raw.partition(",")
+    if not encoded:
+        return None
+    try:
+        payload = base64.b64decode(encoded, validate=False)
+    except (ValueError, TypeError):
+        return None
+    return hashlib.sha256(payload).hexdigest()
 
 
 def _filled_pages(
