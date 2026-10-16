@@ -51,7 +51,6 @@ def test_the_cli_hands_adapters_real_types(tmp_path: Path, monkeypatch: pytest.M
     `extract_vector_graphics=true` worked because LiteParse coerced internally).
     The factory here plays the strict adapter, so a regression fails the run.
     """
-
     registry = BackendRegistry()
     monkeypatch.setattr(convert_module, "default_registry", registry)
     monkeypatch.setattr(

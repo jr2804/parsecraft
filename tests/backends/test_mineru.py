@@ -443,9 +443,23 @@ def test_convert_rejects_an_unknown_effort(mineru_stub: _State) -> None:
         _backend(BackendConfig(name="mineru", options={"effort": "turbo"}))
 
 
-def test_convert_rejects_a_non_boolean_image_analysis(mineru_stub: _State) -> None:
+def test_convert_accepts_boolean_spellings_and_rejects_real_junk(mineru_stub: _State) -> None:
+    """Recognised boolean tokens are coerced; anything else is still rejected.
+
+    The coercion is the fix for a consumer report: `--backend-option
+    image_analysis=true` died in this validator while liteparse's own coercion
+    made the same flag work. A validator that says "must be a boolean" should not
+    refuse the obvious spelling of one — and must still refuse `banana`.
+    """
+    for token in ("yes", "true", "on"):
+        _convert(_backend(BackendConfig(name="mineru", options={"image_analysis": token})))
+        assert mineru_stub.convert_calls[-1]["image_analysis"] is True
+    for token in ("no", "false", "off"):
+        _convert(_backend(BackendConfig(name="mineru", options={"image_analysis": token})))
+        assert mineru_stub.convert_calls[-1]["image_analysis"] is False
+
     with pytest.raises(BackendError, match="image_analysis"):
-        _backend(BackendConfig(name="mineru", options={"image_analysis": "yes"}))
+        _backend(BackendConfig(name="mineru", options={"image_analysis": "banana"}))
 
 
 def test_convert_enables_image_analysis_on_request(mineru_stub: _State) -> None:
