@@ -276,6 +276,40 @@ name (`page_number=None`) and `pipeline_failure(document)` reports the verdict,
 so `parsecraft convert` exits `1` with the diagnosis instead of returning an
 empty document — a document with *some* content stays a success.
 
+## Extraction tiers and who may lead
+
+Every backend declares an **extraction tier** — how much modelling stands behind
+its extraction:
+
+| Tier | Family | Members |
+| ---- | ------ | ------- |
+| 0 | native | native-text, native-markdown, native-html, native-pdf |
+| 1 | intelligent parser | liteparse, docling, pandoc, mineru (and any hybrid engine declared so) |
+| 2 | OCR / document-VLM | ocr-ovis, ocr-qianfan, ocr-tele, ocr-unlimited |
+
+It is a **quality ladder, not a binary**: tier 1 exists because "native vs OCR"
+is a false dichotomy — intelligent parsers extract structure without a VLM, and
+hybrid engines sit between the poles.
+
+Two rules read the same ladder:
+
+1. **Ranking (default).** With no preference named, a NATIVE page is led by the
+   cheapest tier that can read it: tier 0 beats tier 1 beats tier 2. This is the
+   host-aware order the deterministic judge sorts by.
+2. **The lead cap.** A NATIVE page's lead may not exceed **tier 1** unless the
+   caller *names* a backend. Naming one (`--backend ocr-ovis`, or
+   `preferred_backend` in the constraints) raises the cap to that backend's tier,
+   so the document-VLM harness is reachable **on digital PDFs too** — its
+   figures/tables/equations accuracy is the point, independent of whether the
+   page is scanned.
+
+What the cap forbids is the *unpriced surprise*: no judge, and no omitted
+request, may silently spend GPU minutes on text a tier-0 backend reads in
+milliseconds. A named backend is the caller paying for the tier. OCR-intent
+pages (scans, blank, image-only) are untouched: their family is OCR by
+definition. Blank pages still degrade to native rather than costing anything
+(see [Degradation](#per-page-dispatch-and-fallbacks)).
+
 ## Judge seam
 
 `RoutingJudge` is a `runtime_checkable Protocol`:

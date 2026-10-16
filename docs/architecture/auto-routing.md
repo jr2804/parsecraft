@@ -255,6 +255,53 @@ neither flag uses `DeterministicJudge`. `--backend` and `--judge` are mutually
 exclusive — both choose the lead candidate — a malformed spec exits `2`, and a
 provider that cannot be loaded exits `1`.
 
+#### What the decision model receives
+
+The judge request carries **no document content** — only bounded, declared
+facts. The state has four keys, and keys without a fact are omitted rather than
+zero-filled:
+
+- `intent` and `preference` — the page class and the axis the caller asked to
+  optimise (`BALANCED`, `QUALITY`, `SPEED`).
+- `candidates` — per candidate: `family`, the declared `tier` (0 native, 1
+  intelligent parser, 2 OCR/VLM), `gpu_requirement`, `estimated_vram_gb` and
+  `formats`. No prose, no names beyond the backend ids.
+- `machine` — `vram_budget_gb` and `gpu_usable` (omitted entirely on an unknown
+  host instead of a misleading zero).
+- `page` and `hints` — the page class (`needs_ocr`, `blank`, `density`) and the
+  document's structural hints. NATIVE pages carry a context too (`needs_ocr` is
+  false there), which is what lets a judge reason about sparse-vs-dense native
+  pages.
+
+A shortened example (`mineru` and `ocr-ovis` on a GPU host, one dense native
+page):
+
+```json
+{
+  "intent": "native",
+  "preference": "quality",
+  "candidates": {
+    "native-pdf": {"family": "native", "tier": 0, "gpu_requirement": 0.0,
+                   "estimated_vram_gb": null, "formats": ["application/pdf"]},
+    "mineru":      {"family": "native", "tier": 1, "gpu_requirement": 0.0,
+                    "estimated_vram_gb": 6.0, "formats": ["application/pdf"]},
+    "ocr-ovis":    {"family": "ocr", "tier": 2, "gpu_requirement": 1.0,
+                    "estimated_vram_gb": 6.0, "formats": ["application/pdf"]}
+  },
+  "machine": {"vram_budget_gb": 8.0, "gpu_usable": true},
+  "page": {"needs_ocr": false, "blank": false, "density": 2214.5},
+  "hints": {"figures": 2, "tables": 1}
+}
+```
+
+The instruction sentence carries the preference in prose as well ("prefer the
+highest-quality extraction"), plus the standing contract: for a `native` intent
+a candidate above the caller's tier may not lead — with no named backend the
+cap is tier 1, and naming one (the `--backend` preference, also visible in the
+candidates the model sees) raises it. The model orders within those bounds;
+[`plan_route`](routing.md#extraction-tiers-and-who-may-lead) validates the order
+and can reject it, so a decision model can never widen eligibility.
+
 ### Enabling an LLM-assisted decision
 
 **Status:** current.

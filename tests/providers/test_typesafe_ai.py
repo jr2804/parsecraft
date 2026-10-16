@@ -159,8 +159,8 @@ def test_rank_sends_one_bounded_choice_question(jev_sdk: StubSdk, ts_key: str) -
         "intent": "ocr-vision",
         "preference": "balanced",
         "candidates": {
-            "ocr-ovis": {"family": "ocr", "gpu_requirement": 1.0, "estimated_vram_gb": 6.0, "formats": ["application/pdf", "image/png"]},
-            "pymupdf": {"family": "native", "gpu_requirement": 0.0, "estimated_vram_gb": None, "formats": ["application/pdf"]},
+            "ocr-ovis": {"family": "ocr", "tier": 2, "gpu_requirement": 1.0, "estimated_vram_gb": 6.0, "formats": ["application/pdf", "image/png"]},
+            "pymupdf": {"family": "native", "tier": 0, "gpu_requirement": 0.0, "estimated_vram_gb": None, "formats": ["application/pdf"]},
         },
     }
     assert set(questions) == {_QUESTION_ID}

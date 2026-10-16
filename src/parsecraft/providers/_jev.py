@@ -38,7 +38,7 @@ from parsecraft.backends.protocol import GPU_NOT_NEEDED, GPU_REQUIRED, BackendDe
 from parsecraft.routing.judge import JudgeSpec, MachineProfile, PageContext
 from parsecraft.routing.judge_providers import JudgeProviderUnavailableError, JudgeSpecError
 from parsecraft.routing.models import Intent, RoutingError, RoutingPreference
-from parsecraft.routing.rules import is_ocr
+from parsecraft.routing.rules import extraction_tier, is_ocr
 
 #: Single choice question id — the judge only ever asks who should lead.
 QUESTION_ID = "lead"
@@ -340,10 +340,17 @@ def request_state(
 
 
 def describe(descriptor: BackendDescriptor) -> dict[str, object]:
-    """Declared capability facts only — no document content, no prose."""
+    """Declared capability facts only — no document content, no prose.
+
+    ``tier`` is the declared extraction ladder (rules.extraction_tier): 0 native,
+    1 intelligent parser, 2 OCR/document-VLM — the quality-first fact a decision
+    model needs alongside the binary family, since hybrid engines live between
+    them.
+    """
     capabilities = descriptor.capabilities
     return {
         "family": "ocr" if is_ocr(descriptor) else "native",
+        "tier": extraction_tier(descriptor),
         "gpu_requirement": capabilities.gpu_requirement,
         "estimated_vram_gb": capabilities.estimated_vram_gb,
         "formats": list(capabilities.supported_formats),
