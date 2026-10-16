@@ -65,7 +65,9 @@ from parsecraft.backends.protocol import (
 )
 from parsecraft.backends.source import path_from_file_uri
 from parsecraft.ir.models import (
+    AssetKind,
     ChunkKind,
+    ExtractedAsset,
     FailureCode,
     PageRange,
     PageResult,
@@ -83,7 +85,8 @@ _ITEM_KINDS: dict[str, ChunkKind] = {
     "index": ChunkKind.LIST,
     "table": ChunkKind.TABLE,
     "equation": ChunkKind.FORMULA,
-    "image": ChunkKind.CAPTION,
+    "image": ChunkKind.FIGURE,
+    "code": ChunkKind.CODE,
     "header": ChunkKind.HEADER,
     "footer": ChunkKind.FOOTER,
 }
@@ -277,20 +280,28 @@ def _select(
 ) -> tuple[list[PageResult], PassFailure | None]:
     """Map the content list to typed chunks per page, honoring bounds."""
     blocks: dict[int, list[StructuredChunk]] = {}
+    assets: dict[int, list[ExtractedAsset]] = {}
     used_chars = 0
     for item in render_content_list(middle_json):
         if request.cancellation is not None and request.cancellation():
             return _filled_pages(blocks, request.page_range), _failure(request, started, FailureCode.CANCELLED, "cancelled between items")
         kind, content = _map_item(item)
-        if kind is None or not content:
+        if kind is None or (not content and kind is not ChunkKind.FIGURE):
+            # A figure with no caption is still a figure: its CONTENT is the image,
+            # which reaches a consumer as an ExtractedAsset (pc-4u7.43).
             continue
         page_number = _page_number(item)
         if request.page_range is not None and not (request.page_range.start <= page_number <= request.page_range.end):
             continue
         if request.max_output_chars is not None and used_chars + len(content) > request.max_output_chars:
-            return _filled_pages(blocks, request.page_range), _failure(request, started, FailureCode.BUDGET_EXCEEDED, "max_output_chars budget reached")
+            return _filled_pages(blocks, assets, request.page_range), _failure(request, started, FailureCode.BUDGET_EXCEEDED, "max_output_chars budget reached")
         used_chars += len(content)
         chunks = blocks.setdefault(page_number, [])
+        asset = _image_asset(item, page_number, len(chunks)) if kind is ChunkKind.FIGURE else None
+        metadata: dict[str, str] = {}
+        if asset is not None:
+            assets.setdefault(page_number, []).append(asset)
+            metadata["asset_id"] = asset.id
         chunks.append(
             StructuredChunk(
                 id=f"mineru-{page_number}-b{len(chunks)}",
@@ -298,9 +309,25 @@ def _select(
                 content=content,
                 page_number=page_number,
                 reading_order=len(chunks),
+                metadata=metadata,
             )
         )
-    return _filled_pages(blocks, request.page_range), None
+        if kind is ChunkKind.FIGURE and content:
+            # The caption is text a consumer reads; the figure is the asset. Always
+            # its own block (predictable shape whether or not a payload came with
+            # the item), carrying the asset id when there is one so a caller can
+            # pair them after the fact.
+            chunks.append(
+                StructuredChunk(
+                    id=f"mineru-{page_number}-b{len(chunks)}",
+                    kind=ChunkKind.CAPTION,
+                    content=content,
+                    page_number=page_number,
+                    reading_order=len(chunks),
+                    metadata=dict(metadata),
+                )
+            )
+    return _filled_pages(blocks, assets, request.page_range), None
 
 
 def _page_number(item: dict[str, Any]) -> int:
@@ -328,8 +355,11 @@ def _map_item(item: dict[str, Any]) -> tuple[ChunkKind | None, str]:
     if item_type == "table":
         return ChunkKind.TABLE, _table_content(item)
     if item_type == "image":
+        # A figure, not a caption: the image is the content, its caption is text
+        # that travels with it (pc-4u7.43). An empty caption is fine — the FIGURE
+        # chunk is still emitted so the asset can reach a consumer.
         caption = _joined(item.get("image_caption"))
-        return ChunkKind.CAPTION, caption
+        return ChunkKind.FIGURE, caption
     kind = _ITEM_KINDS.get(item_type)
     if kind is None:
         return None, ""  # page_number and unknown types: page furniture
@@ -357,10 +387,42 @@ def _joined(value: Any) -> str:
     return "\n".join(str(entry).strip() for entry in value if str(entry).strip())
 
 
-def _filled_pages(blocks: dict[int, list[StructuredChunk]], page_range: PageRange | None) -> list[PageResult]:
+def _image_asset(item: dict[str, Any], page_number: int, index: int) -> ExtractedAsset | None:
+    """The figure's image as an :class:`ExtractedAsset`, when the item carries one.
+
+    MinerU's Content List V1 hands the image as a base64 data URI (``image_base64``)
+    or a written file path (``img_path``); either is a URI the IR can carry without
+    inlining bytes anywhere else. The media type is read from the data URI header,
+    or from the path suffix, and is honest about not knowing (octet-stream).
+    """
+    raw = item.get("image_base64") or item.get("img_path")
+    if not isinstance(raw, str) or not raw:
+        return None
+    uri = raw if "://" in raw or raw.startswith("data:") else f"file:{raw}"
+    media_type = "application/octet-stream"
+    if raw.startswith("data:"):
+        header = raw[5:].split(";", 1)[0].split(",", 1)[0]
+        media_type = header or media_type
+    elif "." in raw:
+        suffix = raw.rsplit(".", 1)[-1].lower()
+        media_type = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp"}.get(suffix, media_type)
+    return ExtractedAsset(
+        id=f"mineru-{page_number}-a{index}",
+        kind=AssetKind.IMAGE,
+        media_type=media_type,
+        uri=uri,
+    )
+
+
+def _filled_pages(
+    blocks: dict[int, list[StructuredChunk]],
+    assets: dict[int, list[ExtractedAsset]] | None = None,
+    page_range: PageRange | None = None,
+) -> list[PageResult]:
     """Every requested page, empty when mineru produced no chunks for it."""
     numbers = sorted(blocks) or [1] if page_range is None else list(range(page_range.start, page_range.end + 1))
-    return [PageResult(page_number=number, blocks=blocks.get(number, [])) for number in numbers]
+    extracted = assets or {}
+    return [PageResult(page_number=number, blocks=blocks.get(number, []), assets=extracted.get(number, [])) for number in numbers]
 
 
 def _failure(request: ConversionRequest, started: float, code: FailureCode, detail: str) -> PassFailure:

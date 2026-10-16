@@ -24,7 +24,7 @@ import pytest
 from parsecraft.backends.errors import BackendError, DependencyUnavailableError
 from parsecraft.backends.mineru import mineru as mineru_module
 from parsecraft.backends.protocol import BackendConfig, BackendResult, ConversionRequest, DocumentBackend, SourceDocument
-from parsecraft.ir.models import ChunkKind, FailureCode, PageRange, PassKind
+from parsecraft.ir.models import AssetKind, ChunkKind, FailureCode, PageRange, PassKind
 from parsecraft.routing.models import RoutingConstraints
 from parsecraft.routing.rules import is_hard_eligible
 
@@ -112,6 +112,9 @@ request = ConversionRequest(
 result = backend.convert(request)
 print(f"RESULT pages={len(result.pages)} failures={len(result.failures)}")
 """
+
+
+_PNG_DATA_URI = "data:image/png;base64,iVBORw0KGgo="
 
 
 # ── Stubs: heavy packages faked through sys.modules ─────────────────────────────
@@ -316,14 +319,14 @@ def test_convert_emits_the_table_caption_when_the_body_is_empty(mineru_stub: _St
 
 
 def test_convert_drops_empty_content(mineru_stub: _State) -> None:
-    """The flash path emits equations as images with no LaTeX text -> dropped."""
+    """Empty TEXT is dropped; a caption-less FIGURE is kept (pc-4u7.43)."""
     mineru_stub.items = [
         {"type": "equation", "text": "", "page_idx": 0},
         {"type": "image", "image_caption": [], "page_idx": 0},
         {"type": "text", "text": "kept", "page_idx": 0},
     ]
     result = _convert(_backend())
-    assert [block.kind for block in result.pages[0].blocks] == [ChunkKind.PARAGRAPH]
+    assert [block.kind for block in result.pages[0].blocks] == [ChunkKind.FIGURE, ChunkKind.PARAGRAPH]
 
 
 def test_convert_keeps_equation_text_when_present(mineru_stub: _State) -> None:
@@ -333,11 +336,49 @@ def test_convert_keeps_equation_text_when_present(mineru_stub: _State) -> None:
     assert result.pages[0].blocks[0].content == "E = mc^2"
 
 
-def test_convert_maps_image_captions(mineru_stub: _State) -> None:
+def test_convert_maps_images_to_figures_with_their_caption(mineru_stub: _State) -> None:
+    """An image is a FIGURE; its caption follows as CAPTION, not instead of it."""
     mineru_stub.items = [{"type": "image", "image_caption": ["Figure 1: a chart"], "page_idx": 0}]
     result = _convert(_backend())
-    assert result.pages[0].blocks[0].kind == ChunkKind.CAPTION
-    assert result.pages[0].blocks[0].content == "Figure 1: a chart"
+    assert [block.kind for block in result.pages[0].blocks] == [ChunkKind.FIGURE, ChunkKind.CAPTION]
+    assert result.pages[0].blocks[1].content == "Figure 1: a chart"
+
+
+def test_convert_emits_an_extracted_asset_for_a_figure(mineru_stub: _State) -> None:
+    """pc-4u7.43 acceptance: a FIGURE chunk with a NON-EMPTY asset on its page.
+
+    The asset is the point: before this, no backend constructed an ExtractedAsset
+    at all, so a figure could never reach a consumer however the option was set.
+    """
+    mineru_stub.items = [
+        {"type": "image", "image_base64": _PNG_DATA_URI, "image_caption": ["Figure 1"], "page_idx": 0},
+    ]
+    result = _convert(_backend())
+    page = result.pages[0]
+    figure = page.blocks[0]
+    assert figure.kind == ChunkKind.FIGURE
+    assert page.assets, "no asset emitted for a figure"
+    asset = page.assets[0]
+    assert asset.kind == AssetKind.IMAGE
+    assert asset.media_type == "image/png"
+    assert asset.uri == _PNG_DATA_URI
+    assert figure.metadata["asset_id"] == asset.id
+    assert page.blocks[1].metadata["asset_id"] == asset.id
+
+
+def test_convert_reads_a_written_image_path_as_the_asset_uri(mineru_stub: _State) -> None:
+    mineru_stub.items = [{"type": "image", "img_path": "figures/figure-1.jpeg", "page_idx": 0}]
+    result = _convert(_backend())
+    asset = result.pages[0].assets[0]
+    assert asset.uri == "file:figures/figure-1.jpeg"
+    assert asset.media_type == "image/jpeg"
+
+
+def test_convert_maps_code_items_to_code(mineru_stub: _State) -> None:
+    """The map had no `code` entry, so detected code landed as PARAGRAPH."""
+    mineru_stub.items = [{"type": "code", "text": "print('hi')", "page_idx": 0}]
+    result = _convert(_backend())
+    assert result.pages[0].blocks[0].kind == ChunkKind.CODE
 
 
 def test_convert_maps_headers_and_footers(mineru_stub: _State) -> None:
