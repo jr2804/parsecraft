@@ -156,38 +156,67 @@ def _rule_runs(
     """One entry per table: ``(y_top, y_bottom, column boundaries)``.
 
     A run starts at a rule pair that holds at least :data:`MIN_COLUMNS` text
-    columns and extends while the next pair's columns agree with the run's within
-    :data:`COLUMN_MATCH_TOL` — a row separator, not a new table. A gap whose text
-    is one-column (a section break) or whose columns moved (a different table)
-    closes the run, which is the "region runs from its top rule to the last rule
-    before a non-tabular gap" rule the consumer's evidence pointed at.
+    columns and extends while the next pair matches the run's **accumulated**
+    column model — the element-wise median of the pairs already accepted, not the
+    previous pair and not a frozen anchor. That distinction is what the consumer's
+    evidence pinned: a wrapped cell (``NB_ERIC_Field_GSM_``) shifts one interior
+    boundary, and comparing against a fixed model split one 30-row table into 12
+    chunks at exactly those rows. A pair that holds no table row (a one-column
+    band, a section separator) CLOSES the run: the region ends at the last rule
+    before a non-tabular gap.
     """
     runs: list[tuple[float, float, tuple[float, ...]]] = []
-    run_open = False
+    accepted: list[tuple[float, ...]] = []
     for upper, lower in zip(full, full[1:], strict=False):
         if lower.y - upper.y <= RULE_Y_TOL or _columns_in_band(items, upper.y, lower.y) < MIN_COLUMNS:
-            # A rule pair that holds no table row (a section separator, a
-            # one-column band) CLOSES the current run: the region ends at the last
-            # rule before a non-tabular gap. Skipping it without closing would let
-            # one run span a section break just because the columns on either side
-            # happen to line up.
-            run_open = False
+            # A rule pair that holds no table row closes the current run. Skipping
+            # it without closing would let one run span a section break just
+            # because the columns on either side happen to line up.
+            accepted = []
             continue
         segments = _column_segments(items, upper.y, lower.y, page_left, page_right)
-        if run_open and _same_columns(runs[-1][2], segments):
-            top, _bottom, run_segments = runs[-1]
-            runs[-1] = (top, lower.y, run_segments)
+        if accepted and _same_columns(_median_edges(accepted), segments):
+            accepted.append(segments)
+            runs[-1] = (runs[-1][0], lower.y, _median_edges(accepted))
             continue
+        accepted = [segments]
         runs.append((upper.y, lower.y, segments))
-        run_open = True
     return runs
 
 
-def _same_columns(left: tuple[float, ...], right: tuple[float, ...]) -> bool:
-    """Do two rule pairs belong to one table? Same column count, boundaries aligned."""
-    if len(left) != len(right):
+def _median_edges(models: Sequence[tuple[float, ...]]) -> tuple[float, ...]:
+    """Element-wise median of the column models a run has accepted so far.
+
+    The run's model is the majority, not its first sample: one drifted row moves
+    the model instead of breaking the run.
+    """
+    if len(models) == 1:
+        return models[0]
+    out: list[float] = []
+    for index in range(len(models[0])):
+        column = sorted(model[index] for model in models)
+        middle = len(column) // 2
+        out.append(column[middle] if len(column) % 2 else (column[middle - 1] + column[middle]) / 2.0)
+    return tuple(out)
+
+
+def _same_columns(reference: tuple[float, ...], candidate: tuple[float, ...]) -> bool:
+    """Does a rule pair belong to the run? Same column count, model respected.
+
+    The OUTER boundaries must match — a table's left and right edges do not move —
+    and at least half of the interior boundaries must: one wrapped cell shifts one
+    interior edge, while a different table moves most of them or changes the count.
+    A two-edge model (one column) has no interior, so both edges must match —
+    which the general rule already says: zero interior boundaries trivially meet
+    the majority test, and the outer check IS the two-edge check. (The branch that
+    spelled this out separately was unreachable: a run only exists where
+    :data:`MIN_COLUMNS` columns were counted, so a model has at least three edges.)
+    """
+    if len(reference) != len(candidate):
         return False
-    return all(abs(a - b) <= COLUMN_MATCH_TOL for a, b in zip(left, right, strict=False))
+    outer = abs(reference[0] - candidate[0]) <= COLUMN_MATCH_TOL and abs(reference[-1] - candidate[-1]) <= COLUMN_MATCH_TOL
+    matching = sum(1 for a, b in zip(reference[1:-1], candidate[1:-1], strict=False) if abs(a - b) <= COLUMN_MATCH_TOL)
+    return outer and matching * 2 >= len(reference) - 2
 
 
 def _horizontal_rules(lines: Sequence[VectorLineLike]) -> list[_RuleBand]:

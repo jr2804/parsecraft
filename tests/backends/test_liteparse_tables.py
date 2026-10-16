@@ -228,14 +228,6 @@ def test_a_moved_column_boundary_starts_a_new_region() -> None:
     assert len(detect_table_regions(lines, items, page_width=200)) == 2
 
 
-def _line(x1: float, y1: float, x2: float, y2: float, *, stroke: bool = True) -> Any:
-    return SimpleNamespace(x1=x1, y1=y1, x2=x2, y2=y2, stroke=stroke, fill=False)
-
-
-def _text(x: float, y: float, text: str, *, width: float = 30.0) -> Any:
-    return SimpleNamespace(x=x, y=y, text=text, width=width)
-
-
 def test_the_recorded_slice_merges_to_the_same_four_tables() -> None:
     """The merge must not change the slice: 4 tables, same column counts.
 
@@ -258,3 +250,42 @@ def test_the_recorded_slice_merges_to_the_same_four_tables() -> None:
 
     assert sum(len(v) for v in per_page.values()) == MECHANISM_COUNTS_10_PAGE["merged_regions"] == 4
     assert per_page == {2: [7, 3, 8], 3: [5]}
+
+
+def test_a_drifted_row_does_not_split_the_table() -> None:
+    """pc-4u7.42 residual: one drifted row must not end the table.
+
+    The consumer measured one ~30-row table arriving as 12 chunks, breaking at
+    exactly the rows whose first cell is long and wrapped (``NB_ERIC_Field_GSM_``)
+    — a wrapped cell moves that column's measured centre, so the boundary sits
+    ~15-20 pt from where the model expects it. Comparing each pair against a frozen
+    model split the table there; the run's model is the MEDIAN of what it has
+    accepted, and a single drifted row moves the model instead of breaking the run.
+
+    Here the second row's first cell centre drifted from 35 to 75 pt (an x shift
+    standing in for the wrap): three columns, outer edges unchanged, one interior
+    boundary off — still one table.
+    """
+    lines = [_line(0, y, 200, y) for y in (100.0, 130.0, 160.0, 190.0)]
+    items = [
+        _text(20, 110, "a1"),
+        _text(100, 110, "b1"),
+        _text(180, 110, "c1"),
+        _text(60, 140, "a2-wrapped"),  # drifted centre
+        _text(100, 140, "b2"),
+        _text(180, 140, "c2"),
+        _text(20, 170, "a3"),
+        _text(100, 170, "b3"),
+        _text(180, 170, "c3"),
+    ]
+    regions = detect_table_regions(lines, items, page_width=200)
+    assert len(regions) == 1
+    assert len(regions[0][1]) == 3  # three rows, one table
+
+
+def _line(x1: float, y1: float, x2: float, y2: float, *, stroke: bool = True) -> Any:
+    return SimpleNamespace(x1=x1, y1=y1, x2=x2, y2=y2, stroke=stroke, fill=False)
+
+
+def _text(x: float, y: float, text: str, *, width: float = 30.0) -> Any:
+    return SimpleNamespace(x=x, y=y, text=text, width=width)
