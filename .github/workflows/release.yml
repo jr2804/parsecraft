@@ -168,7 +168,7 @@ jobs:
         } > prompt.txt
 
         python3 - <<'PY' > ai-notes.md
-        import json, os, urllib.request, urllib.error
+        import json, os, sys, urllib.request, urllib.error
 
         request = urllib.request.Request(
             "https://openrouter.ai/api/v1/chat/completions",
@@ -189,12 +189,30 @@ jobs:
             # a bare 'HTTP Error 404' is undiagnosable in the job log.
             detail = exc.read().decode("utf-8", "replace")[:500]
             raise SystemExit(f"OpenRouter returned {exc.code}: {detail}") from exc
-        print(payload["choices"][0]["message"]["content"])
+        content = payload["choices"][0]["message"]["content"]
+        # A router can answer with a refusal, a moderation verdict or an empty
+        # completion and still return HTTP 200 - the 2026.10.10 release got
+        # "User Safety: safe" as its entire body. Release notes must look like
+        # notes: substantial, and carrying a heading or a list item. Anything else
+        # prints NOTHING, so the job keeps GitHub's generated changelog instead of
+        # publishing nonsense (the step itself stays green).
+        structured = any(line.lstrip().startswith(("#", "-", "*")) for line in content.splitlines() if line.strip())
+        if len(content) < 200 or not structured:
+            print(
+                f"::warning::the model returned {len(content)} characters with no headings or list items;"
+                " keeping the generated changelog instead",
+                file=sys.stderr,
+            )
+            raise SystemExit(0)
+        print(content)
         PY
 
         {
-          cat ai-notes.md
-          echo
+          # Empty when the model was rejected above: the generated body stands.
+          if [ -s ai-notes.md ]; then
+            cat ai-notes.md
+            echo
+          fi
           echo "<details><summary>Full commit list</summary>"
           echo
           cat commits.txt
