@@ -9,6 +9,7 @@ from parsecraft.backends.errors import (
     BackendNotFoundError,
     DependencyUnavailableError,
 )
+from parsecraft.backends.options import coerce_option_value
 from parsecraft.backends.protocol import (
     GPU_NOT_NEEDED,
     GPU_OPTIONAL,
@@ -51,5 +52,6 @@ __all__ = [
     "ModelAssetDescriptor",
     "PageSignal",
     "SourceDocument",
+    "coerce_option_value",
     "default_registry",
 ]

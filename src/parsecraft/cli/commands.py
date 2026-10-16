@@ -8,7 +8,7 @@ from typing import Annotated
 
 import typer
 
-from parsecraft.backends import default_registry
+from parsecraft.backends import coerce_option_value, default_registry
 from parsecraft.backends.protocol import GPU_NOT_NEEDED, GPU_REQUIRED, BackendCapabilities
 from parsecraft.cache import ConversionCache
 from parsecraft.cli import args, config, verbosity
@@ -169,7 +169,9 @@ def convert(
         if not separator or not key:
             typer.echo(f"error: --backend-option expects KEY=VALUE, got {raw!r}", err=True)
             raise typer.Exit(code=2)
-        options.setdefault(backend or "", {})[key] = value
+        # One coercion for every adapter (pipeline.options): an option value is
+        # text from the shell, and adapters validate real types.
+        options.setdefault(backend or "", {})[key] = coerce_option_value(value)
     if output is not None and not output.parent.is_dir():
         # Fail fast as a usage error: never spend minutes converting into a path that cannot be written.
         typer.echo(f"error: output directory does not exist: {output.parent} (create it first)", err=True)

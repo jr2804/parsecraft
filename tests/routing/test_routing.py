@@ -1461,7 +1461,6 @@ def test_default_lead_cap_follows_an_all_ocr_family() -> None:
     it, which means the only path reaching it was platform-dependent - the
     helper is pure, so pin it as one.
     """
-
     ocr_only = [make_desc("ocr-ovis", ALL_FORMATS), make_desc("ocr-tesseract", ALL_FORMATS)]
     assert _default_lead_cap(ocr_only) == 2
 
@@ -1474,7 +1473,6 @@ def test_default_lead_cap_follows_an_all_ocr_family() -> None:
 
 def test_lead_tier_cap_is_none_unless_the_named_backend_is_in_the_family() -> None:
     """A name outside this page's family leaves the default cap in place."""
-
     family = [make_desc("native-pdf", ALL_FORMATS), make_desc("ocr-ovis", ALL_FORMATS)]
     assert _lead_tier_cap(full_constraints(formats=ALL_FORMATS), family) is None
     assert _lead_tier_cap(full_constraints(formats=ALL_FORMATS, preferred_backend="ocr-ovis"), family) == 2

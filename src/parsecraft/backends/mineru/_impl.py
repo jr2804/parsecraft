@@ -52,6 +52,7 @@ from parsecraft.backends.mineru.mineru import (
     MINERU_BACKEND_VERSION,
     MINERU_NAME,
 )
+from parsecraft.backends.options import coerce_option_value
 from parsecraft.backends.protocol import (
     AnalysisResult,
     BackendConfig,
@@ -229,8 +230,13 @@ def _effort(config: BackendConfig) -> MineruEffort:
 
 
 def _image_analysis(config: BackendConfig) -> bool:
-    """Read the ``image_analysis`` option; defaults to off (see module docstring)."""
-    raw = config.options.get("image_analysis", False)
+    """Read the ``image_analysis`` option; defaults to off (see module docstring).
+
+    The value is coerced first: a library caller may pass the string ``"true"``
+    (the CLI's ``--backend-option`` surface is text), and a validator that says
+    "must be a boolean" should not reject the obvious spelling of one.
+    """
+    raw = coerce_option_value(config.options.get("image_analysis", False))
     if not isinstance(raw, bool):
         msg = f"image_analysis option must be a boolean, got {type(raw).__name__}"
         raise BackendError(msg)

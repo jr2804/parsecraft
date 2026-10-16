@@ -33,6 +33,7 @@ from parsecraft.backends.liteparse._tables import (
     detect_table_regions,
 )
 from parsecraft.backends.liteparse.liteparse import DESCRIPTOR, LITEPARSE_BACKEND_VERSION
+from parsecraft.backends.options import coerce_option_value
 from parsecraft.backends.protocol import (
     AnalysisResult,
     BackendConfig,
@@ -244,18 +245,8 @@ class LiteparseBackend:
 
 
 def _coerce_option(value: str | int | float | bool) -> str | int | float | bool:
-    """Config options arrive as strings from the CLI: give LiteParse real values."""
-    if isinstance(value, str):
-        lowered = value.strip().lower()
-        if lowered in ("true", "yes", "on"):
-            return True
-        if lowered in ("false", "no", "off"):
-            return False
-        try:
-            return int(value)
-        except ValueError:
-            return value
-    return value
+    """Delegate to the shared coercion (pipeline.options) — one rule, not two."""
+    return coerce_option_value(value)
 
 
 def create(config: BackendConfig) -> DocumentBackend:

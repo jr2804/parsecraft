@@ -9,6 +9,7 @@ aggregates into a :class:`DocumentResult` with trace + failure records.
 
 from __future__ import annotations
 
+from parsecraft.backends.options import coerce_option_value
 from parsecraft.pipeline.analysis import (
     MEDIA_TYPES,
     AnalysisError,
@@ -33,6 +34,7 @@ __all__ = [
     "UnsupportedSourceError",
     "analyze_source",
     "choose_analyzer",
+    "coerce_option_value",
     "execute",
     "media_type_for",
     "pipeline_failure",
