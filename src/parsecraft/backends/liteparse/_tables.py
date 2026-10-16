@@ -10,11 +10,15 @@ rest are one-column rule-pairs). The mechanism numbers, pinned in
 - raw regions (full-width rule pairs) 42
 - single-column regions on a page that is mostly single-column rule-pairs
   (the TOC signature) → suppressed
-- survivors with **two or more text columns** in their y-band → 7
+- survivors with **two or more text columns** in their y-band → 4, and those
+  survivors are MERGED along a rule run so one table is one chunk (pc-4u7.42):
+  a row separator is a rule too, and pairing every consecutive pair of rules made
+  each ROW its own region — the consumer measured 30 chunks for one 30-row table
+  and 98 single-row fragments out of 135 regions on the full 80-page document.
 
-The 7 is what the IR exposes as ``StructuredChunk(kind=TABLE, rows=...)``;
-MinerU's 2 on the same slice is a reference, not a target — broader
-notion of "table region" is a legitimate result.
+The 4 is what the IR exposes as ``StructuredChunk(kind=TABLE, rows=...)``;
+MinerU's 2 on the same slice is a reference, not a target — a broader notion of
+"table region" is a legitimate result.
 """
 
 from __future__ import annotations
@@ -35,6 +39,11 @@ TOC_SINGLE_COLUMN_FRACTION = 0.5
 #: X-centre gap above this many points is a column break in the text columns of
 #: a region.
 COLUMN_GAP = 20.0
+#: Consecutive rule pairs belong to the SAME table when their column boundaries
+#: agree within this many points. A row separator is a rule too, so pairing every
+#: consecutive pair of rules made each row its own region (the consumer measured
+#: 30 chunks for one 30-row table, 98 of 135 regions being single-row fragments).
+COLUMN_MATCH_TOL = 4.0
 
 
 #: Detector-side mechanism counts on the recorded 10-page slice. The
@@ -45,6 +54,7 @@ MECHANISM_COUNTS_10_PAGE = {
     "rule_bands": 54,
     "full_width_rules": 48,
     "raw_regions": 42,
+    "merged_regions": 4,
     "two_or_more_column_regions": 4,
 }
 
@@ -111,7 +121,8 @@ def detect_table_regions(
     Two filters: a region is dropped if it is one-column (it is a section
     separator or under-boxed heading, not a table), and all regions on a
     page whose raw regions are mostly single-column are suppressed (the page
-    is a table-of-contents layout, not a body of tables).
+    is a table-of-contents layout, not a body of tables). Regions are then
+    MERGED along a rule run so one table is one chunk (pc-4u7.42).
     """
     bands = _horizontal_rules(lines)
     if not bands:
@@ -128,15 +139,55 @@ def detect_table_regions(
         return []
 
     result: list[tuple[tuple[float, float], tuple[tuple[str, ...], ...]]] = []
-    for y0, y1 in raw:
-        if _columns_in_band(items, y0, y1) < MIN_COLUMNS:
-            continue
-        x_segments = _column_segments(items, y0, y1, page_left, page_right)
+    for y0, y1, x_segments in _rule_runs(full, items, page_left, page_right):
         row_bands = _row_bands(items, y0, y1)
         rows = tuple(_cells_for_row(items, y_top, y_bot, x_segments) for y_top, y_bot in row_bands)
         if any(cell.strip() for row in rows for cell in row):
             result.append(((round(y0, 1), round(y1, 1)), rows))
     return result
+
+
+def _rule_runs(
+    full: Sequence[_RuleBand],
+    items: Sequence[TextItemLike],
+    page_left: float,
+    page_right: float,
+) -> list[tuple[float, float, tuple[float, ...]]]:
+    """One entry per table: ``(y_top, y_bottom, column boundaries)``.
+
+    A run starts at a rule pair that holds at least :data:`MIN_COLUMNS` text
+    columns and extends while the next pair's columns agree with the run's within
+    :data:`COLUMN_MATCH_TOL` — a row separator, not a new table. A gap whose text
+    is one-column (a section break) or whose columns moved (a different table)
+    closes the run, which is the "region runs from its top rule to the last rule
+    before a non-tabular gap" rule the consumer's evidence pointed at.
+    """
+    runs: list[tuple[float, float, tuple[float, ...]]] = []
+    run_open = False
+    for upper, lower in zip(full, full[1:], strict=False):
+        if lower.y - upper.y <= RULE_Y_TOL or _columns_in_band(items, upper.y, lower.y) < MIN_COLUMNS:
+            # A rule pair that holds no table row (a section separator, a
+            # one-column band) CLOSES the current run: the region ends at the last
+            # rule before a non-tabular gap. Skipping it without closing would let
+            # one run span a section break just because the columns on either side
+            # happen to line up.
+            run_open = False
+            continue
+        segments = _column_segments(items, upper.y, lower.y, page_left, page_right)
+        if run_open and _same_columns(runs[-1][2], segments):
+            top, _bottom, run_segments = runs[-1]
+            runs[-1] = (top, lower.y, run_segments)
+            continue
+        runs.append((upper.y, lower.y, segments))
+        run_open = True
+    return runs
+
+
+def _same_columns(left: tuple[float, ...], right: tuple[float, ...]) -> bool:
+    """Do two rule pairs belong to one table? Same column count, boundaries aligned."""
+    if len(left) != len(right):
+        return False
+    return all(abs(a - b) <= COLUMN_MATCH_TOL for a, b in zip(left, right, strict=False))
 
 
 def _horizontal_rules(lines: Sequence[VectorLineLike]) -> list[_RuleBand]:
