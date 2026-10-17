@@ -73,3 +73,24 @@ The hooks run a subset of the quality gate on every commit.
 The repository is generated from
 [copier-uv-plus](https://codeberg.org/jr2804/copier-uv-plus); answers live in
 `.copier-answers.yml`. Run `copier update` to pull template changes.
+
+## When a just-published version looks missing
+
+Two caching layers can make a fresh release look absent, and both read like a
+real problem rather than a stale read:
+
+1. **PyPI's summary endpoint lags.** `https://pypi.org/pypi/parsecraft/json` ->
+   `info.version` can still report the previous release minutes after a publish.
+   Check the version-specific endpoint instead
+   (`https://pypi.org/pypi/parsecraft/<version>/json`, which lists the wheel and
+   sdist), or the tag + GitHub release.
+2. **`uv`'s resolver cache can refuse it.** `uv lock` may answer *"only
+   parsecraft[docling]<=<previous> is available"*, which reads like a dependency
+   conflict in the new release. It is a stale index read: the two wheels were
+   byte-identical apart from the `Version:` line in their METADATA, so metadata
+   cannot be the cause. `uv lock --refresh` resolves it. `UV_NO_CACHE=1` is the
+   sledgehammer when the cache is more broadly suspect.
+
+Both are consumer-visible (a downstream project hit both on the same release),
+so reach for the version-specific endpoint and `--refresh` before reporting a
+release as broken or missing.
