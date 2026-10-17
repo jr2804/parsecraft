@@ -322,7 +322,7 @@ def _execute_group(
         finally:
             del backend  # drop the reference before the next attempt/group (VRAM ceiling)
 
-        failure = _result_failure(result, name, version, pass_kind, page_numbers)
+        failure = _result_failure(result, name, version, pass_kind, page_numbers, page_range)
         if failure is not None:
             elapsed = result.elapsed_s
             attempts.append(PassAttempt(backend=name, status=PassStatus.FAILED, failure=failure))
@@ -402,11 +402,12 @@ def _result_failure(
     version: str,
     pass_kind: PassKind,
     page_numbers: list[int],
+    page_range: PageRange | None,
 ) -> PassFailure | None:
     if result.failures:
         return result.failures[0]
     returned = [page.page_number for page in result.pages]
-    if returned != page_numbers:
+    if not returned:
         return PassFailure(
             code=FailureCode.BACKEND_ERROR,
             pass_kind=pass_kind,
@@ -414,9 +415,34 @@ def _result_failure(
             backend_version=version,
             budget_s=0.0,
             elapsed_s=result.elapsed_s,
-            detail=f"expected pages {page_numbers}, backend returned {returned}",
+            detail=f"expected pages {page_numbers}, backend returned none",
             occurred_at=utcnow(),
         )
+    # Three accepted shapes, in order of strictness:
+    # 1. exact - the requested pages, exactly;
+    # 2. a contiguous PREFIX of the expected pages - page counts are
+    #    renderer-dependent at the tail (a Word file declares 10 pages, a
+    #    renderer may merge the last two into 9), and the single-page office
+    #    converters (pandoc, docling) return page 1 for a whole-document range;
+    # 3. a whole-document request (page_range None, the single-declared-page
+    #    model) where the renderer SUBDIVIDED that page - contiguous from the
+    #    first expected page, however many came out.
+    # Everything else - the wrong start, a hole, more pages than a RANGED
+    # request asked for - is a hard failure.
+    if returned == page_numbers or returned == page_numbers[: len(returned)]:
+        return None
+    if page_range is None and returned[0] == page_numbers[0] and returned == list(range(returned[0], returned[0] + len(returned))):
+        return None
+    return PassFailure(
+        code=FailureCode.BACKEND_ERROR,
+        pass_kind=pass_kind,
+        backend=name,
+        backend_version=version,
+        budget_s=0.0,
+        elapsed_s=result.elapsed_s,
+        detail=f"expected pages {page_numbers}, backend returned {returned}",
+        occurred_at=utcnow(),
+    )
     return None
 
 

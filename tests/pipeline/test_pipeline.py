@@ -231,18 +231,86 @@ def test_fallback_on_wrong_pages(monkeypatch: pytest.MonkeyPatch) -> None:
     assert group.winner == "native-b"
     assert group.attempts[0].failure is not None
     assert "expected pages [1, 2]" in group.attempts[0].failure.detail
-    assert "returned [1]" in group.attempts[0].failure.detail
+    assert "returned [2]" in group.attempts[0].failure.detail
 
 
-def wrong_pages(request: ConversionRequest, name: str) -> BackendResult:
+def test_tail_merged_prefix_is_accepted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A contiguous prefix is a complete-enough conversion (pc-4u7.44).
+
+    Page counts are renderer-dependent at the tail: a Word file declares 10
+    pages, a renderer may merge the last two into 9. The first backend wins and
+    no fallback fires.
+    """
+    registry = make_registry(monkeypatch)
+    add_stub(registry, make_descriptor("native-a"), convert_fn=prefix_pages)
+    add_stub(registry, make_descriptor("native-b"))
+    result = execute(make_analysis(2), registry, make_constraints(), make_source(), produced_at=PRODUCED)
+    group = result.groups[0]
+    assert group.winner == "native-a"
+    assert group.attempts[0].failure is None
+
+
+def prefix_pages(request: ConversionRequest, name: str) -> BackendResult:
     page = PageResult(
         page_number=1,
         blocks=[
             StructuredChunk(
                 id=f"{name}-1",
                 kind=ChunkKind.PARAGRAPH,
-                content="only page one",
+                content="tail pages merged into this one",
                 page_number=1,
+                reading_order=0,
+            )
+        ],
+    )
+    return BackendResult(backend=BackendRef(name=name, version=_VERSION), pages=[page], elapsed_s=0.01)
+
+
+def test_whole_document_subdivision_is_accepted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A None-range request may return MORE pages than declared (pc-4u7.44).
+
+    The single-declared-page office model sends page_range=None; the renderer
+    may legitimately subdivide that logical page (a docx whose app.xml says one
+    page but whose content flows to two). Contiguous from the first expected
+    page is complete; the old code failed exactly this shape.
+    """
+    registry = make_registry(monkeypatch)
+    add_stub(registry, make_descriptor("native-a"), convert_fn=two_pages)
+    result = execute(make_analysis(1), registry, make_constraints(), make_source(), produced_at=PRODUCED)
+    group = result.groups[0]
+    assert group.winner == "native-a"
+    assert group.attempts[0].failure is None
+
+
+def two_pages(request: ConversionRequest, name: str) -> BackendResult:
+    pages = [
+        PageResult(
+            page_number=number,
+            blocks=[
+                StructuredChunk(
+                    id=f"{name}-{number}",
+                    kind=ChunkKind.PARAGRAPH,
+                    content=f"renderer subdivision page {number}",
+                    page_number=number,
+                    reading_order=0,
+                )
+            ],
+        )
+        for number in (1, 2)
+    ]
+    return BackendResult(backend=BackendRef(name=name, version=_VERSION), pages=pages, elapsed_s=0.01)
+
+
+def wrong_pages(request: ConversionRequest, name: str) -> BackendResult:
+    """Page 2 only: the wrong START, which no accepted shape covers."""
+    page = PageResult(
+        page_number=2,
+        blocks=[
+            StructuredChunk(
+                id=f"{name}-2",
+                kind=ChunkKind.PARAGRAPH,
+                content="wrong start: page two only",
+                page_number=2,
                 reading_order=0,
             )
         ],
@@ -1147,6 +1215,17 @@ def test_cache_miss_on_changed_backend_options(monkeypatch: pytest.MonkeyPatch, 
     assert len(calls) == 2  # changed option ⇒ miss, never stale reuse
 
 
+def test_no_pages_returned_is_a_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An empty page set is never an accepted shape, whatever the range."""
+    registry = make_registry(monkeypatch)
+    add_stub(registry, make_descriptor("native-a"), convert_fn=no_pages)
+    add_stub(registry, make_descriptor("native-b"))
+    result = execute(make_analysis(1), registry, make_constraints(), make_source(), produced_at=PRODUCED)
+    group = result.groups[0]
+    assert group.winner == "native-b"
+    assert "backend returned none" in group.attempts[0].failure.detail
+
+
 def make_analysis(pages: int, *, blank_pages: tuple[int, ...] = ()) -> AnalysisResult:
     signals = [make_signal(page, text_chars=5 if page in blank_pages else 500, blank=page in blank_pages) for page in range(1, pages + 1)]
     return AnalysisResult(source_hash="0" * 64, page_count=pages, signals=signals, diagnostics=[])
@@ -1239,3 +1318,7 @@ def make_caps(
         estimated_vram_gb=vram,
         optional_dependency_group=group,
     )
+
+
+def no_pages(request: ConversionRequest, name: str) -> BackendResult:
+    return BackendResult(backend=BackendRef(name=name, version=_VERSION), pages=[], elapsed_s=0.01)

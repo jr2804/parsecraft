@@ -41,8 +41,8 @@ dependencies = [
 web = ["httpx>=0.27", "trafilatura>=2.3.1"]
 docling = ["docling>=2.130"]
 mineru = ["mineru>=4.0.11,<5"]  # mixed licences incl. weights: ADR-0007
-pymupdf = ["pymupdf>=1.24"]  # AGPL: ADR-0003
-pdf-full = ["pymupdf>=1.24", "mineru>=4.0.11,<5"]  # the full PDF stack: pymupdf (AGPL) + mineru (Apache-2.0 weights, source-available code)
+pymupdf = ["pymupdf>=1.28.2"]  # AGPL: ADR-0003; office importers (docx/pptx) verified on 1.28.2 (pc-4u7.44)
+pdf-full = ["pymupdf>=1.28.2", "mineru>=4.0.11,<5"]  # the full PDF stack: pymupdf (AGPL) + mineru (Apache-2.0 weights, source-available code)
 
 ocr = [
     "accelerate>=0.34",

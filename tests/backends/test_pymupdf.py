@@ -6,6 +6,7 @@ import importlib
 import io
 import sys
 import tempfile
+import zipfile
 from collections.abc import Iterator
 from types import ModuleType
 from typing import Any, cast
@@ -309,12 +310,13 @@ def _encrypted_pdf(data: bytes) -> bytes:
 
 
 def test_office_analysis_is_the_size_proxy_without_the_pdf_extra(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Office analysis must not need the ``pdf`` extra.
+    """Office analysis must not need the ``pdf`` extra, and reports real pages.
 
     The declared surface stays analyzable on a base install: only conversion
     crosses that boundary, so the extra's module is made unimportable here and
-    the office branch still answers. (pypdf itself is a core dependency since
-    ADR-0009, so it is not the boundary being tested.)
+    the office branch still answers. The page model is the package's own count
+    (docProps/app.xml - pc-4u7.44): a docx declaring 10 pages analyzes as 10
+    pages with one signal each, not as the old single-page size proxy.
     """
 
     def refusing_loader(name: str) -> Any:
@@ -328,13 +330,21 @@ def test_office_analysis_is_the_size_proxy_without_the_pdf_extra(monkeypatch: py
 
     analysis = backend.analyze(_source(data, media_type=_DOCX_MIME))
 
-    assert analysis.page_count == 1
-    assert len(analysis.signals) == 1
-    signal = analysis.signals[0]
-    assert signal.text_chars == len(data)
-    assert signal.blank is False
-    assert signal.image_count == 0
-    assert signal.replacement_char_ratio is None
+    assert analysis.page_count >= 1  # the generated fixture carries app.xml or falls back to 1
+    assert [signal.page_number for signal in analysis.signals] == list(range(1, analysis.page_count + 1))
+    assert all(signal.has_native_text for signal in analysis.signals)
+
+
+def test_office_analysis_reads_the_declared_page_count() -> None:
+    """A package declaring 10 pages yields a 10-page model (pc-4u7.44)."""
+    app = '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Pages>10</Pages></Properties>'
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("docProps/app.xml", app)
+    backend = pymupdf_module.factory(_config("pymupdf"))
+    analysis = backend.analyze(_source(buffer.getvalue(), media_type=_DOCX_MIME))
+    assert analysis.page_count == 10
+    assert len(analysis.signals) == 10
 
 
 def test_office_conversion_names_the_format_to_the_stream_opener(monkeypatch: pytest.MonkeyPatch) -> None:

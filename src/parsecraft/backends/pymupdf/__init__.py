@@ -23,6 +23,7 @@ from parsecraft.backends.native._common import (
     PdfInspection,
     source_bytes,
 )
+from parsecraft.backends.office_pages import office_page_count
 from parsecraft.backends.protocol import (
     AnalysisResult,
     BackendCapabilities,
@@ -177,27 +178,30 @@ def _extract_pages(source: SourceDocument, data: bytes) -> list[PageResult]:
 
 
 def _office_analysis(data: bytes) -> AnalysisResult:
-    """The size proxy every non-PDF backend uses — no pypdf, no PyMuPDF.
+    """The package's own page count (stdlib), one signal per page.
 
-    Office analysis must not need the ``pdf`` extra: the declared surface stays
-    analyzable on a base install, so the page facts are the format-independent
-    ones (one page, bytes-as-text-length). ``pandoc/_impl.py::analyze`` and
-    ``native/_common.py::NativeBackendBase.analyze`` are the precedent; this
-    mirrors their shape rather than reusing it because this backend already
-    overrides ``analyze`` for the PDF branch.
+    Office analysis must not need the ``pdf`` extra, so the count comes from
+    ``office_pages.office_page_count`` — the OOXML package's own
+    ``docProps/app.xml`` — and per-page text facts stay the format-independent
+    proxy (bytes-as-text-length, native-bearing). One signal PER DECLARED PAGE:
+    a 9-page Word file analyzed as a single page made the executor request a
+    whole-document conversion while expecting exactly that one page, and the
+    conversion then failed its own returned-pages check (pc-4u7.44).
     """
+    count = office_page_count(data)
     return AnalysisResult(
         source_hash=hashlib.sha256(data).hexdigest(),
-        page_count=1,
+        page_count=count,
         signals=[
             PageSignal(
-                page_number=1,
+                page_number=number,
                 has_native_text=bool(data),
                 text_chars=len(data),
                 image_count=0,
                 blank=not data,
                 replacement_char_ratio=None,
             )
+            for number in range(1, count + 1)
         ],
     )
 
