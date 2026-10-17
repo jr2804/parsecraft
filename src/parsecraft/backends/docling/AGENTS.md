@@ -38,16 +38,16 @@ plus a bound-checked `convert()` that maps docling items to typed IR chunks.
   each, no drive-letter guessing); every other platform is PATH-only. Docling
   reads that variable itself, so setting it is the entire wiring — `create()`
   calls `configure_libreoffice_env()`, which never raises: no DECLARED format
-  needs LibreOffice (office formats stay undeclared until conversion-verified),
-  so a host without it still converts PDF/HTML/Markdown/text. Hosts asking for
-  LibreOffice explicitly get the typed `LibreOfficeUnavailableError`, naming the
-  environment variable. The Windows branch cannot run on a Linux CI runner
-  (memory #1127): tests drive it with a synthetic Program Files tree.
+  needs LibreOffice, because DOCX is read natively by docling (declared
+  2026-10-17, verified on a real Word-generated report) and the remaining office
+  formats stay undeclared until verified the same way. A missing LibreOffice
+  only matters for a format that would need it, which is why nothing here
+  depends on it today.
 - `supported_formats` lists only inputs **conversion-verified** against the
-  real library (2026-09-28, docling 2.130.0): `application/pdf`,
-  `text/html`, `text/markdown`, `text/plain`. docling also registers
-  docx/pptx/xlsx/odt/ods/odp/rtf/xls and image formats, but they stay
-  undeclared until conversion-verified — mirror LiteParse's contract.
+  real library (PDF/HTML/Markdown/plain text: 2026-09-28, docling 2.130.0; DOCX:
+  2026-10-17, a Word-generated report read through this backend's CLI). The
+  library's other registered inputs (pptx, xlsx, odt, ods, odp, rtf, xls, images)
+  stay undeclared until a conversion proves them — mirror LiteParse's contract.
 - `analyze()` is cheap and model-free: PDF page count and text length come
   from `pypdfium2` (a base dependency, ADR-0008), text formats are measured
   directly. It never loads layout models and never downloads.

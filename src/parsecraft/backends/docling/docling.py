@@ -3,11 +3,19 @@
 Discovery imports this module, never ``docling`` itself; the heavy impl loads
 through :func:`importlib.import_module` at instantiation.
 
-``supported_formats`` lists only inputs conversion-verified against docling
-2.130.0 on 2026-09-28: PDF, HTML, Markdown, and plain text. The library also
-registers docx/pptx/xlsx/odt/ods/odp/rtf/xls and image formats, but those were
-not conversion-verified here and stay deliberately undeclared until they are —
-the same contract LiteParse follows.
+``supported_formats`` lists only inputs **conversion-verified** against docling:
+PDF, HTML, Markdown, and plain text (docling 2.130.0, 2026-09-28), plus DOCX
+(verified 2026-10-17 on a real ITU-T P.863 implementer's guide, a 9-page
+Word-generated report: 10 433 chars and 11 headings through this backend's own
+CLI path). The library also registers pptx/xlsx/odt/ods/odp/rtf/xls and image
+formats, but those stay deliberately undeclared until they are verified the same
+way - the same contract LiteParse follows.
+
+DOCX arrived here because a consumer's Word sources had only two candidates, both
+broken for them: pandoc converts Word but drops every table (0 tables in that same
+9-page guide), and PyMuPDF's office importer ignores the page-range contract (it
+returned all 9 pages for a one-page request). Docling reads Word natively, and the
+consumer already installs ``parsecraft[docling]``.
 """
 
 from __future__ import annotations
@@ -26,12 +34,17 @@ from parsecraft.backends.protocol import (
 #: Backend version (adapter code, not the upstream library).
 DOCLING_BACKEND_VERSION = "0.1.0"
 
-#: Conversion-verified MIME inputs (docling 2.130.0, 2026-09-28).
+_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+#: Conversion-verified MIME inputs (PDF/HTML/Markdown/text: docling 2.130.0,
+#: 2026-09-28; DOCX: verified 2026-10-17 through this backend's CLI on a real
+#: Word-generated report - see the module docstring).
 DOCLING_FORMATS: tuple[str, ...] = (
     "application/pdf",
     "text/html",
     "text/markdown",
     "text/plain",
+    _DOCX,
 )
 
 _EXTRA = "docling"

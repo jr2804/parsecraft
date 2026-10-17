@@ -174,6 +174,7 @@ def test_descriptor_declares_only_verified_formats_and_stays_cpu_only() -> None:
         "text/html",
         "text/markdown",
         "text/plain",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ]
     assert capabilities.optional_dependency_group == "docling"
     assert capabilities.supports_page_ranges is True
