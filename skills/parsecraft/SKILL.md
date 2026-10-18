@@ -225,6 +225,9 @@ mappings:
 - OCR-accepting backends take `.pdf`, `.jpg`, `.jpeg`, `.png`
   (`ocr-tesseract` and `liteparse` also `.tif`/`.tiff`).
 - `.xlsx` → `openpyxl` (`.xls`/`.xlsm` are not declared).
+- `.docx` → `docling` (extra `docling`) for headings, tables, and reading order;
+  `pandoc` (base + host binary) or `pymupdf` (extra `pymupdf`, AGPL) also read
+  it. No office format converts on a bare base install.
 - `.html` → `native-html` (complete) or `trafilatura` (readability, extra `web`).
 - Unsupported suffix → usage error, exit `2`.
 

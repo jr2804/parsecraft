@@ -29,6 +29,17 @@ is a projection of that same IR, never parsed back into state.
   wheels — see the ADR-0001 amendment)
 - [uv](https://docs.astral.sh/uv/) (recommended) or pip to install the package
 
+## Supported inputs
+
+Plain text, Markdown, and HTML convert on the base install. PDF, images, and the
+office family — DOCX, PPTX, XLSX, ODT, RTF, EPUB — route through backends that
+must be present, and a `.docx` needs `parsecraft[docling]` (the layout-, table-,
+and reading-order-aware Word path), `parsecraft[pymupdf]` (AGPL), or a pandoc
+binary on the host. No base install converts an office document.
+
+Per-backend formats, licences, and platform limits: the
+[backend catalog](https://jr2804.github.io/parsecraft/reference/backends/).
+
 ## Install and Quick Start
 
 Install the released package and list the available backends:

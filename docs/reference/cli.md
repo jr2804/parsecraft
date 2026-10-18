@@ -114,9 +114,18 @@ prints one `downloading <model> (<size>) into <dir>` line to **stderr** before
 the fetch starts — informational only, no prompt and no flag. Supported suffixes come from the public
 `parsecraft.pipeline.MEDIA_TYPES` map: the text family (`.txt`, `.text`, `.md`,
 `.markdown`, `.html`, `.htm`, `.rst`, `.tex`, `.log`, `.ini`, `.cfg`, `.toml`,
-`.sh`, `.py`, `.c`, `.cc`, `.cpp`, `.h`, `.hpp`, `.m`) plus `.pdf`, `.jpg`, `.jpeg`,
-`.png`, `.tif`, and `.tiff`. `.csv`, `.json`, and `.xml` are deliberately
-unsupported (no backend claims those media types).
+`.sh`, `.py`, `.c`, `.cc`, `.cpp`, `.h`, `.hpp`, `.m`), the office family
+(`.docx`, `.pptx`, `.xlsx`, `.odt`, `.rtf`, `.epub`), plus `.pdf`, `.jpg`,
+`.jpeg`, `.png`, `.tif`, and `.tiff`. `.csv`, `.json`, and `.xml` are
+deliberately unsupported (no backend claims those media types).
+
+That map is what the CLI *accepts*, not what a given install can *convert*: every
+media type must be claimed by at least one registered backend, and the office
+family is reached only through `docling`, `pymupdf`, `pandoc`, or `openpyxl`.
+A host with none of them installed reports no eligible backend and exits `1`.
+For Word specifically, `--backend docling file.docx` is the layout-, table-, and
+reading-order-aware path (DOCX conversion-verified 2026-10-17); `pandoc` (host
+binary) and `pymupdf` (AGPL extra) are the other two.
 
 ```text
 $ parsecraft convert report.txt

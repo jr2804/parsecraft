@@ -82,6 +82,12 @@ where the engine exists. Judge credentials come from the environment
 [Steer the auto-backend selector](../guides/auto-backend-selector.md) for the
 flags themselves.
 
+No base install converts an office document. Word (`.docx`) has three separate
+routes: `parsecraft[docling]` — headings, tables, and reading order,
+conversion-verified 2026-10-17 — `parsecraft[pymupdf]` (**AGPL**), or the
+`pandoc` binary above. The same split applies to `.pptx`; `.xlsx` needs no
+extra (`openpyxl` is core).
+
 ### Conditional-licence extras
 
 Two extras carry licence terms you are consenting to by installing them —
