@@ -1223,6 +1223,7 @@ def test_no_pages_returned_is_a_failure(monkeypatch: pytest.MonkeyPatch) -> None
     result = execute(make_analysis(1), registry, make_constraints(), make_source(), produced_at=PRODUCED)
     group = result.groups[0]
     assert group.winner == "native-b"
+    assert group.attempts[0].failure is not None
     assert "backend returned none" in group.attempts[0].failure.detail
 
 
