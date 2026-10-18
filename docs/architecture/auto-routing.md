@@ -130,7 +130,7 @@ documents therefore route on text statistics and image mass alone.
 **Status:** current.
 
 The second optional seam beside the judge is
-`detect_pdf` from the `pdf-inspector` extra: it reports
+`detect_pdf` from `pdf-inspector` (a core dependency): it reports
 `pdf_type`, `confidence`, `pages_needing_ocr`, `pages_with_tables`, and
 machine-readable OCR reasons. A pure fold (`apply_classifier()` in
 `src/parsecraft/pipeline/analysis.py`) merges them at the analysis boundary;
@@ -306,8 +306,8 @@ and can reject it, so a decision model can never widen eligibility.
 
 **Status:** current.
 
-1. Install parsecraft with the provider extra — `auto` (the System One
-   scoring stack, `typesafe-sdk`); all three providers ride it (the cloud, Zen
+1. Nothing to install: the provider stack (`typesafe-sdk`) is a **core**
+   dependency, so all three providers ride the base install (the cloud, Zen
    and the local daemon reach the wire through the same SDK).
 2. Export the credential of the endpoint you named: `TYPESAFE_API_KEY`
    (cloud) or `OPENCODE_API_KEY` (zen; `jev-1.13-free` is quota-free). The
@@ -344,7 +344,7 @@ table for `ClassifierError` only, and anything else propagates.
 
 `parsecraft convert --classifier SPEC` folds the facts into the analysis before
 routing. The one shipped provider is `pdfinspector/detect_pdf`
-(`src/parsecraft/providers/pdfinspector.py`, needs the `pdf-inspector` extra):
+(`src/parsecraft/providers/pdfinspector.py`, a core dependency):
 pdf-inspector's detection scan — a local, model-free structural text-layer scan
 of tens of milliseconds — taken 1-indexed and passed through verbatim into
 IR-1-based facts, with `pdf_type`, `confidence`, and table pages feeding the
@@ -357,8 +357,8 @@ IR-1-based facts, with `pdf_type`, `confidence`, and table pages feeding the
 
 The judge seam is the integration point for a
 System One / Jev-backed judge. One implementation (`src/parsecraft/providers/_jev.py`)
-serves three endpoints behind the optional `auto` extra (`typesafe-sdk`,
-MIT, pure Python) — the SDK is injected per endpoint rather than hand-rolled:
+serves three endpoints from the **core** `typesafe-sdk` dependency (MIT, pure
+Python) — the SDK is injected per endpoint rather than hand-rolled:
 `typesafe-ai/<model>` is the TypeSafe cloud (SDK default base URL,
 `TYPESAFE_API_KEY`), `zen/<model>` is OpenCode Zen (`base_url`
 `https://opencode.ai/zen`, `OPENCODE_API_KEY`; the SDK appends its
@@ -400,8 +400,8 @@ Testing is tiered: offline provider tests stub the SDK in `sys.modules`, and a
 semi-live tier drives a **real local daemon** under three machine profiles
 (this host, a 32 GB GPU host, a CPU-only host), asserting contract-valid
 orderings plus one behavioral anchor — a CPU-only host must not rank a GPU-only
-candidate first. Both live and semi-live tests are opt-in, and the semi-live one additionally
-needs the `auto` extra.
+candidate first. Both live and semi-live tests are opt-in (`-m judge --run-judge`); the semi-live one additionally
+needs a local Ollama daemon and `--run-judge`.
 
 Without a configured spec the heuristic path is still the default: the
 deterministic rule table plus, where configured, a judge spec.

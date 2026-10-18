@@ -53,7 +53,7 @@ and the extension is the suffix the host layer joins onto it.
 | `pandoc` — base install, engine-gated | `.docx` (`application/vnd.openxmlformats-officedocument.wordprocessingml.document`), `.pptx` (`application/vnd.openxmlformats-officedocument.presentationml.presentation`), `.xlsx` (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, read-only), `.odt` (`application/vnd.oasis.opendocument.text`), `.rtf` (`application/rtf`), `.epub` (`application/epub+zip`) | [pandoc.org](https://pandoc.org/) — **GPL-2.0-or-later** binary, MIT wrapper | Broad office and e-book coverage through one wrapper | Needs the external **Pandoc binary**; `.ods`/`.odp` are unsupported by pandoc 3.11; copyleft gate |
 | `liteparse` — base install | `.pdf` (`application/pdf`), `.jpg`, `.jpeg` (`image/jpeg`), `.png` (`image/png`), `.tif`, `.tiff` (`image/tiff`) | [`run-llama/liteparse`](https://github.com/run-llama/liteparse) — Apache-2.0 | Broad and permissive; no copyleft gate | Office/ODF formats require a system LibreOffice; `.html` is not supported; larger extra dependency surface |
 | `docling` — `parsecraft[docling]` (`docling>=2.130`) | `.pdf` (`application/pdf`), `.html` (`text/html`), `.md` (`text/markdown`), `.txt` (`text/plain`), `.docx` (`application/vnd.openxmlformats-officedocument.wordprocessingml.document`) | [`docling`](https://pypi.org/project/docling/) — MIT | Layout, tables, and reading order; **the Word path** (DOCX conversion-verified 2026-10-17 on a real 9-page implementer's guide: 11 headings, 11 239 chars) | Heavy dependency graph; the other office/image formats are registered upstream but undeclared pending conversion verification; a 113-page PDF ran >1 h |
-| `trafilatura` — `parsecraft[trafilatura]` (`trafilatura>=2.3.1`) | `.html` (`text/html`) | [`adbar/trafilatura`](https://github.com/adbar/trafilatura) — Apache-2.0 | Readability-class main-content extraction: starts at the article H1, keeps tables as Markdown tables, drops link/image/formula syntax; **asset-free** — no weights, so no download notice and no offline carve-out | Under-extracts very long single-page specs (RFC-class counter-case below); a single-row table without `<thead>`, and a single-line `<pre><code>`, do not survive as typed blocks |
+| `trafilatura` — `parsecraft[web]` (`httpx`, `trafilatura>=2.3.1`) | `.html` (`text/html`) | [`adbar/trafilatura`](https://github.com/adbar/trafilatura) — Apache-2.0 | Readability-class main-content extraction: starts at the article H1, keeps tables as Markdown tables, drops link/image/formula syntax; **asset-free** — no weights, so no download notice and no offline carve-out | Under-extracts very long single-page specs (RFC-class counter-case below); a single-row table without `<thead>`, and a single-line `<pre><code>`, do not survive as typed blocks |
 | `pdf-inspector` — base install | `.pdf` (`application/pdf`) | [`firecrawl/pdf-inspector`](https://github.com/firecrawl/pdf-inspector) — MIT | Fastest verified text-PDF path: Rust/PyO3 extraction straight to Markdown, no ML models and no OCR runtime loaded; classifies text-based vs scanned PDFs before extraction | PDF only (no docx/pptx/xlsx path exists upstream); no OCR, so scanned pages need an OCR backend; ships as a prebuilt Rust extension wheel only for `cp38-abi3` — Linux x86_64/aarch64, macOS Intel/ARM, Windows x64 (other platforms build from source and need a Rust toolchain); not yet benchmarked |
 | `marker` — none; `marker-pdf` 2.0.0 is a **bring-your-own dependency** | `.pdf` (`application/pdf`) | [`datalab-to/marker`](https://github.com/datalab-to/marker) — Apache-2.0; model weights under OpenRAIL-M (restricted use) | High-fidelity PDF→Markdown: figures, tables, math, reading order; page-aware pagination | PDF only — DOCX/XLSX/PPTX/HTML/EPUB route through weasyprint, which needs GTK/Pango system libraries and is unverified on Windows; model weights are fetched at converter creation (network I/O); no extra is declared, so the consumer's own dependency graph installs `marker-pdf` |
 | `mineru` — `parsecraft[mineru]` (`mineru>=4.0.11,<5`); **GIL builds only**, see [Interpreter and platform availability](#interpreter-and-platform-availability) | `.pdf` (`application/pdf`) | [`opendatalab/MinerU`](https://github.com/opendatalab/MinerU) — Apache-2.0 code; weights conditional (see the warning above) | VLM layout, tables, equations, and reading order; **text PDFs run weight-free** at flash effort (no checkpoint download, no VRAM) | Heavy 55-package web stack; page-range input base is delegated downstream and post-filtered; not yet benchmarked against siblings; conditional licence |
@@ -225,21 +225,24 @@ The optional `vllm` extra is **Linux/WSL2-only**: its marker
 the vLLM runtime does not run there, so those backends use the default
 `transformers` runtime on Windows.
 
-### The `auto` convenience extra
-
-`parsecraft[auto]` is the **routing-flags feature group**: `typesafe-sdk`
-(the judge providers) and `pdf-inspector` (the `--classifier` provider), so one
-install covers the whole auto-routing flags story. It deliberately does **not**
-include `pdf` or any OCR backend — routing flags and heavy extraction are
-separate install decisions (ADR-0009).
-Judge credentials still come from the environment (`TYPESAFE_API_KEY`,
-`OPENCODE_API_KEY`; the local Ollama endpoint needs none) — see
-`parsecraft judges`.
-
 A host whose installed `transformers` falls outside the shared window gets a
 typed `UnsupportedDependencyVersionError` before any model load — the detail
 names the package, the actual version, and the required range; it is never a
 crash inside weight loading, and it is distinct from a missing extra.
+
+### The routing seams are base-install
+
+The judge providers (`typesafe-sdk`) and the `pdfinspector/detect_pdf`
+classifier (`pdf-inspector`) are **core dependencies**, so the whole
+auto-routing flag story — `--auto`, `--judge`, `--classifier` — works on a
+plain `pip install parsecraft` with no extra to add. The `auto` meta-extra that
+once bundled them was removed by [ADR-0009](../adr/0009-feature-oriented-extras.md);
+the base install still carries no PDF or OCR backend, so routing flags and heavy
+extraction remain separate install decisions.
+
+Judge credentials come from the environment (`TYPESAFE_API_KEY`,
+`OPENCODE_API_KEY`; the local Ollama endpoint needs none) — see
+`parsecraft judges`.
 
 All OCR backends accept `application/pdf`, `image/jpeg`, and `image/png`, and
 **PDF input needs no extra**: the base install carries the permissive

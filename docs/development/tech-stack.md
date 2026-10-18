@@ -17,9 +17,18 @@ These install with `pip install parsecraft` (`pyproject.toml` `[project] depende
 
 ### Optional extras
 
-| Extra | Package | Role |
-| ----- | ------- | ---- |
-| `download` | [huggingface-hub](https://huggingface.co/docs/huggingface_hub) | Pinned model-asset downloads (lazy import) |
+| Extra | Contents | Role |
+| ----- | -------- | ---- |
+| `web` | `httpx`, `trafilatura` | the `trafilatura` HTML backend |
+| `docling` | `docling>=2.130` | layout-aware conversion |
+| `mineru` | `mineru>=4.0.11,<5` | MinerU's VLM pipeline (GIL builds only) |
+| `pymupdf` | `pymupdf>=1.28.2` | PyMuPDF extraction (AGPL) |
+| `pdf-full` | `pymupdf` + `mineru` | the whole PDF stack in one name |
+| `ocr` | `torch`, `transformers`, … | the GPU OCR/VLM backends |
+| `vllm` | `vllm>=0.11` | the vLLM accelerator (Linux/WSL2 only) |
+
+[huggingface-hub](https://huggingface.co/docs/huggingface_hub) is **core** (pinned
+model-asset downloads, lazy import); it is no longer an extra.
 
 Core is import-clean offline: no network or heavy runtime is imported at import
 time, and no model weights, CUDA, or OCR stacks ship with a base install.

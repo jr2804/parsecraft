@@ -71,26 +71,27 @@ parsecraft convert report.pdf --judge zen/jev-1.13-free     # cloud, OPENCODE_AP
 parsecraft convert report.pdf --judge typesafe-ai/jev-latest # cloud, TYPESAFE_API_KEY
 ```
 
-Both provider extras install in one step: `pip install "parsecraft[auto]"`
-(the `systemone` judge stack plus the `pdf-inspector` classifier). It carries no
-PDF or OCR backend — add those separately.
+No extra covers the judge providers: `typesafe-sdk` and the `pdf-inspector`
+classifier ship in the base install, so every provider above works on a plain
+`pip install parsecraft`. What remains separate are the extraction engines —
+add the PDF/OCR backends you want as their own extras.
 
 The spec is `provider/model[:variant]`: the provider token names **who serves**
 the model, the model token is the upstream model id, and a `:variant` is
 rejected rather than ignored. `parsecraft judges` is the live list — it reports
-each provider's model tokens, its credential, the extra that ships it, and
-whether this host currently has them:
+each provider's model tokens, its credential, and whether this host currently
+has that credential exported:
 
 ```text
 $ parsecraft judges
 no --judge: the deterministic rule table decides; no provider is resolved and no network is used
-typesafe-ai/jev-latest   TYPESAFE_API_KEY (unset)   extra systemone (missing)   SDK default base URL
-zen/jev-1.13-free        OPENCODE_API_KEY (unset)   extra systemone (missing)   https://opencode.ai/zen
-ollama/<model>           no credential              extra systemone (missing)   http://localhost:11434
+typesafe-ai/jev-latest   TYPESAFE_API_KEY (unset)         SDK default base URL
+zen/jev-1.13-free        OPENCODE_API_KEY (unset)         https://opencode.ai/zen
+ollama/<model>           no credential                    http://localhost:11434
                          verified local models: nimble, tev
 ```
 
-Export the credential before the run; a missing key or extra is a typed failure
+Export the credential before the run; a missing key is a typed failure
 (exit `1`, `judge unavailable: …`) before any backend converts anything. The
 three shipped providers are the TypeSafe cloud, OpenCode Zen, and a local Ollama
 daemon — [Auto routing](../architecture/auto-routing.md) covers what each one
@@ -110,7 +111,7 @@ parsecraft convert scan.pdf --classifier pdfinspector/detect_pdf
 ```
 
 `pdfinspector/detect_pdf` is the shipped provider: a local, model-free
-text-layer scan (needs the `pdf-inspector` extra).
+text-layer scan (`pdf-inspector` ships in the base install).
 
 ## Constrain the run
 

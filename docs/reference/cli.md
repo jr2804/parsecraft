@@ -137,23 +137,27 @@ Both optional routing seams accept a `provider/model` spec string, resolved
 before any I/O. Both default to off, which is exactly the rule-table
 behaviour, and `--backend` cannot be combined with `--judge` — both choose
 the lead candidate. `parsecraft judges` prints the live provider catalog (model
-tokens, credentials, extras, and whether this host has them), and
+tokens, credentials, and whether this host has them), and
 [Steer the auto-backend selector](../guides/auto-backend-selector.md) walks
 through the flags with worked examples. The shipped values:
 
 #### Judge providers (`--judge`)
 
-| Spec | Endpoint | Credential | Extra | Notes |
-| --- | --- | --- | --- | --- |
-| `typesafe-ai/jev-latest`, `typesafe-ai/jev-preview` | TypeSafe cloud, System One models | `TYPESAFE_API_KEY` | `systemone` | typed Choice ranking; exit `1` without the key |
-| `zen/jev-1.13`, `zen/jev-1.13-free` | OpenCode Zen, same System One wire | `OPENCODE_API_KEY` | `systemone` | the `-free` model is quota-free |
-| `ollama/<model>` | local Ollama daemon (`:11434`), same System One wire | none | — | any local Nimble/Tev scoring model (`nimble`, `tev`); other GGUFs answer `400`; bare name resolves to the daemon's `:latest` tag |
+| Spec | Endpoint | Credential | Notes |
+| --- | --- | --- | --- |
+| `typesafe-ai/jev-latest`, `typesafe-ai/jev-preview` | TypeSafe cloud, System One models | `TYPESAFE_API_KEY` | typed Choice ranking; exit `1` without the key |
+| `zen/jev-1.13`, `zen/jev-1.13-free` | OpenCode Zen, same System One wire | `OPENCODE_API_KEY` | the `-free` model is quota-free |
+| `ollama/<model>` | local Ollama daemon (`:11434`), same System One wire | none | any local Nimble/Tev scoring model (`nimble`, `tev`); other GGUFs answer `400`; bare name resolves to the daemon's `:latest` tag |
+
+The SDK these providers share (`typesafe-sdk`) is a **core dependency** — the
+base install needs no extra for them; the credential is the only thing a host
+must add.
 
 #### Classifier providers (`--classifier`)
 
-| Spec | Endpoint | Credential | Extra | Notes |
-| --- | --- | --- | --- | --- |
-| `pdfinspector/detect_pdf` | in-process, local (pdf-inspector library) | none | `pdf-inspector` | the only shipped provider; model-free text-layer scan |
+| Spec | Endpoint | Credential | Notes |
+| --- | --- | --- | --- |
+| `pdfinspector/detect_pdf` | in-process, local (pdf-inspector library) | none | the only shipped provider; model-free text-layer scan; `pdf-inspector` is a core dependency |
 
 What `--classifier` does, concretely: it runs during **analysis**, before any
 routing decision, and folds per-page facts into the signals — an OCR-need
@@ -283,18 +287,18 @@ routing: primary=native-text
 ### `parsecraft judges`
 
 List the built-in judge providers: each provider's spec spelling, model tokens,
-credential, the extra that ships it, and whether this host has them. Pure
+credential, and whether this host has that credential. Pure
 description — nothing is resolved, no credential is read beyond its presence,
 and no endpoint is contacted.
 
 | Option | Default | Behaviour |
 | ------ | ------- | --------- |
-| `--json` | off | Emit the provider profiles plus availability as JSON |
+| `--json` | off | Emit the provider profiles plus credential availability as JSON |
 
 ```text
 $ parsecraft judges
 no --judge: the deterministic rule table decides; no provider is resolved and no network is used
-typesafe-ai/jev-latest   TYPESAFE_API_KEY (unset)   extra systemone (missing)   SDK default base URL
+typesafe-ai/jev-latest   TYPESAFE_API_KEY (unset)         SDK default base URL
 ```
 
 ### `parsecraft models`
@@ -318,8 +322,8 @@ Offline mode comes from the detected host (`PARSECRAFT_OFFLINE`);
     `file_pins` (repo path + SHA-256 per file) and verifies every file through
     `AssetManager.ensure`. A descriptor with no `file_pins` (a non-model
     backend) produces a typed "no pinned manifest" error (exit `1`).
-    Downloading also requires the `download` extra — without it the error names
-    the extra and the install command.
+    Fetching needs no extra — `huggingface-hub` is a core dependency, so the
+    asset layer works on a base install.
 
 Every first-use fetch — here or during a conversion — announces itself with one
 `downloading <model> (<size>) into <dir>` line on stderr before transferring

@@ -23,7 +23,8 @@ Backends: `native-text`, `native-markdown`, `native-html`, `pymupdf`
 backend eligible for a document's media type is measured once per document.
 
 Environment: Windows laptop, CPython 3.13, CPU only for the table below;
-the light set installed (pypdf and huggingface-hub are core; `web`, `pdf`, `liteparse` as needed).
+the light set installed (pypdf and huggingface-hub are core; `web`, `pymupdf`,
+`liteparse` as needed).
 No GPU work is included in this snapshot — see [Gaps](#honest-gaps).
 
 ## Reproduce

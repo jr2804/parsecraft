@@ -29,9 +29,9 @@ judge client, `liteparse`, `openpyxl`, and the pandoc wrapper. Extras
 | `ocr` | `torch>=2.5`, `transformers>=5.17,<6`, `accelerate`, … | GPU OCR/VLM backends |
 | `vllm` | `vllm>=0.11` | Linux/WSL2 only (platform marker) |
 
-There is no `auto` extra — it was removed by ADR-0009 (earlier docs and the
-`extra auto (missing)` column in `parsecraft judges` still show the retired
-name). `marker` has no extra at all: `marker-pdf` 2.0.0 is a
+There is no `auto` extra — it was removed by ADR-0009, and no extra name
+appears in `parsecraft judges` output. `marker` has no extra at all:
+`marker-pdf` 2.0.0 is a
 bring-your-own dependency (ADR-0006).
 
 Engine binaries (never downloaded by parsecraft): `pandoc` (GPL-2.0-or-later

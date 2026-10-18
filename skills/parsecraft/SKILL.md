@@ -173,9 +173,8 @@ rule table decides; no provider is resolved and no network is used".
   | `ollama` | any local model (verified: `nimble`, `tev`) | none — local daemon on `http://localhost:11434` |
 
 - The judge client ships in the base install; only credentials (or a running
-  Ollama) are needed. The `extra auto (missing)` column printed by
-  `parsecraft judges` is legacy display — the `auto` meta-extra was removed by
-  ADR-0009 and availability hinges on credentials, not that column.
+  Ollama) are needed. `parsecraft judges` prints credential state only — no
+  extra column, because the `auto` meta-extra was removed by ADR-0009.
 - `--classifier` folds OCR-need evidence into the analysis instead of re-ranking;
   it combines with `--judge`.
 - `--preference` reaches both the planner's built-in judge and a resolved
