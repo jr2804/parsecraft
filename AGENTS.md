@@ -141,6 +141,7 @@ Top-level boundaries in this project:
 - `src/parsecraft/` — `src/parsecraft/AGENTS.md` (primary package code)
 - `tests/` — `tests/AGENTS.md` (test suite)
 - `docs/` — `docs/AGENTS.md` (documentation)
+- `skills/` — `skills/AGENTS.md` (agent-facing product skills)
 - `.config/mise/` (task/tooling configuration)
 - `.config/mise/conf.d/` (dev-feature MCP and skills task fragments)
 
