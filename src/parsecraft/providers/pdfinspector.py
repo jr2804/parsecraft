@@ -58,7 +58,6 @@ PROVIDER_NAME = "pdfinspector"
 #: Upstream distribution name — the spec names ``pdf-inspector``, the import ``pdf_inspector``.
 DISTRIBUTION_NAME = "pdf-inspector"
 _MODULE_NAME = "pdf_inspector"
-_EXTRA = "[project.optional-dependencies].pdf-inspector"
 
 #: The one supported mode token: names pdf-inspector's detection call.
 SUPPORTED_MODE = "detect_pdf"
@@ -114,7 +113,7 @@ def load_classifier(spec: ClassifierSpec) -> PageOcrClassifier:
     try:
         module = import_module(_MODULE_NAME)
     except ImportError as exc:
-        hint = f"{DISTRIBUTION_NAME!r} is not installed — install the {DISTRIBUTION_NAME!r} extra ({_EXTRA})"
+        hint = f"{DISTRIBUTION_NAME!r} is not installed — it is a core dependency, so reinstall parsecraft (pip install -U parsecraft)"
         raise ClassifierProviderUnavailableError(PROVIDER_NAME, _MODULE_NAME, hint) from exc
     if not isinstance(module, _DetectorModule):
         raise ClassifierProviderLoadError(PROVIDER_NAME, f"{_MODULE_NAME} does not export {_DETECT_BYTES}(data)")

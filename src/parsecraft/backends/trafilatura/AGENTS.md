@@ -3,7 +3,8 @@
 ## Purpose
 
 HTML → typed Markdown chunks via [trafilatura](https://github.com/adbar/trafilatura),
-shipped behind the library-named `trafilatura` extra (the docling pattern).
+shipped behind the `web` extra (`httpx` + `trafilatura`), not a library-named
+one.
 Opt-in only: the auto mode keeps the deterministic native-html lead.
 
 ## Ownership

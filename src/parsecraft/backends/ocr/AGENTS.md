@@ -29,7 +29,7 @@ scanned pages and page images, which no native backend can read.
 
 - **One raster surface, one resolution.** `rasterize_page` / `count_pages` use
   the base `pypdfium2` engine and nothing else — PyMuPDF was removed under
-  ruling B, so the AGPL `pdf` extra now gates only `pymupdf` extraction.
+  ruling B, so the AGPL `pymupdf` extra now gates only `pymupdf` extraction.
   Pages rasterize at `RASTER_DPI = 300` (Tesseract's documented minimum;
   accuracy falls off sharply below ~150), bounded by `MAX_RASTER_PIXELS =
   40_000_000`. Over the cap the scale is reduced **by area**, never by width, so

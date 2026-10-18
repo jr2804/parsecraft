@@ -1,13 +1,13 @@
 # AGENTS.md — src/parsecraft/backends/pymupdf/
 
-PyMuPDF backend: pypdf inspection (core) + PyMuPDF extraction (`pdf` extra,
+PyMuPDF backend: pypdf inspection (core) + PyMuPDF extraction (`pymupdf` extra,
 AGPL — ADR-0003) behind the backend contract.
 
 ## Purpose
 
 Expose the PyMuPDF path as a `DocumentBackend`: cheap structural `analyze()` on
 core pypdf plus a bound-checked `convert()` via PyMuPDF's text dictionary
-when the `pdf` extra is installed. The runtime is the only third-party dep in
+when the `pymupdf` extra is installed. The runtime is the only third-party dep in
 the `native-*` family; the prefix was dropped and the package was split out
 to keep the native family light-by-construction.
 
@@ -18,7 +18,7 @@ to keep the native family light-by-construction.
   constants for the `import_module` seams).
 - `_analyze.py` — pypdf inspection (core, no extra). Counts image XObjects
   on each page so scanned PDFs surface a non-zero `image_count` signal.
-- `_convert.py` — PyMuPDF extraction (`pdf` extra, AGPL): maps each page's
+- `_convert.py` — PyMuPDF extraction (`pymupdf` extra, AGPL): maps each page's
   text dictionary into positioned `PageText` lines, then defers to
   `code_layout.build_chunks` for the layout-recovery rules.
 - `code_layout.py` — layout recovery v1 (pc-0uv): every rule that turns
@@ -37,7 +37,7 @@ to keep the native family light-by-construction.
   it is absent.
 - **One raster surface, zero PyMuPDF at import** (pc-ct9 / ADR-0003): the
   factory raises if the analyze import fails, but never tries to import
-  PyMuDF at import time. The `pdf` extra is the only gate.
+  PyMuDF at import time. The `pymupdf` extra is the only gate.
 - **Layout recovery v1** (pc-0uv) — emits real `CODE` chunks, so the Markdown
   projection fences code instead of burying it in prose:
   - CODE is a run of consecutive **monospace-majority** lines (`LINE_CODE_RATIO`);
@@ -57,7 +57,7 @@ to keep the native family light-by-construction.
     pages keep routing NATIVE.
   - Determinism holds as everywhere else: same bytes → identical chunks.
 - `pymupdf` extraction NEVER uses pypdf; pypdf inspection NEVER uses PyMuPDF.
-  The two paths are independent, and a cache-absent `pdf` extra degrades
+  The two paths are independent, and a cache-absent `pymupdf` extra degrades
   `convert()` to a typed failure without affecting `analyze()`.
 - `Structured table rows` (pc-4u7.40): TABLE chunks carry `rows` built from
   the projected markdown grid; pymupdf writes them through the same builder
@@ -70,6 +70,6 @@ to keep the native family light-by-construction.
 
 `mise test` — `tests/backends/test_pymupdf.py` and
 `tests/backends/test_pymupdf_code_layout.py` (100% coverage gate applies). The
-two integration tests in the latter need the AGPL `pdf` extra and therefore
+two integration tests in the latter need the AGPL `pymupdf` extra and therefore
 skip in the canonical light env; run them with
 `uv run --isolated --extra pymupdf pytest -k code_block_is_fenced`.

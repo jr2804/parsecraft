@@ -1,10 +1,10 @@
 """TypeSafe cloud System One judge provider — spec ``typesafe-ai/<model>``.
 
 The vendored ``typesafe-sdk`` against the TypeSafe cloud (the SDK's own default
-base URL; ``TYPESAFE_BASE_URL`` can point it elsewhere). Needs the
-``auto`` extra (``typesafe-sdk``, MIT, pure Python; surface verified
-against 0.7.2) and ``TYPESAFE_API_KEY``, which is checked at resolution so the
-CLI reports ``judge unavailable: …`` before any backend runs.
+base URL; ``TYPESAFE_BASE_URL`` can point it elsewhere). The SDK is a **core
+dependency** (MIT, pure Python; surface verified against 0.7.2), so no extra is
+involved; ``TYPESAFE_API_KEY`` is checked at resolution so the CLI reports
+``judge unavailable: …`` before any backend runs.
 
 The request shape, the SDK's timing/retry bounds, the per-shape memo, and the
 ranking all live in :mod:`parsecraft.providers._jev` — this module only names
@@ -21,10 +21,9 @@ from parsecraft.providers._jev import load_endpoint_judge
 from parsecraft.routing.judge import JudgeSpec, MachineProfile, RoutingJudge
 from parsecraft.routing.models import RoutingPreference
 
-#: Declared provider facts — spec spelling, model tokens, credential, extra.
+#: Declared provider facts — spec spelling, model tokens, credential.
 PROFILE = JudgeProviderProfile(
     name="typesafe-ai",
-    extra="auto",
     models=("jev-latest", "jev-preview"),
     api_key_env="TYPESAFE_API_KEY",
 )

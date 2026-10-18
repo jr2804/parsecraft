@@ -510,12 +510,12 @@ def test_default_downloader_loads_huggingface_adapter(monkeypatch: pytest.Monkey
     assert isinstance(downloader, module.HuggingFaceDownloader)
 
 
-def test_default_downloader_maps_missing_extra(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_default_downloader_maps_missing_core_import(monkeypatch: pytest.MonkeyPatch) -> None:
     def raise_import_error(name: str) -> Any:
         raise ImportError(f"No module named {name!r}")
 
     monkeypatch.setattr("parsecraft.assets.downloader.import_module", raise_import_error)
-    with pytest.raises(DownloaderUnavailableError, match="download' extra"):
+    with pytest.raises(DownloaderUnavailableError, match="core dependency"):
         default_downloader()
 
 

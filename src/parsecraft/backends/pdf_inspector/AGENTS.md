@@ -1,7 +1,8 @@
 # AGENTS.md — src/parsecraft/backends/pdf_inspector/
 
-pdf-inspector backend family: MIT Rust/PyO3 PDF extraction behind the optional
-`pdf-inspector` extra (prebuilt `cp38-abi3` wheel, zero Python dependencies).
+pdf-inspector backend family: MIT Rust/PyO3 PDF extraction from a **core
+dependency** (prebuilt `cp38-abi3` wheel, zero Python dependencies) — the
+descriptor declares no optional dependency group.
 
 ## Purpose
 
@@ -47,15 +48,12 @@ the library's own per-page OCR verdict as planner signals.
   content-less pages stay present as empty `PageResult`s so the executor's
   exact-page check holds. Upstream table/column hints stay unconsumed for now.
 - Never call pdf-inspector's OCR entry points (`process_pdf_with_ocr*`): this
-  extra is the no-OCR path, `model_asset` stays `None`, and nothing downloads.
-- Rule 10: the `pdf-inspector` extra resolves jointly with every other extra
-  (zero Python dependencies); re-verify if upstream packaging changes.
-- `EXTRA_IMPORTS` in `src/parsecraft/environment/probe.py` maps this extra to the
-  `pdf_inspector` import — a group missing there is undetectable, hence unrouteable.
+  backend is the no-OCR path, `model_asset` stays `None`, and nothing downloads.
+- Rule 10 does not apply: pdf-inspector is a **core** dependency, not an extra,
+  so there is no joint-resolution gate — re-verify if upstream packaging changes.
 
 ## Verification
 
 `mise test` — `tests/backends/test_pdf_inspector.py` (offline; the heavy
 extension is a stub in `sys.modules`), 100% coverage gate. Live smoke:
-`uv add --optional pdf-inspector "pdf-inspector>=1.25.2"` in a throwaway
-checkout, then convert a text-based PDF.
+pdf-inspector arrives with the base install — convert a text-based PDF.

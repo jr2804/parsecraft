@@ -1,9 +1,9 @@
 """``parsecraft judges`` — the built-in judge providers and how to spell their specs.
 
 Description only: listing resolves nothing, reads no credential, imports no
-extra's heavy module, probes no host and contacts no endpoint. Availability is
-reported from ``find_spec`` (is the extra installed?) and ``os.environ`` (is the
-credential exported?), so the command answers the same on every machine.
+provider SDK, probes no host and contacts no endpoint. Availability is reported
+from ``os.environ`` (is the credential exported?), so the command answers the
+same on every machine.
 
 The facts come from each provider module's ``PROFILE`` — one declaration per
 provider, shared with the loader and checked against the docs table by
@@ -17,7 +17,6 @@ from importlib import import_module
 from types import ModuleType
 from typing import cast
 
-from parsecraft.environment import extra_present
 from parsecraft.providers import BUILTIN_JUDGE_PROVIDERS, JudgeProviderProfile
 
 #: What the CLI does when no spec is given (the first line of the human output).
@@ -29,7 +28,6 @@ class JudgeEntry(JudgeProviderProfile):
     """A provider's declared profile plus this host's availability for it."""
 
     credential_set: bool
-    extra_installed: bool
 
 
 def entries() -> list[JudgeEntry]:
@@ -48,8 +46,7 @@ def render_entries(items: list[JudgeEntry]) -> list[str]:
     for item in items:
         for spec in item.specs:
             credential = "no credential" if item.api_key_env is None else f"{item.api_key_env} ({'set' if item.credential_set else 'unset'})"
-            extra = f"extra {item.extra} ({'installed' if item.extra_installed else 'missing'})"
-            lines.append(f"{spec:24} {credential:32} {extra:28} {_endpoint(item)}")
+            lines.append(f"{spec:24} {credential:32} {_endpoint(item)}")
         if item.example_models:
             lines.append(f"{'':24} verified local models: {', '.join(item.example_models)}")
     return lines
@@ -62,7 +59,6 @@ def _entry(provider: str) -> JudgeEntry:
     return JudgeEntry(
         **profile.model_dump(),
         credential_set=bool(os.environ.get(profile.api_key_env, "").strip()) if profile.api_key_env is not None else False,
-        extra_installed=extra_present(profile.extra),
     )
 
 

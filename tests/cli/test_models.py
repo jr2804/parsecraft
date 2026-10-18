@@ -38,7 +38,7 @@ class FakeDownloader:
 
     def download(self, model_id: str, revision: str, filename: str, dest_dir: str) -> str:
         if self._fail:
-            raise DownloaderUnavailableError(model_id, revision, "no download extra")
+            raise DownloaderUnavailableError(model_id, revision, "no downloader available")
         target = Path(dest_dir) / filename
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(CONTENT)
@@ -160,8 +160,8 @@ def test_install_license_gate_and_success(tmp_path: Path) -> None:
     assert manager.license_acceptance(asset.model_id, asset.model_revision) is not None
 
 
-def test_install_download_extra_hint(tmp_path: Path) -> None:
-    with pytest.raises(models_module.CliError, match="download extra"):
+def test_install_download_dependency_hint(tmp_path: Path) -> None:
+    with pytest.raises(models_module.CliError, match="core dependency"):
         models_module.install(_asset(), _manager(tmp_path, fail_download=True), confirmed=True, accept_license=False, provider=_pin)
 
 
@@ -197,7 +197,7 @@ def test_manager_uses_fallback_downloader(monkeypatch: pytest.MonkeyPatch, tmp_p
     monkeypatch.setattr(models_module, "probe_environment", lambda: EnvironmentInfo(installed_extras=frozenset(), vram_budget_gb=0.0, offline=True))
 
     def _raise() -> None:
-        raise DownloaderUnavailableError(detail="no extra")
+        raise DownloaderUnavailableError(detail="no downloader available")
 
     monkeypatch.setattr(models_module, "default_downloader", _raise)
     manager = models_module.manager()

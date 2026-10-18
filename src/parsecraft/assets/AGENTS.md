@@ -5,7 +5,8 @@ Model-asset manager: pinned downloads, local cache, license-acceptance records.
 ## Purpose
 
 Download and validate pinned model weights/assets on demand (Hugging Face Hub
-via the optional `download` extra), inspect and clean the local cache, and
+via `huggingface-hub`, a **core** dependency — the import stays lazy), inspect
+and clean the local cache, and
 record explicit license acceptances. Metadata for one asset is
 `ModelAssetDescriptor` from `parsecraft.backends.protocol` — reused, never
 duplicated; integrity data (per-file SHA-256) lives in `AssetPin`.

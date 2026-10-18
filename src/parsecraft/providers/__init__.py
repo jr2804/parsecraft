@@ -9,7 +9,7 @@ See ``AGENTS.md`` in this directory for the contract.
 
 ``BUILTIN_JUDGE_PROVIDERS`` is the declared set the CLI catalog enumerates
 (``parsecraft judges``); each provider module owns its own model tokens,
-credential, endpoint and extra so the command restates nothing.
+credential and endpoint so the command restates nothing.
 """
 
 from __future__ import annotations
@@ -27,13 +27,12 @@ class JudgeProviderProfile(BaseModel):
     """What a judge provider declares about itself (spec spelling, requirements).
 
     One ``PROFILE`` per provider module is the single home for its model tokens,
-    credential, endpoint and extra: the loader resolves from it, ``parsecraft
-    judges`` prints it, and the docs table is checked against it, so no fact is
-    restated in a second place.
+    credential and endpoint: the loader resolves from it, ``parsecraft judges``
+    prints it, and the docs table is checked against it, so no fact is restated
+    in a second place.
     """
 
     name: str
-    extra: str
     models: tuple[str, ...] = ()
     model_placeholder: str | None = None
     example_models: tuple[str, ...] = ()

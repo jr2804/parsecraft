@@ -2,9 +2,10 @@
 
 ## Purpose
 
-Office/ODF/EPUB/RTF conversion through the system pandoc binary, behind the
-optional `pandoc` extra (ADR-0005: GPL-2.0-or-later binary, MIT wrapper,
-user's licence decision — never core, never `mise dev`/CI).
+Office/ODF/EPUB/RTF conversion through the system pandoc binary. **No extra
+gates it** — `pypandoc` is core and the descriptor declares no optional
+dependency group; the binary is an engine prerequisite and the GPL-2.0-or-later
+licence decision is the user's (ADR-0005).
 
 ## Ownership
 

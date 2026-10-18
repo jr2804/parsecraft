@@ -813,7 +813,7 @@ def test_choose_analyzer_uses_the_base_install_analyzer_per_real_format() -> Non
     pypdf), never by the alphabetically-first extra-backed claimer.
     """
     registry = default_registry.list_backends()
-    extras = {"docling", "liteparse", "mineru", "pandoc", "ocr", "auto", "web", "marker"}
+    extras = {"docling", "liteparse", "mineru", "pandoc", "ocr", "web", "marker"}
     expectations = {
         "application/pdf": "pymupdf",
         "text/html": "native-html",

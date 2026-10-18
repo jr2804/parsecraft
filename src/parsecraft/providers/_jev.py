@@ -44,10 +44,8 @@ from parsecraft.routing.rules import extraction_tier, is_ocr
 QUESTION_ID = "lead"
 
 _MODULE_NAME = "typesafe_sdk"
-#: Extra that declares the SDK; all three endpoints share it (root AGENTS.md rule 10).
-#: The extra is named for the System One scoring stack, NOT for a provider token
-#: (`typesafe-ai`/`zen`/`ollama` are the providers), so the hint must use it.
-_EXTRA = "auto"
+#: The SDK is a **core** dependency (``[project.dependencies]``), not an extra:
+#: an absent import means a broken install, never a missing capability group.
 #: Credential sent when an endpoint needs none: the SDK rejects an empty key, and
 #: a local daemon ignores the header entirely.
 LOCAL_API_KEY = "local"
@@ -274,9 +272,10 @@ def load_endpoint_judge(
     endpoint needs it (a cold model load is slower than any cloud round trip).
 
     Order is deliberate: **spec before environment**. A malformed spec is a
-    caller bug (CLI exit 2) and must outrank environment state (a missing extra or
-    credential, exit 1), so a bad request never hides behind an unconfigured
-    host — the same reasoning that checks the source suffix before probing.
+    caller bug (CLI exit 2) and must outrank environment state (an unusable SDK
+    or a missing credential, exit 1), so a bad request never hides behind an
+    unconfigured host — the same reasoning that checks the source suffix before
+    probing.
     """
     if spec.variant is not None:
         msg = f"{provider} takes the upstream model id as its model token — {spec.provider}/{spec.model} does not accept a variant"
@@ -288,11 +287,11 @@ def load_endpoint_judge(
 
 
 def sdk_module(provider: str) -> _SdkModule:
-    """Import ``typesafe_sdk`` at load time, or fail with the extra to install."""
+    """Import ``typesafe_sdk`` at load time, or fail with a repair instruction."""
     try:
         module = import_module(_MODULE_NAME)
     except ImportError as exc:
-        hint = f"{_MODULE_NAME!r} is not installed — install the {_EXTRA!r} extra ([project.optional-dependencies].{_EXTRA})"
+        hint = f"{_MODULE_NAME!r} is not installed — it is a core dependency, so reinstall parsecraft (pip install -U parsecraft)"
         raise JudgeProviderUnavailableError(provider, _MODULE_NAME, hint) from exc
     if not isinstance(module, _SdkModule):
         raise JudgeProviderUnavailableError(provider, _MODULE_NAME, f"{_MODULE_NAME} does not export TypeSafeClient/Choice")

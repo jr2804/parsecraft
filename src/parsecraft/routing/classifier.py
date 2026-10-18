@@ -191,7 +191,7 @@ def _lazy_loader(provider: str) -> ClassifierProviderLoader:
     except ImportError as exc:
         hint = (
             f"no loader registered and {module_name!r} could not be imported — "
-            f"install the extra that ships it or call register_classifier_provider({provider!r}, loader)"
+            f"install the package that ships it or call register_classifier_provider({provider!r}, loader)"
         )
         raise ClassifierProviderUnavailableError(provider, module_name, hint) from exc
     loader = getattr(module, _LOADER_EXPORT, None)

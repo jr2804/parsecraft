@@ -172,12 +172,12 @@ def test_bad_spec_string_is_a_spec_error(stub: _Stub) -> None:
         resolve_classifier("pdfinspector")
 
 
-def test_missing_extra_names_the_extra(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_missing_core_dependency_names_the_distribution(monkeypatch: pytest.MonkeyPatch) -> None:
     def _raise(_name: str) -> object:
         raise ImportError("pdf_inspector")
 
     monkeypatch.setattr(provider, "import_module", _raise)
-    with pytest.raises(ClassifierProviderUnavailableError, match="'pdf-inspector' extra") as excinfo:
+    with pytest.raises(ClassifierProviderUnavailableError, match="is a core dependency") as excinfo:
         provider.load_classifier(parse_classifier_spec(_SPEC))
     assert (excinfo.value.provider, excinfo.value.module_name) == ("pdfinspector", "pdf_inspector")
 
@@ -328,7 +328,7 @@ def test_live_detect_pdf_reports_ir_based_pages(tmp_path: Path) -> None:
 
     Verified on an image-only first page: `detect_pdf` (via this provider) reports
     page 1, where `classify_pdf` reports page 0 for the same file. Skips when the
-    `pdf-inspector` extra is not installed.
+    `pdf_inspector` core dependency is not importable.
     """
     pytest.importorskip("pdf_inspector")
     classifier = provider.load_classifier(parse_classifier_spec(_SPEC))

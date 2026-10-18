@@ -51,5 +51,5 @@ is now reserved for backends with no third-party runtime dep.
 `mise test` — `tests/backends/test_native.py` (100% coverage gate applies).
 PDF coverage is in `tests/backends/test_pymupdf.py` and
 `tests/backends/test_pymupdf_code_layout.py`; the two integration tests in the
-latter need the AGPL `pdf` extra and therefore skip in the canonical light env;
+latter need the AGPL `pymupdf` extra and therefore skip in the canonical light env;
 run them with `uv run --isolated --extra pymupdf pytest -k code_block_is_fenced`.

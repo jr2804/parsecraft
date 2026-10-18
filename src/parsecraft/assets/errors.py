@@ -45,4 +45,4 @@ class InsufficientDiskSpaceError(AssetError):
 
 
 class DownloaderUnavailableError(AssetError):
-    """The optional download dependency (e.g. ``huggingface-hub``) is not installed."""
+    """The download dependency (``huggingface_hub``) could not be imported."""

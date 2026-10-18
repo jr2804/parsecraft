@@ -1,9 +1,11 @@
 """Downloader protocol and the sanctioned lazy-load boundary.
 
-The heavy optional dependency (``huggingface_hub``) is referenced ONLY by
+The heavy import (``huggingface_hub``) is referenced ONLY by
 :mod:`parsecraft.assets.huggingface`, which is loaded on demand via
-:func:`default_downloader` — never at package import time. The GitHub adapter
-has no optional dependency, so selecting it costs nothing extra.
+:func:`default_downloader` — never at package import time (and never at
+install time either: the library is a **core** dependency, so a failed import
+means a broken install, not a missing extra). The GitHub adapter has no
+dependency at all, so selecting it costs nothing.
 """
 
 from __future__ import annotations
@@ -44,7 +46,7 @@ def default_downloader() -> Downloader:
         module = import_module(_HUGGINGFACE_MODULE)
     except ImportError as exc:
         raise DownloaderUnavailableError(
-            detail="the 'download' extra is required (pip install parsecraft[download])",
+            detail="'huggingface-hub' is a core dependency — reinstall parsecraft (pip install -U parsecraft)",
         ) from exc
     downloader: Downloader = module.HuggingFaceDownloader()
     return downloader

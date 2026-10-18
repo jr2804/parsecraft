@@ -98,12 +98,12 @@ def test_good_spec_without_a_credential_is_unavailable(monkeypatch: pytest.Monke
     assert jev_sdk.client_kwargs == []  # never reached the SDK
 
 
-def test_missing_extra_names_the_extra(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_missing_sdk_names_the_repair(monkeypatch: pytest.MonkeyPatch) -> None:
     def _raise(_name: str) -> object:
         raise ImportError("typesafe_sdk")
 
     monkeypatch.setattr(_jev, "import_module", _raise)
-    with pytest.raises(JudgeProviderUnavailableError, match="'auto' extra") as excinfo:
+    with pytest.raises(JudgeProviderUnavailableError, match="is a core dependency") as excinfo:
         provider.load_judge(JudgeSpec(provider="typesafe-ai", model=_MODEL))
     assert (excinfo.value.provider, excinfo.value.module_name) == ("typesafe-ai", "typesafe_sdk")
 

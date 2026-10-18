@@ -66,20 +66,18 @@ basenames may repeat across groups (`cli/test_config.py` vs
 - `backends/test_native_code_layout.py` — layout recovery v1 (pc-0uv): font
   classification, vendor-dictionary mapping, paragraph/CODE grouping,
   indentation and wrapped-line joins as pure unit tests, plus two
-  `importorskip` integration tests that need the AGPL `pdf` extra.
+  `importorskip` integration tests that need the AGPL `pymupdf` extra.
 - `providers/test_typesafe_ai.py` — the System One judge family against the
-  offline SDK stub: spec/credential/extra failures, endpoint injection, the
+  offline SDK stub: spec/credential failures, endpoint injection, the
   distribution-as-ranking contract, the `(intent, candidates)` memo, machine
-  state, and a live tier gated on the `auto` extra plus
-  `TYPESAFE_API_KEY`.
+  state, and a live tier gated on `TYPESAFE_API_KEY`.
 - `providers/test_jev_endpoints.py` — the Zen and Ollama endpoints (key
   requirement vs none, base URLs, the raised local timeout) plus the
   semi-live tier: a real local Ollama daemon under three machine profiles,
   with one behavioral anchor (a CPU-only host must not rank a GPU-only
-  candidate first). Semi-live tests skip unless the `auto` extra and the
-  daemon are both present.
+  candidate first). Semi-live tests skip unless the daemon is present.
 - `cli/test_judges.py` — the `judges` catalog command (human + JSON output,
-  extra/credential availability, and the docs-table check).
+  credential availability, and the docs-table check).
 - `cli/test_verbosity.py` — the third-party output policy (quiet by default,
   untouched with `--verbose`, state restored afterwards).
 - `test_smoke.py` — CLI surface (`backends --json`, the device column, `--version`,

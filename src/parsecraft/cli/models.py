@@ -50,11 +50,11 @@ class ModelEntry(BaseModel):
 
 
 class _UnavailableDownloader:
-    """Stand-in downloader for read-only commands when the ``download`` extra is absent."""
+    """Stand-in downloader for read-only commands when no downloader can load."""
 
     @staticmethod
     def download(model_id: str, revision: str, filename: str, dest_dir: str) -> str:
-        raise DownloaderUnavailableError(model_id, revision, "the 'download' extra is required (pip install parsecraft[download])")
+        raise DownloaderUnavailableError(model_id, revision, "no downloader is available in this install")
 
 
 def available_descriptors() -> list[BackendDescriptor]:
@@ -135,7 +135,7 @@ def install(
     try:
         return asset_manager.ensure(pin)
     except DownloaderUnavailableError as exc:
-        raise CliError(f"{exc} — install the download extra: pip install 'parsecraft[download]'") from exc
+        raise CliError(f"{exc} — 'huggingface-hub' is a core dependency: reinstall parsecraft (pip install -U parsecraft)") from exc
     except OfflineModeError as exc:
         raise CliError(f"{exc} — unset PARSECRAFT_OFFLINE or pre-cache the asset") from exc
     except AssetError as exc:

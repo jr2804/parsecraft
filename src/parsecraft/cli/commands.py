@@ -261,7 +261,7 @@ def models_install(
     yes: Annotated[bool, typer.Option("--yes", "-y", help="Confirm the network download")] = False,
     accept_license: Annotated[bool, typer.Option("--accept-license", help="Accept the model license terms")] = False,
 ) -> None:
-    """Download and verify a pinned model asset (requires the download extra)."""
+    """Download and verify a pinned model asset (needs `--yes`)."""
     try:
         descriptor = models_module.resolve_asset(name, models_module.available_descriptors())[1]
         paths = models_module.install(descriptor, models_module.manager(), confirmed=yes, accept_license=accept_license)
