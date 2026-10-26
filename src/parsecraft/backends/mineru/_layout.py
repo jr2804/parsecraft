@@ -171,16 +171,6 @@ def strip_covered(blocks: list[LayoutBlock]) -> list[LayoutBlock]:
     return kept
 
 
-def _area(block: LayoutBlock) -> float:
-    return max(0.0, (block.x1 - block.x0) * (block.y1 - block.y0))
-
-
-def _intersection(a: LayoutBlock, b: LayoutBlock) -> float:
-    width = min(a.x1, b.x1) - max(a.x0, b.x0)
-    height = min(a.y1, b.y1) - max(a.y0, b.y0)
-    return max(0.0, width) * max(0.0, height)
-
-
 def _iou(a: LayoutBlock, b: LayoutBlock) -> float:
     union = _area(a) + _area(b) - _intersection(a, b)
     return _intersection(a, b) / union if union > 0 else 0.0
@@ -192,3 +182,13 @@ def _covered(inner: LayoutBlock, outer: LayoutBlock) -> bool:
     if inner_area <= 0:
         return False
     return _intersection(inner, outer) / inner_area >= _COVERED_RATIO
+
+
+def _area(block: LayoutBlock) -> float:
+    return max(0.0, (block.x1 - block.x0) * (block.y1 - block.y0))
+
+
+def _intersection(a: LayoutBlock, b: LayoutBlock) -> float:
+    width = min(a.x1, b.x1) - max(a.x0, b.x0)
+    height = min(a.y1, b.y1) - max(a.y0, b.y0)
+    return max(0.0, width) * max(0.0, height)

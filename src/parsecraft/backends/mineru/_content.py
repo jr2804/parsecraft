@@ -26,6 +26,53 @@ _NON_TEXT = "[Non-Text]"
 _IMAGE_ANALYSIS_FIELDS = frozenset({"class", "sub_class", "caption", "content"})
 
 
+#: Cell-slot tokens: each opens one grid cell (span continuations become
+#: empty slots — the grid shape survives, spans stay implicit).
+_OTSL_CELL_TOKENS = frozenset({"<fcel>", "<ecel>", "<lcel>", "<ucel>", "<xcel>"})
+
+#: Split keeping the structural tokens interleaved with the cell texts.
+_OTSL_SPLIT = re.compile(r"(<nl>|<fcel>|<ecel>|<lcel>|<ucel>|<xcel>)")
+
+_OTSL_NL = "<nl>"
+
+
+class TableTextExtractor(HTMLParser):
+    """Flatten table HTML to ``cell | cell`` rows — the IR table projection."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._rows: list[list[str]] = []
+        self._row: list[str] | None = None
+        self._cell: list[str] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "tr":
+            self._row = []
+        elif tag in ("td", "th") and self._row is not None:
+            self._cell = []
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in ("td", "th") and self._row is not None and self._cell is not None:
+            self._row.append(" ".join("".join(self._cell).split()))
+            self._cell = None
+        elif tag == "tr" and self._row is not None:
+            if any(cell for cell in self._row):
+                self._rows.append(self._row)
+            self._row = None
+
+    def handle_data(self, data: str) -> None:
+        if self._cell is not None:
+            self._cell.append(data)
+
+    def render(self) -> str:
+        """The flattened rows, one ``cell | cell`` line per table row."""
+        return "\n".join(" | ".join(row) for row in self._rows)
+
+    def rows(self) -> tuple[tuple[str, ...], ...]:
+        """The flattened rows as structured table data."""
+        return tuple(tuple(row) for row in self._rows)
+
+
 def otsl_to_html(content: str) -> str:
     """Convert an OTSL table to HTML; content that already starts as a table
     passes through unchanged (the model sometimes emits HTML directly).
@@ -36,16 +83,6 @@ def otsl_to_html(content: str) -> str:
     tokens = _otsl_tokenize(text)
     rows = _otsl_rows(tokens)
     return _otsl_html(rows)
-
-
-#: Cell-slot tokens: each opens one grid cell (span continuations become
-#: empty slots — the grid shape survives, spans stay implicit).
-_OTSL_CELL_TOKENS = frozenset({"<fcel>", "<ecel>", "<lcel>", "<ucel>", "<xcel>"})
-
-#: Split keeping the structural tokens interleaved with the cell texts.
-_OTSL_SPLIT = re.compile(r"(<nl>|<fcel>|<ecel>|<lcel>|<ucel>|<xcel>)")
-
-_OTSL_NL = "<nl>"
 
 
 def _otsl_tokenize(text: str) -> list[str]:
@@ -92,11 +129,6 @@ def _otsl_html(rows: list[list[str]]) -> str:
     return f"<table>{body}</table>"
 
 
-def is_separator_line(line: str) -> bool:
-    """True when a markdown table row is the ``---`` separator under a header."""
-    return _SEPARATOR_PATTERN.match(line) is not None
-
-
 def markdown_table_to_html(content: str) -> str | None:
     r"""Convert a markdown pipe table to HTML, or ``None`` when not one.
 
@@ -112,6 +144,11 @@ def markdown_table_to_html(content: str) -> str | None:
     rows_html = "<tr>" + "".join(f"<td>{escape(cell)}</td>" for cell in header) + "</tr>"
     rows_html += "".join("<tr>" + "".join(f"<td>{escape(cell)}</td>" for cell in row) + "</tr>" for row in body_rows)
     return f"<table>{rows_html}</table>"
+
+
+def is_separator_line(line: str) -> bool:
+    """True when a markdown table row is the ``---`` separator under a header."""
+    return _SEPARATOR_PATTERN.match(line) is not None
 
 
 def _split_cells(line: str) -> list[str]:
@@ -161,40 +198,3 @@ def wrap_equation(content: str) -> str:
 def is_non_text(content: str | None) -> bool:
     """True when a block's extraction came back empty or explicitly non-text."""
     return content is None or content.strip() in ("", _NON_TEXT)
-
-
-class TableTextExtractor(HTMLParser):
-    """Flatten table HTML to ``cell | cell`` rows — the IR table projection."""
-
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self._rows: list[list[str]] = []
-        self._row: list[str] | None = None
-        self._cell: list[str] | None = None
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag == "tr":
-            self._row = []
-        elif tag in ("td", "th") and self._row is not None:
-            self._cell = []
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag in ("td", "th") and self._row is not None and self._cell is not None:
-            self._row.append(" ".join("".join(self._cell).split()))
-            self._cell = None
-        elif tag == "tr" and self._row is not None:
-            if any(cell for cell in self._row):
-                self._rows.append(self._row)
-            self._row = None
-
-    def handle_data(self, data: str) -> None:
-        if self._cell is not None:
-            self._cell.append(data)
-
-    def render(self) -> str:
-        """The flattened rows, one ``cell | cell`` line per table row."""
-        return "\n".join(" | ".join(row) for row in self._rows)
-
-    def rows(self) -> tuple[tuple[str, ...], ...]:
-        """The flattened rows as structured table data."""
-        return tuple(tuple(row) for row in self._rows)

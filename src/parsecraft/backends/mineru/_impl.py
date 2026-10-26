@@ -164,6 +164,19 @@ _HEADING_LEVELS: dict[str, str] = {"doc_title": "1", "title": "1", "paragraph_ti
 _DROP_TYPES: frozenset[str] = frozenset({"page_number", "list", "equation_block", "image_block"})
 
 
+# ── Block → IR mapping ───────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class _Mapped:
+    """One block's mapping decision: kind, text, metadata, optional table rows."""
+
+    kind: ChunkKind
+    text: str
+    metadata: dict[str, str]
+    rows: tuple[tuple[str, ...], ...] | None = None
+
+
 # ── Engine: the loaded checkpoint ────────────────────────────────────────────
 
 
@@ -239,6 +252,148 @@ class _Engine:
         return results
 
 
+# ── Backend ──────────────────────────────────────────────────────────────────
+
+
+class MineruBackend:
+    """Native two-step conversion: layout detection, then block recognition."""
+
+    name = MINERU_NAME
+    capabilities = DESCRIPTOR.capabilities
+
+    def __init__(self, config: BackendConfig) -> None:
+        self._config = config
+        self._effort = _effort(config)
+        self._image_analysis = _image_analysis(config)
+        # FLASH stays weight-free until a weak-text page forces the VLM;
+        # every other effort loads (and fails fast) here.
+        self._engine: _Engine | None = None if self._effort is MineruEffort.FLASH else _load_engine(config)
+
+    def convert(self, request: ConversionRequest) -> BackendResult:
+        """Convert the requested window page by page, honoring every bound."""
+        started = monotonic()
+        payload = source_bytes(request.source)
+        signals = _pdf_signals(payload)
+        page_count = len(signals) or 1
+        window = _window(request.page_range, page_count)
+        if window is None:
+            assert request.page_range is not None  # noqa: S101 — narrowed by _window
+            failure = _failure(
+                request,
+                started,
+                FailureCode.INVALID_INPUT,
+                f"page range {request.page_range.start}-{request.page_range.end} outside the {page_count}-page document",
+            )
+            return _result([], [failure], started)
+        if _cancelled(request):
+            failure = _failure(request, started, FailureCode.CANCELLED, "cancelled before conversion")
+            return _result([], [failure], started)
+
+        pages: list[PageResult] = []
+        failures: list[PassFailure] = []
+        emitted = 0
+        for number in window:
+            if _cancelled(request):
+                failures.append(_failure(request, started, FailureCode.CANCELLED, f"cancelled before page {number}"))
+                break
+            if _timed_out(request, started):
+                failures.append(_failure(request, started, FailureCode.TIMEOUT, f"deadline passed before page {number}"))
+                break
+            try:
+                page, page_chars = self._convert_page(payload, number, _signal(signals, number), request)
+            except Exception as exc:  # per-page boundary: one bad page never sinks the run
+                failures.append(
+                    _failure(
+                        request,
+                        started,
+                        FailureCode.BACKEND_ERROR,
+                        f"page {number}: {type(exc).__name__}: {exc}",
+                    )
+                )
+                pages.append(PageResult(page_number=number))
+                continue
+            if _timed_out(request, started):
+                failures.append(_failure(request, started, FailureCode.TIMEOUT, f"deadline passed during page {number}"))
+                break
+            if request.max_output_chars is not None and emitted + page_chars > request.max_output_chars:
+                failures.append(
+                    _failure(
+                        request,
+                        started,
+                        FailureCode.BUDGET_EXCEEDED,
+                        f"page {number} would exceed the {request.max_output_chars}-character output budget",
+                    )
+                )
+                break
+            pages.append(page)
+            emitted += page_chars
+        return _result(pages, failures, started)
+
+    @staticmethod
+    def analyze(source: SourceDocument) -> AnalysisResult:
+        """Cheap model-free pypdfium2 signals — unchanged by the native path."""
+        payload = source_bytes(source)
+        signals = _pdf_signals(payload)
+        if not signals:
+            signals = [PageSignal(page_number=1, has_native_text=False, text_chars=0, image_count=0, blank=True)]
+        return AnalysisResult(
+            source_hash=hashlib.sha256(payload).hexdigest(),
+            page_count=len(signals),
+            signals=signals,
+        )
+
+    # ── Per-page conversion ──────────────────────────────────────────────
+
+    def _convert_page(
+        self,
+        payload: bytes,
+        number: int,
+        signal: PageSignal,
+        request: ConversionRequest,
+    ) -> tuple[PageResult, int]:
+        """One page: the VLM two-step, or the weight-free text layer for FLASH."""
+        width, height = _page_size(payload, number)
+        if self._effort is MineruEffort.FLASH and signal.has_native_text:
+            chunks = _text_chunks(payload, number)
+            page = PageResult(page_number=number, width=width, height=height, blocks=chunks)
+            return page, sum(len(chunk.content) for chunk in chunks)
+        png = _raster(payload, number)
+        page_image = Image.open(BytesIO(png)).convert("RGB")
+        chunks, assets = self._vlm_page(page_image, number, width, height, request)
+        page = PageResult(page_number=number, width=width, height=height, blocks=chunks, assets=assets)
+        return page, sum(len(chunk.content) for chunk in chunks)
+
+    def _vlm_page(
+        self,
+        page_image: Image.Image,
+        number: int,
+        width_pts: float,
+        height_pts: float,
+        request: ConversionRequest,
+    ) -> tuple[list[StructuredChunk], list[ExtractedAsset]]:
+        """The two-step protocol on one rendered page."""
+        engine = self._require_engine()
+        budget = request.max_context_tokens or EFFORT_BUDGETS[self._effort]
+        layout_input = page_image.resize(_LAYOUT_SIZE, Image.Resampling.BICUBIC)
+        layout_text = engine.generate([layout_input], [LAYOUT_PROMPT], budget)[0]
+        blocks = strip_covered(parse_layout(layout_text))
+
+        # Figure crops exist whenever the block does — the crop is the asset.
+        figure_crops = {id(block): _crop_block(page_image, block) for block in blocks if block.type in _IMAGE_ANALYSIS_TYPES}
+        extracted = [block for block in blocks if block.type not in SKIP_EXTRACTION and (block.type not in _IMAGE_ANALYSIS_TYPES or self._image_analysis)]
+        images = [figure_crops.get(id(block)) or _crop_block(page_image, block) for block in extracted]
+        prompts = [RECOGNITION_PROMPTS.get(block.type, DEFAULT_RECOGNITION_PROMPT) for block in extracted]
+        outputs = engine.generate(images, prompts, budget) if images else []
+        contents = {id(block): output for block, output in zip(extracted, outputs, strict=True)}
+        return _blocks_to_chunks(blocks, contents, figure_crops, number, width_pts, height_pts, self._image_analysis)
+
+    def _require_engine(self) -> _Engine:
+        """FLASH defers the weights until a page actually needs them."""
+        if self._engine is None:
+            self._engine = _load_engine(self._config)
+        return self._engine
+
+
 def _load_engine(config: BackendConfig) -> _Engine:
     """Load the pinned checkpoint — assets ensured, versions checked, errors typed."""
     require_transformers()
@@ -311,161 +466,6 @@ def _skip_token_ids(model: _Model, processor: _Processor) -> frozenset[int]:
             elif isinstance(value, (list, tuple)):
                 ids.update(token for token in value if isinstance(token, int))
     return frozenset(ids)
-
-
-# ── Backend ──────────────────────────────────────────────────────────────────
-
-
-class MineruBackend:
-    """Native two-step conversion: layout detection, then block recognition."""
-
-    name = MINERU_NAME
-    capabilities = DESCRIPTOR.capabilities
-
-    def __init__(self, config: BackendConfig) -> None:
-        self._config = config
-        self._effort = _effort(config)
-        self._image_analysis = _image_analysis(config)
-        # FLASH stays weight-free until a weak-text page forces the VLM;
-        # every other effort loads (and fails fast) here.
-        self._engine: _Engine | None = None if self._effort is MineruEffort.FLASH else _load_engine(config)
-
-    @staticmethod
-    def analyze(source: SourceDocument) -> AnalysisResult:
-        """Cheap model-free pypdfium2 signals — unchanged by the native path."""
-        payload = source_bytes(source)
-        signals = _pdf_signals(payload)
-        if not signals:
-            signals = [PageSignal(page_number=1, has_native_text=False, text_chars=0, image_count=0, blank=True)]
-        return AnalysisResult(
-            source_hash=hashlib.sha256(payload).hexdigest(),
-            page_count=len(signals),
-            signals=signals,
-        )
-
-    def convert(self, request: ConversionRequest) -> BackendResult:
-        """Convert the requested window page by page, honoring every bound."""
-        started = monotonic()
-        payload = source_bytes(request.source)
-        signals = _pdf_signals(payload)
-        page_count = len(signals) or 1
-        window = _window(request.page_range, page_count)
-        if window is None:
-            assert request.page_range is not None  # noqa: S101 — narrowed by _window
-            failure = _failure(
-                request,
-                started,
-                FailureCode.INVALID_INPUT,
-                f"page range {request.page_range.start}-{request.page_range.end} outside the {page_count}-page document",
-            )
-            return _result([], [failure], started)
-        if _cancelled(request):
-            failure = _failure(request, started, FailureCode.CANCELLED, "cancelled before conversion")
-            return _result([], [failure], started)
-
-        pages: list[PageResult] = []
-        failures: list[PassFailure] = []
-        emitted = 0
-        for number in window:
-            if _cancelled(request):
-                failures.append(_failure(request, started, FailureCode.CANCELLED, f"cancelled before page {number}"))
-                break
-            if _timed_out(request, started):
-                failures.append(_failure(request, started, FailureCode.TIMEOUT, f"deadline passed before page {number}"))
-                break
-            try:
-                page, page_chars = self._convert_page(payload, number, _signal(signals, number), request)
-            except Exception as exc:  # per-page boundary: one bad page never sinks the run
-                failures.append(
-                    _failure(
-                        request,
-                        started,
-                        FailureCode.BACKEND_ERROR,
-                        f"page {number}: {type(exc).__name__}: {exc}",
-                    )
-                )
-                pages.append(PageResult(page_number=number))
-                continue
-            if _timed_out(request, started):
-                failures.append(_failure(request, started, FailureCode.TIMEOUT, f"deadline passed during page {number}"))
-                break
-            if request.max_output_chars is not None and emitted + page_chars > request.max_output_chars:
-                failures.append(
-                    _failure(
-                        request,
-                        started,
-                        FailureCode.BUDGET_EXCEEDED,
-                        f"page {number} would exceed the {request.max_output_chars}-character output budget",
-                    )
-                )
-                break
-            pages.append(page)
-            emitted += page_chars
-        return _result(pages, failures, started)
-
-    # ── Per-page conversion ──────────────────────────────────────────────
-
-    def _convert_page(
-        self,
-        payload: bytes,
-        number: int,
-        signal: PageSignal,
-        request: ConversionRequest,
-    ) -> tuple[PageResult, int]:
-        """One page: the VLM two-step, or the weight-free text layer for FLASH."""
-        width, height = _page_size(payload, number)
-        if self._effort is MineruEffort.FLASH and signal.has_native_text:
-            chunks = _text_chunks(payload, number)
-            page = PageResult(page_number=number, width=width, height=height, blocks=chunks)
-            return page, sum(len(chunk.content) for chunk in chunks)
-        png = _raster(payload, number)
-        page_image = Image.open(BytesIO(png)).convert("RGB")
-        chunks, assets = self._vlm_page(page_image, number, width, height, request)
-        page = PageResult(page_number=number, width=width, height=height, blocks=chunks, assets=assets)
-        return page, sum(len(chunk.content) for chunk in chunks)
-
-    def _vlm_page(
-        self,
-        page_image: Image.Image,
-        number: int,
-        width_pts: float,
-        height_pts: float,
-        request: ConversionRequest,
-    ) -> tuple[list[StructuredChunk], list[ExtractedAsset]]:
-        """The two-step protocol on one rendered page."""
-        engine = self._require_engine()
-        budget = request.max_context_tokens or EFFORT_BUDGETS[self._effort]
-        layout_input = page_image.resize(_LAYOUT_SIZE, Image.Resampling.BICUBIC)
-        layout_text = engine.generate([layout_input], [LAYOUT_PROMPT], budget)[0]
-        blocks = strip_covered(parse_layout(layout_text))
-
-        # Figure crops exist whenever the block does — the crop is the asset.
-        figure_crops = {id(block): _crop_block(page_image, block) for block in blocks if block.type in _IMAGE_ANALYSIS_TYPES}
-        extracted = [block for block in blocks if block.type not in SKIP_EXTRACTION and (block.type not in _IMAGE_ANALYSIS_TYPES or self._image_analysis)]
-        images = [figure_crops.get(id(block)) or _crop_block(page_image, block) for block in extracted]
-        prompts = [RECOGNITION_PROMPTS.get(block.type, DEFAULT_RECOGNITION_PROMPT) for block in extracted]
-        outputs = engine.generate(images, prompts, budget) if images else []
-        contents = {id(block): output for block, output in zip(extracted, outputs, strict=True)}
-        return _blocks_to_chunks(blocks, contents, figure_crops, number, width_pts, height_pts, self._image_analysis)
-
-    def _require_engine(self) -> _Engine:
-        """FLASH defers the weights until a page actually needs them."""
-        if self._engine is None:
-            self._engine = _load_engine(self._config)
-        return self._engine
-
-
-# ── Block → IR mapping ───────────────────────────────────────────────────────
-
-
-@dataclass(frozen=True)
-class _Mapped:
-    """One block's mapping decision: kind, text, metadata, optional table rows."""
-
-    kind: ChunkKind
-    text: str
-    metadata: dict[str, str]
-    rows: tuple[tuple[str, ...], ...] | None = None
 
 
 def _blocks_to_chunks(

@@ -21,6 +21,7 @@ from PIL import Image
 
 from parsecraft.backends.errors import BackendError, DependencyUnavailableError
 from parsecraft.backends.mineru import mineru as mineru_module
+from parsecraft.backends.ocr import _common
 from parsecraft.backends.protocol import BackendConfig, ConversionRequest, DocumentBackend, SourceDocument
 from parsecraft.ir.models import FailureCode, PageRange, PassKind
 from parsecraft.routing.models import RoutingConstraints
@@ -29,13 +30,6 @@ from parsecraft.routing.rules import is_hard_eligible
 _PDF_BYTES = b"%PDF-1.7 stub"
 _PDF_SOURCE = SourceDocument(uri="file:///doc.pdf", media_type="application/pdf", content=_PDF_BYTES)
 _IMPL_MODULE = "parsecraft.backends.mineru._impl"
-
-
-def _png() -> bytes:
-    image = Image.new("RGB", (120, 160), (255, 255, 255))
-    buffer = BytesIO()
-    image.save(buffer, "PNG")
-    return buffer.getvalue()
 
 
 # ── Fake pypdfium2: scripted pages (text layer, size) ─────────────────────────
@@ -80,11 +74,6 @@ class _FakeDocument:
     @staticmethod
     def close() -> None:
         return None
-
-
-def _fake_pdfium(pages: list[tuple[str, tuple[float, float]]]) -> SimpleNamespace:
-    _FakeDocument.pages = pages
-    return SimpleNamespace(PdfDocument=_FakeDocument)
 
 
 # ── Stub transformers (offline stand-in; never the real package) ──────────────
@@ -148,13 +137,13 @@ class _ProcessorStub:
         self.image_processor: object | None = None
         self.tokenizer = SimpleNamespace(pad_token_id=3)
 
-    @staticmethod
-    def apply_chat_template(conversation: object, **options: object) -> str:
-        return "CHAT"
-
     def __call__(self, **kwargs: object) -> dict[str, object]:
         self._state.processor_calls.append(kwargs)
         return {"input_ids": _FakeTensor([[1, 2, 3]]), "pixel_values": _FakeTensor([[0]])}
+
+    @staticmethod
+    def apply_chat_template(conversation: object, **options: object) -> str:
+        return "CHAT"
 
     @staticmethod
     def batch_decode(sequences: object, **options: object) -> list[str]:
@@ -220,28 +209,6 @@ class _TransformersStub(ModuleType):
         self.AutoImageProcessor = _AutoImageProcessorStub
 
 
-@pytest.fixture
-def transformers_stub(monkeypatch: pytest.MonkeyPatch) -> Iterator[_TransformersStub]:
-    stub = _TransformersStub()
-    _TransformersStub.current = stub
-    monkeypatch.setitem(sys.modules, "transformers", stub)
-    yield stub
-    _TransformersStub.current = None
-
-
-@pytest.fixture
-def impl_loader(transformers_stub: _TransformersStub, monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[[], ModuleType]]:
-    """Import the heavy impl fresh against the stub transformers."""
-
-    def _load() -> ModuleType:
-        sys.modules.pop(_IMPL_MODULE, None)
-        module = importlib.import_module(_IMPL_MODULE)
-        return module
-
-    yield _load
-    sys.modules.pop(_IMPL_MODULE, None)
-
-
 # ── Fake engine: scripted two-step responses ─────────────────────────────────
 
 
@@ -260,6 +227,40 @@ class _FakeEngine:
             raise RuntimeError("boom")
         response = self.responses.pop(0) if self.responses else ""
         return list(response) if isinstance(response, (list, tuple)) else [str(response)] * len(prompts)
+
+
+def _png() -> bytes:
+    image = Image.new("RGB", (120, 160), (255, 255, 255))
+    buffer = BytesIO()
+    image.save(buffer, "PNG")
+    return buffer.getvalue()
+
+
+def _fake_pdfium(pages: list[tuple[str, tuple[float, float]]]) -> SimpleNamespace:
+    _FakeDocument.pages = pages
+    return SimpleNamespace(PdfDocument=_FakeDocument)
+
+
+@pytest.fixture
+def impl_loader(transformers_stub: _TransformersStub, monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[[], ModuleType]]:
+    """Import the heavy impl fresh against the stub transformers."""
+
+    def _load() -> ModuleType:
+        sys.modules.pop(_IMPL_MODULE, None)
+        module = importlib.import_module(_IMPL_MODULE)
+        return module
+
+    yield _load
+    sys.modules.pop(_IMPL_MODULE, None)
+
+
+@pytest.fixture
+def transformers_stub(monkeypatch: pytest.MonkeyPatch) -> Iterator[_TransformersStub]:
+    stub = _TransformersStub()
+    _TransformersStub.current = stub
+    monkeypatch.setitem(sys.modules, "transformers", stub)
+    yield stub
+    _TransformersStub.current = None
 
 
 def _tag(kind: str, x0: int, y0: int, x1: int, y1: int, tail: str = "") -> str:
@@ -300,48 +301,37 @@ _RICH_RECOGNITION = [
 _ONE_PAGE: list[tuple[str, tuple[float, float]]] = [("", (612.0, 792.0))]
 
 
-@pytest.fixture
-def backend_factory(
-    impl_loader: Callable[[], ModuleType],
-    monkeypatch: pytest.MonkeyPatch,
-) -> Callable[..., tuple[ModuleType, DocumentBackend, _FakeEngine]]:
-    """A MineruBackend over scripted pages and a scripted engine."""
-
-    def _make(
-        pages: list[tuple[str, tuple[float, float]]] | None = None,
-        responses: list[object] | None = None,
-        options: dict[str, str | int | float | bool] | None = None,
-        error_at: int | None = None,
-    ) -> tuple[ModuleType, DocumentBackend, _FakeEngine]:
-        impl = impl_loader()
-        monkeypatch.setattr(impl, "pdfium", _fake_pdfium(pages if pages is not None else _ONE_PAGE))
-        monkeypatch.setattr(impl, "_raster", lambda payload, number: _png())
-        engine = _FakeEngine(responses or [], error_at=error_at)
-        monkeypatch.setattr(impl, "_load_engine", lambda config: engine)
-        merged: dict[str, str | int | float | bool] = {"effort": "medium"}
-        merged.update(options or {})
-        backend = impl.MineruBackend(impl.BackendConfig(name="mineru", options=merged))
-        return impl, backend, engine
-
-    return _make
+# ── Engine loading and generation ─────────────────────────────────────────────
 
 
-def _request(
-    *,
-    page_range: PageRange | None = None,
-    timeout_s: float | None = None,
-    cancellation: Callable[[], bool] | None = None,
-    max_output_chars: int | None = None,
-    max_context_tokens: int | None = None,
-) -> ConversionRequest:
-    return ConversionRequest(
-        source=_PDF_SOURCE,
-        page_range=page_range,
-        timeout_s=timeout_s,
-        cancellation=cancellation,
-        max_output_chars=max_output_chars,
-        max_context_tokens=max_context_tokens,
-    )
+class _AssetManagerSpy:
+    instances: list[_AssetManagerSpy] = []
+
+    def __init__(self, *, offline: bool = False, downloader: object = None) -> None:
+        self.offline = offline
+        self.downloader = downloader
+        self.pins: list[object] = []
+        type(self).instances.append(self)
+
+    def ensure(self, pin: object) -> list[str]:
+        self.pins.append(pin)
+        filenames = getattr(pin, "filenames", [])
+        return [f"fake-assets/{name}" for name in filenames]
+
+    @staticmethod
+    def revision_dir(model_id: str, revision: str) -> Path:
+        return Path("fake-assets") / model_id.replace("/", "--") / revision[:12]
+
+
+class _Ticker:
+    """monotonic() stand-in advancing 100s per call — deadlines trip on cue."""
+
+    def __init__(self, start_at: int = 0) -> None:
+        self._calls = start_at
+
+    def __call__(self) -> float:
+        self._calls += 1
+        return self._calls * 100.0
 
 
 # ── Light factory: descriptor, asset, eligibility, boundary ───────────────────
@@ -426,36 +416,6 @@ def test_factory_rejects_an_impl_without_create(monkeypatch: pytest.MonkeyPatch)
         mineru_module.factory(BackendConfig(name="mineru"))
 
 
-# ── Engine loading and generation ─────────────────────────────────────────────
-
-
-class _AssetManagerSpy:
-    instances: list[_AssetManagerSpy] = []
-
-    def __init__(self, *, offline: bool = False, downloader: object = None) -> None:
-        self.offline = offline
-        self.downloader = downloader
-        self.pins: list[object] = []
-        type(self).instances.append(self)
-
-    def ensure(self, pin: object) -> list[str]:
-        self.pins.append(pin)
-        filenames = getattr(pin, "filenames", [])
-        return [f"fake-assets/{name}" for name in filenames]
-
-    @staticmethod
-    def revision_dir(model_id: str, revision: str) -> Path:
-        return Path("fake-assets") / model_id.replace("/", "--") / revision[:12]
-
-
-@pytest.fixture
-def asset_spy(monkeypatch: pytest.MonkeyPatch) -> type[_AssetManagerSpy]:
-    from parsecraft.backends.ocr import _common
-
-    monkeypatch.setattr(_common, "AssetManager", _AssetManagerSpy)
-    return _AssetManagerSpy
-
-
 def test_load_engine_pins_and_loads(
     impl_loader: Callable[[], ModuleType],
     transformers_stub: _TransformersStub,
@@ -524,18 +484,25 @@ def test_tie_weights_sync_uses_text_config_fallback(
         _TransformersStub.raw_config = {"tie_word_embeddings": True}
 
 
+@pytest.fixture
+def asset_spy(monkeypatch: pytest.MonkeyPatch) -> type[_AssetManagerSpy]:
+
+    monkeypatch.setattr(_common, "AssetManager", _AssetManagerSpy)
+    return _AssetManagerSpy
+
+
 def test_engine_generate_slices_filters_and_decodes(impl_loader: Callable[[], ModuleType]) -> None:
     impl = impl_loader()
 
     class _DecodeProcessor:
         tokenizer = SimpleNamespace(pad_token_id=3)
 
+        def __call__(self, **kwargs: object) -> dict[str, object]:
+            return {"input_ids": _FakeTensor([[1, 2, 3], [4, 5, 6]])}
+
         @staticmethod
         def apply_chat_template(conversation: object, **options: object) -> str:
             return "CHAT"
-
-        def __call__(self, **kwargs: object) -> dict[str, object]:
-            return {"input_ids": _FakeTensor([[1, 2, 3], [4, 5, 6]])}
 
         @staticmethod
         def batch_decode(sequences: list[list[int]], **options: object) -> list[str]:
@@ -768,17 +735,6 @@ def test_convert_timeout_before_first_page(
     assert "before page 1" in result.failures[0].detail
 
 
-class _Ticker:
-    """monotonic() stand-in advancing 100s per call — deadlines trip on cue."""
-
-    def __init__(self, start_at: int = 0) -> None:
-        self._calls = start_at
-
-    def __call__(self) -> float:
-        self._calls += 1
-        return self._calls * 100.0
-
-
 def test_convert_timeout_during_page(backend_factory: Callable[..., tuple[ModuleType, DocumentBackend, _FakeEngine]], monkeypatch: pytest.MonkeyPatch) -> None:
     impl, backend, _ = backend_factory(responses=[_tag("text", 10, 10, 90, 90), "words"])
     monkeypatch.setattr(impl, "monotonic", _Ticker(start_at=-1))  # started=0, checks at 100/200
@@ -939,3 +895,47 @@ def test_image_analysis_without_caption_drops_the_figure(
     )
     result = backend.convert(_request())
     assert result.pages[0].blocks == []
+
+
+@pytest.fixture
+def backend_factory(
+    impl_loader: Callable[[], ModuleType],
+    monkeypatch: pytest.MonkeyPatch,
+) -> Callable[..., tuple[ModuleType, DocumentBackend, _FakeEngine]]:
+    """A MineruBackend over scripted pages and a scripted engine."""
+
+    def _make(
+        pages: list[tuple[str, tuple[float, float]]] | None = None,
+        responses: list[object] | None = None,
+        options: dict[str, str | int | float | bool] | None = None,
+        error_at: int | None = None,
+    ) -> tuple[ModuleType, DocumentBackend, _FakeEngine]:
+        impl = impl_loader()
+        monkeypatch.setattr(impl, "pdfium", _fake_pdfium(pages if pages is not None else _ONE_PAGE))
+        monkeypatch.setattr(impl, "_raster", lambda payload, number: _png())
+        engine = _FakeEngine(responses or [], error_at=error_at)
+        monkeypatch.setattr(impl, "_load_engine", lambda config: engine)
+        merged: dict[str, str | int | float | bool] = {"effort": "medium"}
+        merged.update(options or {})
+        backend = impl.MineruBackend(impl.BackendConfig(name="mineru", options=merged))
+        return impl, backend, engine
+
+    return _make
+
+
+def _request(
+    *,
+    page_range: PageRange | None = None,
+    timeout_s: float | None = None,
+    cancellation: Callable[[], bool] | None = None,
+    max_output_chars: int | None = None,
+    max_context_tokens: int | None = None,
+) -> ConversionRequest:
+    return ConversionRequest(
+        source=_PDF_SOURCE,
+        page_range=page_range,
+        timeout_s=timeout_s,
+        cancellation=cancellation,
+        max_output_chars=max_output_chars,
+        max_context_tokens=max_context_tokens,
+    )

@@ -110,14 +110,19 @@ jobs:
         cat >> "$GITHUB_STEP_SUMMARY" <<EOF
         ### extras availability - ${{ matrix.os }} / ${{ matrix.python-version }}
 
-        **Known cause of expected failures:** onnxruntime (pulled by the
-        mineru extra) publishes **no free-threaded macOS/Windows wheels** and
-        has no sdist, so uv sync --all-extras cannot resolve on those cells.
-        PEP 508 has no free-threaded marker, so it cannot be gated out.
+        **Known cause of expected failures:** native dependencies whose
+        upstreams publish no wheel for the cell's interpreter and platform.
+        Observed on 2026-10-26: onnxruntime (no free-threaded wheel, no sdist)
+        on Windows 3.14t; nvidia-cudnn-frontend and pynvvideocodec (both from
+        the vllm extra's chain, which resolves on macOS and Linux) on macOS
+        3.14 and Ubuntu 3.14t. The mineru extra no longer contributes a cause:
+        since 2026-10-26 it installs first-party runtimes (torch, transformers)
+        instead of the mineru package. PEP 508 has no free-threaded marker, so
+        these cannot be gated out.
 
-        **Re-entry condition:** when onnxruntime publishes free-threaded
-        macOS/Windows wheels, drop continue-on-error from this job and it
-        becomes the gate root AGENTS.md rule 10 always claimed to have.
+        **Re-entry condition:** when those upstreams publish wheels for the
+        cell, drop continue-on-error from this job and it becomes the gate
+        root AGENTS.md rule 10 always claimed to have.
 
         See docs/development/ci-cd.md.
         EOF
@@ -125,7 +130,7 @@ jobs:
     - name: Annotate expected failure
       if: failure()
       run: |
-        echo "::notice title=extras availability::expected: onnxruntime ships no free-threaded macOS/Windows wheels; see the step summary for the re-entry condition"
+        echo "::notice title=extras availability::expected: a native dependency ships no wheel for this cell (see the step summary for the observed packages and the re-entry condition)"
 
   quality:
     runs-on: ubuntu-latest

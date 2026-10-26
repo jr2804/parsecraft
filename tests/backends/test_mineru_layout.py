@@ -16,18 +16,6 @@ from parsecraft.backends.mineru._layout import (
 )
 
 
-def _block(
-    kind: str = "text",
-    x0: float = 0.1,
-    y0: float = 0.1,
-    x1: float = 0.4,
-    y1: float = 0.2,
-    angle: int = 0,
-    merge_prev: bool = False,
-) -> LayoutBlock:
-    return LayoutBlock(type=kind, x0=x0, y0=y0, x1=x1, y1=y1, angle=angle, merge_prev=merge_prev)
-
-
 def test_parse_layout_basic_block() -> None:
     text = "<|box_start|>100 100 400 200<|box_end|><|ref_start|>text<|ref_end|>hello"
     blocks = parse_layout(text)
@@ -142,3 +130,15 @@ def test_covered_ratio_boundary() -> None:
     # Exactly 90% coverage counts as covered (>= boundary, upstream semantics).
     outer = _block(x0=0.0, x1=0.9, y0=0.0, y1=1.0)
     assert _covered(inner, outer) is True
+
+
+def _block(
+    kind: str = "text",
+    x0: float = 0.1,
+    y0: float = 0.1,
+    x1: float = 0.4,
+    y1: float = 0.2,
+    angle: int = 0,
+    merge_prev: bool = False,
+) -> LayoutBlock:
+    return LayoutBlock(type=kind, x0=x0, y0=y0, x1=x1, y1=y1, angle=angle, merge_prev=merge_prev)
