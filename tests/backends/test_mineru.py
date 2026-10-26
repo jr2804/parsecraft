@@ -259,6 +259,10 @@ def transformers_stub(monkeypatch: pytest.MonkeyPatch) -> Iterator[_Transformers
     stub = _TransformersStub()
     _TransformersStub.current = stub
     monkeypatch.setitem(sys.modules, "transformers", stub)
+    # A sys.modules stub carries no dist metadata, and the canonical light env
+    # (CI) installs no transformers — pin a version inside the window so
+    # require_transformers() sees the same fiction as the import (test_ocr.py).
+    monkeypatch.setattr(_common, "_package_version", lambda _name: "5.17.0")
     yield stub
     _TransformersStub.current = None
 
