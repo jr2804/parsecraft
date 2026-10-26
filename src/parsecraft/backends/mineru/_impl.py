@@ -1,57 +1,63 @@
-"""Heavy MinerU implementation — ``mineru`` imported at top level.
+"""Heavy native MinerU2.5 implementation — transformers imported at top level by design.
 
-Loaded only from the light factory at instantiation (``importlib``-based, never
-an inline import). Conversion-verified against mineru 4.0.11 on 2026-10-09 for
-PDF: an 80-page text PDF at ``effort="flash"`` produced 1382 content-list items
-in 21.6 s with ``page_idx`` 0-based.
-
-Design notes:
-- ``analyze()`` stays cheap: PDFs are probed with ``pypdfium2`` (a ``docvortex``
-  dependency, therefore present with this extra) — no models load and nothing
-  is downloaded.
-- ``convert()`` runs ONE ``doc_analyze`` pass at ``effort="flash"`` /
-  ``parse_mode="auto"``. On a text PDF that path loads no weights at all
-  (measured: ``$MINERU_HOME/models`` stays empty), so the default is CPU-only
-  and weight-free. Scanned pages and higher efforts load the VLM checkpoint
-  (see the licence statement in ``mineru.py``) and want a GPU; the executor's
-  timeout deadline bounds that case.
-- ``page_range`` is honoured by POST-FILTERING, never passed downstream:
-  mineru's own page-range base is unverified (ADR-0007), so the adapter
-  converts and then keeps only the requested pages. ``page_index_map`` exists
-  upstream as a cheaper selection input but is deliberately unused until its
-  base is verified.
-- MinerU downloads its own weights into ``$MINERU_HOME/models``; ``create()``
-  points ``MINERU_HOME`` at a revision directory of the managed cache (via
-  ``assets.manager.default_cache_dir`` + ``model_revision_dir``) unless the user
-  already set it, so ``models list``/``clean``/``remove`` see and reclaim the
-  weights (ADR-0007 d4) and the offline carve-out applies.
-- ``image_analysis`` defaults to off: the declared surface needs text chunks,
-  and skipping the visual-crop stage is both faster (21.6 s vs 30.5 s on the
-  verified fixture) and avoids rasterizing every page.
+Loaded only from the light factory at instantiation (importlib-based, never an
+inline import). The pinned checkpoint is a stock
+``Qwen2VLForConditionalGeneration``; the two-step protocol (layout detection,
+then per-block recognition) is ported from ``mineru-vl-utils`` (Apache-2.0,
+MinerU Team — attribution in ADR-0007). The ``mineru`` pip package is not a
+dependency of this backend and never runs.
 """
 
 from __future__ import annotations
 
 import base64
 import hashlib
-import os
+import re
+from dataclasses import dataclass
 from enum import StrEnum
-from html.parser import HTMLParser
-from pathlib import Path
+from io import BytesIO
 from time import monotonic
-from typing import Any
+from typing import Protocol
 
-import pypdfium2 as pdfium  # base dependency (ADR-0008 d10), not an extra
-from mineru.backend.analyze import doc_analyze  # ty: ignore[unresolved-import] — extra not installed in dev/CI
-from mineru.render import render_content_list  # ty: ignore[unresolved-import] — extra not installed in dev/CI
+import pypdfium2 as pdfium
+from PIL import Image
+from transformers import (
+    AutoConfig,
+    AutoImageProcessor,
+    AutoProcessor,
+    PretrainedConfig,
+    Qwen2VLForConditionalGeneration,
+)
 
-from parsecraft.assets.manager import default_cache_dir, model_revision_dir
 from parsecraft.backends.errors import BackendError
+from parsecraft.backends.mineru._content import (
+    TableTextExtractor,
+    is_non_text,
+    markdown_table_to_html,
+    otsl_to_html,
+    parse_image_analysis,
+    wrap_equation,
+)
+from parsecraft.backends.mineru._layout import (
+    KNOWN_TYPES,
+    SKIP_EXTRACTION,
+    LayoutBlock,
+    parse_layout,
+    strip_covered,
+)
 from parsecraft.backends.mineru.mineru import (
     DESCRIPTOR,
     MINERU_ASSET,
     MINERU_BACKEND_VERSION,
     MINERU_NAME,
+)
+from parsecraft.backends.ocr._common import (
+    DEFAULT_PAGE_MAX_NEW_TOKENS,
+    chat_prompt,
+    model_source_and_revision,
+    rasterize_page,
+    require_transformers,
+    tokenizer_load_kwargs,
 )
 from parsecraft.backends.options import coerce_option_value
 from parsecraft.backends.protocol import (
@@ -61,7 +67,6 @@ from parsecraft.backends.protocol import (
     BackendResult,
     ConversionRequest,
     DocumentBackend,
-    PageSignal,
     SourceDocument,
 )
 from parsecraft.backends.source import path_from_file_uri
@@ -73,36 +78,36 @@ from parsecraft.ir.models import (
     FailureCode,
     PageRange,
     PageResult,
+    PageSignal,
     PassFailure,
     PassKind,
     StructuredChunk,
     utcnow,
 )
 
-#: Content List V1 ``type`` -> IR chunk kind. Page furniture maps to the IR's
-#: own furniture kinds; ``page_number`` is dropped (see ``_map_item``).
-_ITEM_KINDS: dict[str, ChunkKind] = {
-    "text": ChunkKind.PARAGRAPH,
-    "list": ChunkKind.LIST,
-    "index": ChunkKind.LIST,
-    "table": ChunkKind.TABLE,
-    "equation": ChunkKind.FORMULA,
-    "image": ChunkKind.FIGURE,
-    "code": ChunkKind.CODE,
-    "header": ChunkKind.HEADER,
-    "footer": ChunkKind.FOOTER,
-}
+# ── Protocol constants (Apache-2.0, mineru-vl-utils) ─────────────────────────
 
-_MINERU_MEDIA_TYPE = "application/pdf"
+#: Layout-detection prompt; the model answers with tagged boxes.
+LAYOUT_PROMPT = "\nLayout Detection:"
+
+#: Per-type recognition prompts; anything unlisted gets the text default.
+RECOGNITION_PROMPTS: dict[str, str] = {
+    "table": "\nTable Recognition:",
+    "equation": "\nFormula Recognition:",
+    "image": "\nImage Analysis:",
+    "chart": "\nImage Analysis:",
+}
+DEFAULT_RECOGNITION_PROMPT = "\nText Recognition:"
+
+#: The layout input resolution the checkpoint was trained on.
+_LAYOUT_SIZE: tuple[int, int] = (1036, 1036)
+
+#: Types whose recognition output feeds the image-analysis classifier.
+_IMAGE_ANALYSIS_TYPES: frozenset[str] = frozenset({"image", "chart"})
 
 
 class MineruEffort(StrEnum):
-    """MinerU's pluggable parse effort — the ``effort`` option's value domain.
-
-    ``flash`` is the weight-free text path; ``medium``/``high``/``xhigh``
-    escalate to the VLM. A StrEnum (not ``Literal``) per the type-rigor rule:
-    the domain is one closed, named set its validator and error message share.
-    """
+    """Effort dial — the only quality knob the native backend has."""
 
     FLASH = "flash"
     MEDIUM = "medium"
@@ -112,147 +117,516 @@ class MineruEffort(StrEnum):
 
 _DEFAULT_EFFORT = MineruEffort.FLASH
 
+#: Generation budget per recognition pass, by effort (tokens). The request's
+#: ``max_context_tokens`` always wins over the dial.
+EFFORT_BUDGETS: dict[MineruEffort, int] = {
+    MineruEffort.FLASH: DEFAULT_PAGE_MAX_NEW_TOKENS,
+    MineruEffort.MEDIUM: DEFAULT_PAGE_MAX_NEW_TOKENS,
+    MineruEffort.HIGH: 4096,
+    MineruEffort.XHIGH: 8192,
+}
+
+#: Layout type → IR chunk kind.
+_KIND_BY_TYPE: dict[str, ChunkKind] = {
+    "text": ChunkKind.PARAGRAPH,
+    "list_item": ChunkKind.LIST,
+    "index": ChunkKind.LIST,
+    "table": ChunkKind.TABLE,
+    "equation": ChunkKind.FORMULA,
+    "formula_number": ChunkKind.PARAGRAPH,
+    "code": ChunkKind.CODE,
+    "algorithm": ChunkKind.CODE,
+    "image": ChunkKind.FIGURE,
+    "chart": ChunkKind.FIGURE,
+    "image_caption": ChunkKind.CAPTION,
+    "table_caption": ChunkKind.CAPTION,
+    "code_caption": ChunkKind.CAPTION,
+    "caption": ChunkKind.CAPTION,
+    "header": ChunkKind.HEADER,
+    "footer": ChunkKind.FOOTER,
+    "aside_text": ChunkKind.PARAGRAPH,
+    "ref_text": ChunkKind.PARAGRAPH,
+    "phonetic": ChunkKind.PARAGRAPH,
+    "table_footnote": ChunkKind.PARAGRAPH,
+    "image_footnote": ChunkKind.PARAGRAPH,
+    "footnote": ChunkKind.PARAGRAPH,
+    "page_footnote": ChunkKind.PARAGRAPH,
+    "title": ChunkKind.HEADING,
+    "doc_title": ChunkKind.HEADING,
+    "paragraph_title": ChunkKind.HEADING,
+}
+
+#: Heading levels for the title family (the layout protocol distinguishes
+#: document titles from section titles, nothing finer).
+_HEADING_LEVELS: dict[str, str] = {"doc_title": "1", "title": "1", "paragraph_title": "2"}
+
+#: Page furniture and container blocks that never produce IR chunks.
+_DROP_TYPES: frozenset[str] = frozenset({"page_number", "list", "equation_block", "image_block"})
+
+
+# ── Engine: the loaded checkpoint ────────────────────────────────────────────
+
+
+class _Tensor(Protocol):
+    """The tensor surface generation needs (satisfied by torch)."""
+
+    def to(self, *, device: object = ..., dtype: object = ...) -> _Tensor: ...
+
+    def tolist(self) -> list[list[int]]: ...
+
+
+class _GenerateOutput(Protocol):
+    """The generate() return surface (satisfied by torch)."""
+
+    def tolist(self) -> list[list[int]]: ...
+
+
+class _Processor(Protocol):
+    """The processor surface the engine needs (satisfied by transformers)."""
+
+    def apply_chat_template(self, messages: object, **kwargs: object) -> str: ...
+
+    def __call__(self, **kwargs: object) -> dict[str, _Tensor]: ...
+
+    def batch_decode(self, sequences: object, **kwargs: object) -> list[str]: ...
+
+
+class _Model(Protocol):
+    """The model surface the engine needs (satisfied by transformers)."""
+
+    @property
+    def device(self) -> object: ...
+
+    @property
+    def dtype(self) -> object: ...
+
+    def generate(self, **kwargs: object) -> _GenerateOutput: ...
+
+
+class _Engine:
+    """Loaded checkpoint + processor: greedy batched generation.
+
+    One sampling recipe for every pass — the upstream per-type penalties are
+    logits processors HF ``generate`` does not support, so greedy with
+    ``no_repeat_ngram_size`` is the ported remainder. Requests are processed
+    in order, one batch at a time: determinism over padding efficiency.
+    """
+
+    def __init__(self, model: _Model, processor: _Processor, skip_token_ids: frozenset[int]) -> None:
+        self._model = model
+        self._processor = processor
+        self._skip_token_ids = skip_token_ids
+
+    def generate(self, images: list[Image.Image], prompts: list[str], max_new_tokens: int) -> list[str]:
+        """Recognize each image against its prompt; one text per pair."""
+        templated = [chat_prompt(self._processor, user_text=prompt) for prompt in prompts]
+        inputs = self._processor(text=templated, images=images, padding=True, return_tensors="pt")
+        moved = {key: value.to(device=self._model.device, dtype=self._model.dtype) for key, value in inputs.items()}
+        output_ids = self._model.generate(
+            **moved,
+            use_cache=True,
+            do_sample=False,
+            no_repeat_ngram_size=100,
+            repetition_penalty=1.0,
+            max_new_tokens=max_new_tokens,
+        )
+        rows = output_ids.tolist()
+        input_rows = moved["input_ids"].tolist()
+        results: list[str] = []
+        for row, input_row in zip(rows, input_rows, strict=True):
+            continuation = [token for token in row[len(input_row) :] if token not in self._skip_token_ids]
+            results.append(self._processor.batch_decode([continuation], skip_special_tokens=False, clean_up_tokenization_spaces=False)[0])
+        return results
+
+
+def _load_engine(config: BackendConfig) -> _Engine:
+    """Load the pinned checkpoint — assets ensured, versions checked, errors typed."""
+    require_transformers()
+    model_source, revision = model_source_and_revision(MINERU_ASSET, config)
+    try:
+        model = _load_model(model_source, revision)
+        processor = _load_processor(model_source, revision)
+    except BackendError:
+        raise
+    except Exception as exc:  # model/stack load boundary — typed, never raw
+        where = f" at revision {revision[:12]}" if revision is not None else ""
+        msg = f"failed to load model {model_source!r}{where}: {type(exc).__name__}: {exc}"
+        raise BackendError(msg) from exc
+    return _Engine(model, processor, _skip_token_ids(model, processor))
+
+
+def _load_model(model_source: str, revision: str | None) -> _Model:
+    """Load the Qwen2VL checkpoint with the tie-weights fix.
+
+    transformers 5.10 randomly re-initializes an unsaved ``lm_head`` unless
+    the text config's ``tie_word_embeddings`` is synced with the raw config
+    dict (verified upstream in ``mineru-vl-utils`` ``transformers_loading``).
+    """
+    if revision is None:
+        config = AutoConfig.from_pretrained(model_source)
+        raw_config, _ = PretrainedConfig.get_config_dict(model_source)
+    else:
+        config = AutoConfig.from_pretrained(model_source, revision=revision)
+        raw_config, _ = PretrainedConfig.get_config_dict(model_source, revision=revision)
+    text_config = config.get_text_config(decoder=True)
+    tied = raw_config.get("tie_word_embeddings")
+    if tied is None:
+        tied = getattr(text_config, "tie_word_embeddings", None)
+    if tied is not None:
+        text_config.tie_word_embeddings = tied
+        config.tie_word_embeddings = tied
+    if revision is None:
+        return Qwen2VLForConditionalGeneration.from_pretrained(model_source, config=config, device_map="auto", dtype="auto")
+    return Qwen2VLForConditionalGeneration.from_pretrained(model_source, config=config, device_map="auto", dtype="auto", revision=revision)
+
+
+def _load_processor(model_source: str, revision: str | None) -> _Processor:
+    """Load the processor; the image side goes through the torchvision backend
+    (the read-only video processor cannot carry the backend kwarg).
+    """
+    if revision is None:
+        processor = AutoProcessor.from_pretrained(model_source, **tokenizer_load_kwargs())
+        processor.image_processor = AutoImageProcessor.from_pretrained(model_source, backend="torchvision")
+        return processor
+    processor = AutoProcessor.from_pretrained(model_source, revision=revision, **tokenizer_load_kwargs())
+    processor.image_processor = AutoImageProcessor.from_pretrained(model_source, backend="torchvision", revision=revision)
+    return processor
+
+
+def _skip_token_ids(model: _Model, processor: _Processor) -> frozenset[int]:
+    """Collect bos/eos/pad ids from every place transformers keeps them."""
+    ids: set[int] = set()
+    holders = [
+        getattr(model, "generation_config", None),
+        getattr(model, "config", None),
+        getattr(processor, "tokenizer", None),
+    ]
+    for holder in holders:
+        if holder is None:
+            continue
+        for attr in ("bos_token_id", "eos_token_id", "pad_token_id"):
+            value = getattr(holder, attr, None)
+            if isinstance(value, int):
+                ids.add(value)
+            elif isinstance(value, (list, tuple)):
+                ids.update(token for token in value if isinstance(token, int))
+    return frozenset(ids)
+
+
+# ── Backend ──────────────────────────────────────────────────────────────────
+
 
 class MineruBackend:
-    """Instantiated MinerU backend: cheap structural analyze + paged convert."""
+    """Native two-step conversion: layout detection, then block recognition."""
 
-    name = DESCRIPTOR.name
+    name = MINERU_NAME
     capabilities = DESCRIPTOR.capabilities
 
     def __init__(self, config: BackendConfig) -> None:
         self._config = config
         self._effort = _effort(config)
         self._image_analysis = _image_analysis(config)
-
-    def convert(self, request: ConversionRequest) -> BackendResult:
-        """Bound-checked conversion into typed IR (never raises)."""
-        started = monotonic()
-        reference = BackendRef(
-            name=self.name,
-            version=MINERU_BACKEND_VERSION,
-            model_id=DESCRIPTOR.capabilities.model_asset.model_id if DESCRIPTOR.capabilities.model_asset else None,
-            model_revision=DESCRIPTOR.capabilities.model_asset.model_revision if DESCRIPTOR.capabilities.model_asset else None,
-        )
-        if request.cancellation is not None and request.cancellation():
-            return _result(reference, [], [_failure(request, started, FailureCode.CANCELLED, "cancelled before conversion")], started)
-        configure_mineru_env()
-        data = source_bytes(request.source)
-        try:
-            middle_json, _model_json = doc_analyze(
-                data,
-                effort=self._effort,
-                parse_mode="auto",
-                image_analysis=self._image_analysis,
-                file_suffix="pdf",
-            )
-        except Exception as exc:  # mineru load/parse boundary — typed, never raw
-            detail = f"mineru conversion failed: {type(exc).__name__}: {exc}"
-            return _result(reference, [], [_failure(request, started, FailureCode.BACKEND_ERROR, detail)], started)
-        if request.timeout_s is not None and monotonic() - started > request.timeout_s:
-            return _result(reference, [], [_failure(request, started, FailureCode.TIMEOUT, "conversion exceeded timeout_s")], started)
-        pages, failure = _select(request, middle_json, started)
-        failures = [] if failure is None else [failure]
-        return _result(reference, pages, failures, started)
+        # FLASH stays weight-free until a weak-text page forces the VLM;
+        # every other effort loads (and fails fast) here.
+        self._engine: _Engine | None = None if self._effort is MineruEffort.FLASH else _load_engine(config)
 
     @staticmethod
     def analyze(source: SourceDocument) -> AnalysisResult:
-        """Cheap per-page signals: page count + native text length, no models."""
-        data = source_bytes(source)
-        signals = _pdf_signals(data)
+        """Cheap model-free pypdfium2 signals — unchanged by the native path."""
+        payload = source_bytes(source)
+        signals = _pdf_signals(payload)
+        if not signals:
+            signals = [PageSignal(page_number=1, has_native_text=False, text_chars=0, image_count=0, blank=True)]
         return AnalysisResult(
-            source_hash=hashlib.sha256(data).hexdigest(),
+            source_hash=hashlib.sha256(payload).hexdigest(),
             page_count=len(signals),
             signals=signals,
         )
 
+    def convert(self, request: ConversionRequest) -> BackendResult:
+        """Convert the requested window page by page, honoring every bound."""
+        started = monotonic()
+        payload = source_bytes(request.source)
+        signals = _pdf_signals(payload)
+        page_count = len(signals) or 1
+        window = _window(request.page_range, page_count)
+        if window is None:
+            assert request.page_range is not None  # noqa: S101 — narrowed by _window
+            failure = _failure(
+                request,
+                started,
+                FailureCode.INVALID_INPUT,
+                f"page range {request.page_range.start}-{request.page_range.end} outside the {page_count}-page document",
+            )
+            return _result([], [failure], started)
+        if _cancelled(request):
+            failure = _failure(request, started, FailureCode.CANCELLED, "cancelled before conversion")
+            return _result([], [failure], started)
 
-class _TableTextExtractor(HTMLParser):
-    """Flatten an HTML table body into ``cell | cell`` rows (stdlib only).
+        pages: list[PageResult] = []
+        failures: list[PassFailure] = []
+        emitted = 0
+        for number in window:
+            if _cancelled(request):
+                failures.append(_failure(request, started, FailureCode.CANCELLED, f"cancelled before page {number}"))
+                break
+            if _timed_out(request, started):
+                failures.append(_failure(request, started, FailureCode.TIMEOUT, f"deadline passed before page {number}"))
+                break
+            try:
+                page, page_chars = self._convert_page(payload, number, _signal(signals, number), request)
+            except Exception as exc:  # per-page boundary: one bad page never sinks the run
+                failures.append(
+                    _failure(
+                        request,
+                        started,
+                        FailureCode.BACKEND_ERROR,
+                        f"page {number}: {type(exc).__name__}: {exc}",
+                    )
+                )
+                pages.append(PageResult(page_number=number))
+                continue
+            if _timed_out(request, started):
+                failures.append(_failure(request, started, FailureCode.TIMEOUT, f"deadline passed during page {number}"))
+                break
+            if request.max_output_chars is not None and emitted + page_chars > request.max_output_chars:
+                failures.append(
+                    _failure(
+                        request,
+                        started,
+                        FailureCode.BUDGET_EXCEEDED,
+                        f"page {number} would exceed the {request.max_output_chars}-character output budget",
+                    )
+                )
+                break
+            pages.append(page)
+            emitted += page_chars
+        return _result(pages, failures, started)
 
-    MinerU hands tables over as HTML; the IR wants text it can project to
-    Markdown, so tags become separators rather than surviving as markup.
+    # ── Per-page conversion ──────────────────────────────────────────────
+
+    def _convert_page(
+        self,
+        payload: bytes,
+        number: int,
+        signal: PageSignal,
+        request: ConversionRequest,
+    ) -> tuple[PageResult, int]:
+        """One page: the VLM two-step, or the weight-free text layer for FLASH."""
+        width, height = _page_size(payload, number)
+        if self._effort is MineruEffort.FLASH and signal.has_native_text:
+            chunks = _text_chunks(payload, number)
+            page = PageResult(page_number=number, width=width, height=height, blocks=chunks)
+            return page, sum(len(chunk.content) for chunk in chunks)
+        png = _raster(payload, number)
+        page_image = Image.open(BytesIO(png)).convert("RGB")
+        chunks, assets = self._vlm_page(page_image, number, width, height, request)
+        page = PageResult(page_number=number, width=width, height=height, blocks=chunks, assets=assets)
+        return page, sum(len(chunk.content) for chunk in chunks)
+
+    def _vlm_page(
+        self,
+        page_image: Image.Image,
+        number: int,
+        width_pts: float,
+        height_pts: float,
+        request: ConversionRequest,
+    ) -> tuple[list[StructuredChunk], list[ExtractedAsset]]:
+        """The two-step protocol on one rendered page."""
+        engine = self._require_engine()
+        budget = request.max_context_tokens or EFFORT_BUDGETS[self._effort]
+        layout_input = page_image.resize(_LAYOUT_SIZE, Image.Resampling.BICUBIC)
+        layout_text = engine.generate([layout_input], [LAYOUT_PROMPT], budget)[0]
+        blocks = strip_covered(parse_layout(layout_text))
+
+        # Figure crops exist whenever the block does — the crop is the asset.
+        figure_crops = {id(block): _crop_block(page_image, block) for block in blocks if block.type in _IMAGE_ANALYSIS_TYPES}
+        extracted = [block for block in blocks if block.type not in SKIP_EXTRACTION and (block.type not in _IMAGE_ANALYSIS_TYPES or self._image_analysis)]
+        images = [figure_crops.get(id(block)) or _crop_block(page_image, block) for block in extracted]
+        prompts = [RECOGNITION_PROMPTS.get(block.type, DEFAULT_RECOGNITION_PROMPT) for block in extracted]
+        outputs = engine.generate(images, prompts, budget) if images else []
+        contents = {id(block): output for block, output in zip(extracted, outputs, strict=True)}
+        return _blocks_to_chunks(blocks, contents, figure_crops, number, width_pts, height_pts, self._image_analysis)
+
+    def _require_engine(self) -> _Engine:
+        """FLASH defers the weights until a page actually needs them."""
+        if self._engine is None:
+            self._engine = _load_engine(self._config)
+        return self._engine
+
+
+# ── Block → IR mapping ───────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class _Mapped:
+    """One block's mapping decision: kind, text, metadata, optional table rows."""
+
+    kind: ChunkKind
+    text: str
+    metadata: dict[str, str]
+    rows: tuple[tuple[str, ...], ...] | None = None
+
+
+def _blocks_to_chunks(
+    blocks: list[LayoutBlock],
+    contents: dict[int, str],
+    figure_crops: dict[int, Image.Image],
+    number: int,
+    width_pts: float,
+    height_pts: float,
+    image_analysis: bool,
+) -> tuple[list[StructuredChunk], list[ExtractedAsset]]:
+    """Map layout blocks (with recognized content) to IR chunks and assets."""
+    chunks: list[StructuredChunk] = []
+    assets: list[ExtractedAsset] = []
+    text_tail: StructuredChunk | None = None
+    for block in blocks:
+        mapped = _map_block(block, contents.get(id(block)), image_analysis)
+        if mapped is None:
+            continue
+        if block.merge_prev and mapped.kind is ChunkKind.PARAGRAPH and text_tail is not None:
+            text_tail.content = f"{text_tail.content}\n{mapped.text}"
+            continue
+        bbox = _block_bbox(block, width_pts, height_pts)
+        chunk = StructuredChunk(
+            id=f"mineru-{number}-b{len(chunks)}",
+            kind=mapped.kind,
+            content=mapped.text,
+            page_number=number,
+            reading_order=len(chunks),
+            bbox=bbox,
+            rows=mapped.rows,
+            metadata={"backend": MINERU_NAME, **mapped.metadata},
+        )
+        if block.type in _IMAGE_ANALYSIS_TYPES and id(block) in figure_crops:
+            asset = _image_asset(figure_crops[id(block)], bbox, number, len(assets))
+            assets.append(asset)
+            chunk.metadata["asset_id"] = asset.id
+        chunks.append(chunk)
+        text_tail = chunk if mapped.kind is ChunkKind.PARAGRAPH else None
+    return chunks, assets
+
+
+def _map_block(
+    block: LayoutBlock,
+    content: str | None,
+    image_analysis: bool,
+) -> _Mapped | None:
+    """One block's mapping; ``None`` drops the block."""
+    if block.type in _DROP_TYPES or block.type not in KNOWN_TYPES or block.type not in _KIND_BY_TYPE:
+        return None
+    kind = _KIND_BY_TYPE[block.type]
+    if kind is ChunkKind.FIGURE:
+        # A figure lives even without recognized content — the crop is the asset.
+        if image_analysis and content and content.strip():
+            return _image_analysis_content(content)
+        return _Mapped(ChunkKind.FIGURE, "", {})
+    if is_non_text(content):
+        return None
+    text = (content or "").strip()
+    metadata: dict[str, str] = {}
+    if block.type in _HEADING_LEVELS:
+        metadata["heading_level"] = _HEADING_LEVELS[block.type]
+    if kind is ChunkKind.FORMULA:
+        text = wrap_equation(text)
+    elif kind is ChunkKind.TABLE:
+        extractor = TableTextExtractor()
+        extractor.feed(otsl_to_html(text))
+        extractor.close()
+        return _Mapped(kind, extractor.render(), metadata, extractor.rows())
+    return _Mapped(kind, text, metadata)
+
+
+def _image_analysis_content(text: str) -> _Mapped | None:
+    """Classified image content: a pure table becomes a table, a pure formula
+    an equation, everything else a figure with its caption.
     """
-
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self._rows: list[list[str]] = []
-        self._row: list[str] = []
-        self._cell: list[str] = []
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag == "tr":
-            self._row = []
-        elif tag in {"td", "th"}:
-            self._cell = []
-
-    def handle_data(self, data: str) -> None:
-        self._cell.append(data)
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag in {"td", "th"}:
-            text = " ".join("".join(self._cell).split())
-            if text:
-                self._row.append(text)
-            self._cell = []
-        elif tag == "tr" and self._row:
-            self._rows.append(self._row)
-
-    def render(self) -> str:
-        return "\n".join(" | ".join(row) for row in self._rows)
+    fields = parse_image_analysis(text)
+    classification = fields.get("class", "")
+    if classification == "pure_table":
+        table = markdown_table_to_html(fields.get("content", "")) or otsl_to_html(fields.get("content", ""))
+        extractor = TableTextExtractor()
+        extractor.feed(table)
+        extractor.close()
+        return _Mapped(ChunkKind.TABLE, extractor.render(), {}, extractor.rows())
+    if classification == "pure_formula":
+        return _Mapped(ChunkKind.FORMULA, wrap_equation(fields.get("content", "")), {})
+    caption = fields.get("caption", "")
+    return _Mapped(ChunkKind.FIGURE, caption, {}) if caption else None
 
 
-def create(config: BackendConfig) -> DocumentBackend:
-    """Instantiate the backend — the sanctioned heavy-import boundary."""
-    configure_mineru_env()
-    return MineruBackend(config)
-
-
-def configure_mineru_env() -> None:
-    """Point MinerU's weight store inside the managed cache layout (ADR-0007 d4).
-
-    MinerU fetches its own weights into ``$MINERU_HOME/models`` at conversion
-    time. Without this they land in ``~/.mineru``, where ``parsecraft models
-    list`` cannot see them and ``models clean``/``remove`` cannot reclaim them.
-    The path is a revision directory of the managed layout, so the cache
-    tooling reads and reclaims it like any other model. An explicitly set
-    ``MINERU_HOME`` always wins — that is the user's own cache choice.
-    """
-    if os.environ.get("MINERU_HOME"):
-        return
-    asset = MINERU_ASSET
-    os.environ["MINERU_HOME"] = str(model_revision_dir(default_cache_dir(), asset.model_id, asset.model_revision))
-
-
-def _effort(config: BackendConfig) -> MineruEffort:
-    """Validate the pluggable ``effort`` option; defaults to the verified ``flash``."""
-    raw = config.options.get("effort", _DEFAULT_EFFORT)
+def _block_bbox(block: LayoutBlock, width_pts: float, height_pts: float) -> BBox | None:
+    """Fractional layout coordinates → source points; malformed boxes vanish."""
     try:
-        return MineruEffort(raw)
+        return BBox(
+            x0=block.x0 * width_pts,
+            y0=block.y0 * height_pts,
+            x1=block.x1 * width_pts,
+            y1=block.y1 * height_pts,
+        )
     except ValueError:
-        expected = ", ".join(member.value for member in MineruEffort)
-        msg = f"unknown effort {raw!r}; expected one of: {expected}"
-        raise BackendError(msg) from None
+        return None
 
 
-def _image_analysis(config: BackendConfig) -> bool:
-    """Read the ``image_analysis`` option; defaults to off (see module docstring).
+def _image_asset(crop: Image.Image, bbox: BBox | None, number: int, index: int) -> ExtractedAsset:
+    """The cropped region as a content-addressed inline asset."""
+    buffer = BytesIO()
+    crop.save(buffer, "PNG")
+    payload = buffer.getvalue()
+    return ExtractedAsset(
+        id=f"mineru-{number}-a{index}",
+        kind=AssetKind.IMAGE,
+        media_type="image/png",
+        uri="data:image/png;base64," + base64.b64encode(payload).decode("ascii"),
+        bbox=bbox,
+        sha256=hashlib.sha256(payload).hexdigest(),
+    )
 
-    The value is coerced first: a library caller may pass the string ``"true"``
-    (the CLI's ``--backend-option`` surface is text), and a validator that says
-    "must be a boolean" should not reject the obvious spelling of one.
-    """
-    raw = coerce_option_value(config.options.get("image_analysis", False))
-    if not isinstance(raw, bool):
-        msg = f"image_analysis option must be a boolean, got {type(raw).__name__}"
-        raise BackendError(msg)
-    return raw
+
+def _crop_block(page_image: Image.Image, block: LayoutBlock) -> Image.Image:
+    """Crop a block's region, rotated upright for recognition."""
+    width, height = page_image.size
+    x0 = max(0, min(int(block.x0 * width), width))
+    y0 = max(0, min(int(block.y0 * height), height))
+    x1 = max(0, min(int(block.x1 * width), width))
+    y1 = max(0, min(int(block.y1 * height), height))
+    crop = page_image.crop((x0, y0, x1, y1))
+    rotations = {
+        90: Image.Transpose.ROTATE_90,
+        180: Image.Transpose.ROTATE_180,
+        270: Image.Transpose.ROTATE_270,
+    }
+    if block.angle in rotations:
+        crop = crop.transpose(rotations[block.angle])
+    return crop
 
 
-def _pdf_signals(data: bytes) -> list[PageSignal]:
-    """Per-page native text length via pypdfium2 (no models, no downloads)."""
-    document = pdfium.PdfDocument(data)
+def _text_chunks(payload: bytes, number: int) -> list[StructuredChunk]:
+    """FLASH text path: the text layer split on blank lines, one chunk each."""
+    text = _page_text(payload, number).replace("\r\n", "\n").replace("\r", "\n")
+    paragraphs = [part.strip() for part in re.split(r"\n\s*\n", text) if part.strip()]
+    return [
+        StructuredChunk(
+            id=f"mineru-{number}-b{index}",
+            kind=ChunkKind.PARAGRAPH,
+            content=paragraph,
+            page_number=number,
+            reading_order=index,
+            metadata={"backend": MINERU_NAME},
+        )
+        for index, paragraph in enumerate(paragraphs)
+    ]
+
+
+# ── pypdfium2 page access (the base engine, ADR-0008 d10) ───────────────────
+
+
+def _pdf_signals(payload: bytes) -> list[PageSignal]:
+    """Per-page text-layer signals: present, size, blankness."""
+    document = pdfium.PdfDocument(payload)
     try:
-        signals: list[PageSignal] = []
+        signals = []
         for index in range(len(document)):
             page = document[index]
             textpage = page.get_textpage()
@@ -260,247 +634,140 @@ def _pdf_signals(data: bytes) -> list[PageSignal]:
                 text = textpage.get_text_range()
             finally:
                 textpage.close()
-                page.close()
+            stripped = text.strip()
             signals.append(
                 PageSignal(
                     page_number=index + 1,
-                    has_native_text=bool(text.strip()),
+                    has_native_text=bool(stripped),
                     text_chars=len(text),
                     image_count=0,
-                    blank=not text.strip(),
+                    blank=not stripped,
                 )
             )
-        return signals or [PageSignal(page_number=1, has_native_text=False, text_chars=0, image_count=0, blank=True)]
+        return signals
     finally:
         document.close()
 
 
-def _select(
-    request: ConversionRequest,
-    middle_json: Any,
-    started: float,
-) -> tuple[list[PageResult], PassFailure | None]:
-    """Map the content list to typed chunks per page, honoring bounds."""
-    blocks: dict[int, list[StructuredChunk]] = {}
-    assets: dict[int, list[ExtractedAsset]] = {}
-    used_chars = 0
-    for item in render_content_list(middle_json):
-        if request.cancellation is not None and request.cancellation():
-            return _filled_pages(blocks, request.page_range), _failure(request, started, FailureCode.CANCELLED, "cancelled between items")
-        kind, content = _map_item(item)
-        if kind is None or (not content and kind is not ChunkKind.FIGURE):
-            # A figure with no caption is still a figure: its CONTENT is the image,
-            # which reaches a consumer as an ExtractedAsset (pc-4u7.43).
-            continue
-        page_number = _page_number(item)
-        if request.page_range is not None and not (request.page_range.start <= page_number <= request.page_range.end):
-            continue
-        if request.max_output_chars is not None and used_chars + len(content) > request.max_output_chars:
-            return _filled_pages(blocks, assets, request.page_range), _failure(request, started, FailureCode.BUDGET_EXCEEDED, "max_output_chars budget reached")
-        used_chars += len(content)
-        chunks = blocks.setdefault(page_number, [])
-        asset = _image_asset(item, page_number, len(chunks)) if kind is ChunkKind.FIGURE else None
-        metadata: dict[str, str] = {}
-        if asset is not None:
-            assets.setdefault(page_number, []).append(asset)
-            metadata["asset_id"] = asset.id
-        chunks.append(
-            StructuredChunk(
-                id=f"mineru-{page_number}-b{len(chunks)}",
-                kind=kind,
-                content=content,
-                page_number=page_number,
-                reading_order=len(chunks),
-                metadata=metadata,
-            )
-        )
-        if kind is ChunkKind.FIGURE and content:
-            # The caption is text a consumer reads; the figure is the asset. Always
-            # its own block (predictable shape whether or not a payload came with
-            # the item), carrying the asset id when there is one so a caller can
-            # pair them after the fact.
-            chunks.append(
-                StructuredChunk(
-                    id=f"mineru-{page_number}-b{len(chunks)}",
-                    kind=ChunkKind.CAPTION,
-                    content=content,
-                    page_number=page_number,
-                    reading_order=len(chunks),
-                    metadata=dict(metadata),
-                )
-            )
-    return _filled_pages(blocks, assets, request.page_range), None
-
-
-def _page_number(item: dict[str, Any]) -> int:
-    """1-based IR page number for a content-list item.
-
-    THE one place that normalizes the page index: MinerU's Content List V1 is
-    0-based (``page_idx`` 0..N-1) while parsecraft IR is 1-based.
-    """
-    return int(item["page_idx"]) + 1
-
-
-def _map_item(item: dict[str, Any]) -> tuple[ChunkKind | None, str]:
-    """IR kind + text content for one content-list item.
-
-    Items whose content is empty are dropped by the caller, which is how the
-    verified ``flash`` path loses its equations: it emits them as images with
-    no LaTeX text (at higher effort ``text``/``text_format`` are populated and
-    the FORMULA chunk appears). Caption-less images are dropped the same way —
-    image payloads are base64 data URIs and are never inlined into the IR.
-    """
-    item_type = str(item.get("type", ""))
-    if item_type == "text":
-        kind = ChunkKind.HEADING if item.get("text_level") is not None else ChunkKind.PARAGRAPH
-        return kind, str(item.get("text", "")).strip()
-    if item_type == "table":
-        return ChunkKind.TABLE, _table_content(item)
-    if item_type == "image":
-        # A figure, not a caption: the image is the content, its caption is text
-        # that travels with it (pc-4u7.43). An empty caption is fine — the FIGURE
-        # chunk is still emitted so the asset can reach a consumer.
-        caption = _joined(item.get("image_caption"))
-        return ChunkKind.FIGURE, caption
-    kind = _ITEM_KINDS.get(item_type)
-    if kind is None:
-        return None, ""  # page_number and unknown types: page furniture
-    if item_type in {"list", "index"}:
-        return kind, _joined(item.get("list_items"))
-    return kind, str(item.get("text", "")).strip()
-
-
-def _table_content(item: dict[str, Any]) -> str:
-    """Table caption + a plain-text rendering of the HTML ``table_body``."""
-    extractor = _TableTextExtractor()
-    extractor.feed(str(item.get("table_body") or ""))
-    extractor.close()
-    body = extractor.render()
-    caption = _joined(item.get("table_caption"))
-    if caption and body:
-        return f"{caption}\n{body}"
-    return caption or body
-
-
-def _joined(value: Any) -> str:
-    """Join MinerU's string-list fields (captions, footnotes, list items)."""
-    if not isinstance(value, list):
-        return ""
-    return "\n".join(str(entry).strip() for entry in value if str(entry).strip())
-
-
-def _image_asset(item: dict[str, Any], page_number: int, index: int) -> ExtractedAsset | None:
-    """The figure's image as an :class:`ExtractedAsset`, when the item carries one.
-
-    MinerU's Content List V1 hands the image as a base64 data URI (``image_base64``)
-    or a written file path (``img_path``); either is a URI the IR can carry without
-    inlining bytes anywhere else. The media type is read from the data URI header,
-    or from the path suffix, and is honest about not knowing (octet-stream).
-    """
-    raw = item.get("image_base64") or item.get("img_path")
-    if not isinstance(raw, str) or not raw:
-        return None
-    uri = raw if "://" in raw or raw.startswith("data:") else f"file:{raw}"
-    media_type = "application/octet-stream"
-    if raw.startswith("data:"):
-        header = raw[5:].split(";", 1)[0].split(",", 1)[0]
-        media_type = header or media_type
-    elif "." in raw:
-        suffix = raw.rsplit(".", 1)[-1].lower()
-        media_type = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp"}.get(suffix, media_type)
-    return ExtractedAsset(
-        id=f"mineru-{page_number}-a{index}",
-        kind=AssetKind.IMAGE,
-        media_type=media_type,
-        uri=uri,
-        bbox=_item_bbox(item),
-        sha256=_payload_sha256(raw),
-    )
-
-
-def _item_bbox(item: dict[str, Any]) -> BBox | None:
-    """The figure's box on the page, when the content list carries one.
-
-    MinerU's Content List V1 puts a 4-number ``bbox`` on the item; it is mapped
-    straight onto the IR's ``BBox`` (x0, y0, x1, y1, points). Anything unshaped -
-    missing, the wrong length, non-numeric, or unordered - yields ``None`` rather
-    than raising: a figure without a box is still a figure, and the ordering
-    validator would otherwise turn a source quirk into a failed conversion.
-    """
-    raw = item.get("bbox")
-    if not isinstance(raw, (list, tuple)) or len(raw) != 4:
-        return None
-    numbers: list[float] = []
-    for value in raw:
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
-            return None
-        numbers.append(float(value))
-    x0, y0, x1, y1 = numbers
-    if x1 < x0 or y1 < y0:
-        return None
-    return BBox(x0=x0, y0=y0, x1=x1, y1=y1)
-
-
-def _payload_sha256(raw: str) -> str | None:
-    """Content hash of an inline payload; ``None`` for a written path.
-
-    A data URI is hashed from its decoded bytes, which is what a content-addressed
-    cache or dedup key needs. A FILE path is deliberately not read here: the image
-    may be megabytes and the cache layer is the place that decides to hash it (and
-    already keys on the source document).
-    """
-    if not raw.startswith("data:"):
-        return None
-    _, _, encoded = raw.partition(",")
-    if not encoded:
-        return None
+def _page_text(payload: bytes, number: int) -> str:
+    """One page's text layer."""
+    document = pdfium.PdfDocument(payload)
     try:
-        payload = base64.b64decode(encoded, validate=False)
-    except (ValueError, TypeError):
+        textpage = document[number - 1].get_textpage()
+        try:
+            return textpage.get_text_range()
+        finally:
+            textpage.close()
+    finally:
+        document.close()
+
+
+def _page_size(payload: bytes, number: int) -> tuple[float, float]:
+    """One page's size in points."""
+    document = pdfium.PdfDocument(payload)
+    try:
+        return document[number - 1].get_size()
+    finally:
+        document.close()
+
+
+def _raster(payload: bytes, number: int) -> bytes:
+    """One page's raster, through the OCR family's shared surface."""
+    return rasterize_page(SourceDocument(uri=f"inline://page/{number}", content=payload), number)
+
+
+# ── Options, bounds, failures ────────────────────────────────────────────────
+
+
+def _effort(config: BackendConfig) -> MineruEffort:
+    raw = coerce_option_value(config.options.get("effort", _DEFAULT_EFFORT.value))
+    try:
+        return MineruEffort(raw)
+    except ValueError:
+        expected = ", ".join(effort.value for effort in MineruEffort)
+        msg = f"unknown effort {raw!r}; expected one of: {expected}"
+        raise BackendError(msg) from None
+
+
+def _image_analysis(config: BackendConfig) -> bool:
+    raw = coerce_option_value(config.options.get("image_analysis", False))
+    if not isinstance(raw, bool):
+        msg = f"image_analysis option must be a boolean, got {type(raw).__name__}"
+        raise BackendError(msg)
+    return raw
+
+
+def _window(page_range: PageRange | None, page_count: int) -> range | None:
+    """The 1-based page window; ``None`` means the request is out of bounds."""
+    if page_range is None:
+        return range(1, page_count + 1)
+    if page_range.start > page_count or page_range.end < 1:
         return None
-    return hashlib.sha256(payload).hexdigest()
+    return range(max(1, page_range.start), min(page_count, page_range.end) + 1)
 
 
-def _filled_pages(
-    blocks: dict[int, list[StructuredChunk]],
-    assets: dict[int, list[ExtractedAsset]] | None = None,
-    page_range: PageRange | None = None,
-) -> list[PageResult]:
-    """Every requested page, empty when mineru produced no chunks for it."""
-    numbers = sorted(blocks) or [1] if page_range is None else list(range(page_range.start, page_range.end + 1))
-    extracted = assets or {}
-    return [PageResult(page_number=number, blocks=blocks.get(number, []), assets=extracted.get(number, [])) for number in numbers]
+def _signal(signals: list[PageSignal], number: int) -> PageSignal:
+    if 1 <= number <= len(signals):
+        return signals[number - 1]
+    return PageSignal(page_number=number, has_native_text=False, text_chars=0, image_count=0, blank=True)
 
 
-def _failure(request: ConversionRequest, started: float, code: FailureCode, detail: str) -> PassFailure:
+def _cancelled(request: ConversionRequest) -> bool:
+    return request.cancellation is not None and request.cancellation()
+
+
+def _timed_out(request: ConversionRequest, started: float) -> bool:
+    return request.timeout_s is not None and monotonic() - started > request.timeout_s
+
+
+def _failure(
+    request: ConversionRequest,
+    started: float,
+    code: FailureCode,
+    detail: str,
+) -> PassFailure:
     return PassFailure(
         code=code,
         pass_kind=PassKind.NATIVE,
-        page_range=request.page_range,
         backend=MINERU_NAME,
         backend_version=MINERU_BACKEND_VERSION,
         budget_s=request.timeout_s if request.timeout_s is not None else 0.0,
-        elapsed_s=max(monotonic() - started, 0.0),
+        elapsed_s=monotonic() - started,
         detail=detail,
         occurred_at=utcnow(),
     )
 
 
-def _result(reference: BackendRef, pages: list[PageResult], failures: list[PassFailure], started: float) -> BackendResult:
-    return BackendResult(backend=reference, pages=pages, failures=failures, elapsed_s=max(monotonic() - started, 0.0))
+def _result(
+    pages: list[PageResult],
+    failures: list[PassFailure],
+    started: float,
+) -> BackendResult:
+    return BackendResult(
+        backend=BackendRef(
+            name=MINERU_NAME,
+            version=MINERU_BACKEND_VERSION,
+            model_id=MINERU_ASSET.model_id,
+            model_revision=MINERU_ASSET.model_revision,
+        ),
+        pages=pages,
+        failures=failures,
+        elapsed_s=monotonic() - started,
+    )
 
 
 def source_bytes(source: SourceDocument) -> bytes:
-    """Raw bytes of a source document (``content`` or a local ``file://`` path)."""
+    """Payload from memory, or from the source path — typed read errors."""
     if source.content is not None:
         return source.content
+    path = path_from_file_uri(source.uri)
     try:
-        return _local_path(source.uri).read_bytes()
+        return path.read_bytes()
     except OSError as exc:
-        msg = f"cannot read source {source.uri!r}: {exc}"
+        msg = f"cannot read source {source.uri}: {exc}"
         raise BackendError(msg) from exc
 
 
-def _local_path(uri: str) -> Path:
-    """Filesystem path for a ``file://`` URI via the shared resolver."""
-    return path_from_file_uri(uri)
+def create(config: BackendConfig) -> DocumentBackend:
+    """The sanctioned heavy-import boundary (called by the light factory)."""
+    return MineruBackend(config)

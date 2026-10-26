@@ -283,8 +283,8 @@ page):
   "candidates": {
     "native-pdf": {"family": "native", "tier": 0, "gpu_requirement": 0.0,
                    "estimated_vram_gb": null, "formats": ["application/pdf"]},
-    "mineru":      {"family": "native", "tier": 1, "gpu_requirement": 0.0,
-                    "estimated_vram_gb": 6.0, "formats": ["application/pdf"]},
+    "mineru":      {"family": "native", "tier": 1, "gpu_requirement": 0.5,
+                    "estimated_vram_gb": 4.0, "formats": ["application/pdf"]},
     "ocr-ovis":    {"family": "ocr", "tier": 2, "gpu_requirement": 1.0,
                     "estimated_vram_gb": 6.0, "formats": ["application/pdf"]}
   },

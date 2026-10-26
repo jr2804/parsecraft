@@ -22,20 +22,12 @@ its own licence.
     default OCR path.
     Installing one is your own licence decision.
 
-!!! warning "MinerU is a conditional-licence opt-in"
-    `parsecraft[mineru]` carries a **conditional** licence surface, not a
-    copyleft one — the distinction matters, so it gets its own statement.
-    Installing the extra is your consent to these terms:
-    - **Code:** `LicenseRef-MinerU-Open-Source-License` — Apache-2.0 **plus**
-      commercial thresholds (>100M MAU or >USD 20M revenue), an online-service
-      attribution duty, and termination-without-notice.
-    - **VLM checkpoint and torch pipeline kit:** Apache-2.0
-      (`MinerU2.5-Pro-2605-1.2B`, `MinerU-4_models_torch`).
-    - **Default Windows/CPU GGUF engine and the ONNX kit:** **no licence
-      declared** (`jinzhenj/MinerU2.5-Pro-2605-1.2B-GGUF`,
-      `MinerU-4_models_onnx`). Unknown terms are stated, not assumed — the
-      GGUF engine is what a default Windows install downloads, so this is not
-      an exotic path.
+!!! note "MinerU went native (2026-10-26)"
+    `parsecraft[mineru]` no longer installs the `mineru` package. parsecraft
+    runs the MinerU2.5 checkpoint itself through stock `transformers`:
+    Apache-2.0 weights, MIT code, no conditional licence terms and no
+    undeclared-licence artifacts. Background and the former licence surface:
+    ADR-0007 (amended 2026-10-26).
 
 ## All backends
 
@@ -56,7 +48,7 @@ and the extension is the suffix the host layer joins onto it.
 | `trafilatura` — `parsecraft[web]` (`httpx`, `trafilatura>=2.3.1`) | `.html` (`text/html`) | [`adbar/trafilatura`](https://github.com/adbar/trafilatura) — Apache-2.0 | Readability-class main-content extraction: starts at the article H1, keeps tables as Markdown tables, drops link/image/formula syntax; **asset-free** — no weights, so no download notice and no offline carve-out | Under-extracts very long single-page specs (RFC-class counter-case below); a single-row table without `<thead>`, and a single-line `<pre><code>`, do not survive as typed blocks |
 | `pdf-inspector` — base install | `.pdf` (`application/pdf`) | [`firecrawl/pdf-inspector`](https://github.com/firecrawl/pdf-inspector) — MIT | Fastest verified text-PDF path: Rust/PyO3 extraction straight to Markdown, no ML models and no OCR runtime loaded; classifies text-based vs scanned PDFs before extraction | PDF only (no docx/pptx/xlsx path exists upstream); no OCR, so scanned pages need an OCR backend; ships as a prebuilt Rust extension wheel only for `cp38-abi3` — Linux x86_64/aarch64, macOS Intel/ARM, Windows x64 (other platforms build from source and need a Rust toolchain); not yet benchmarked |
 | `marker` — none; `marker-pdf` 2.0.0 is a **bring-your-own dependency** | `.pdf` (`application/pdf`) | [`datalab-to/marker`](https://github.com/datalab-to/marker) — Apache-2.0; model weights under OpenRAIL-M (restricted use) | High-fidelity PDF→Markdown: figures, tables, math, reading order; page-aware pagination | PDF only — DOCX/XLSX/PPTX/HTML/EPUB route through weasyprint, which needs GTK/Pango system libraries and is unverified on Windows; model weights are fetched at converter creation (network I/O); no extra is declared, so the consumer's own dependency graph installs `marker-pdf` |
-| `mineru` — `parsecraft[mineru]` (`mineru>=4.0.11,<5`); **GIL builds only**, see [Interpreter and platform availability](#interpreter-and-platform-availability) | `.pdf` (`application/pdf`) | [`opendatalab/MinerU`](https://github.com/opendatalab/MinerU) — Apache-2.0 code; weights conditional (see the warning above) | VLM layout, tables, equations, and reading order; **text PDFs run weight-free** at flash effort (no checkpoint download, no VRAM) | Heavy 55-package web stack; page-range input base is delegated downstream and post-filtered; not yet benchmarked against siblings; conditional licence |
+| `mineru` — `parsecraft[mineru]` (native; `torch>=2.5`, `transformers>=5.17,<6`, `accelerate`, `torchvision`) | `.pdf` (`application/pdf`) | [`opendatalab/MinerU2.5-Pro-2605-1.2B`](https://huggingface.co/opendatalab/MinerU2.5-Pro-2605-1.2B) — Apache-2.0; protocol reimplemented from Apache-2.0 `mineru-vl-utils`; code MIT | Native two-step VLM parsing: layout detection then per-block recognition; tables as HTML, equations bracketed, figure crops as assets; **text PDFs run weight-free** at flash effort (the VLM loads only for textless pages); page ranges honored natively | ~2.3 GiB checkpoint; slower than docling on CPU (minutes per dense page); medium+ effort loads the checkpoint eagerly |
 | `ocr-ovis` — `parsecraft[ocr]` | `.pdf` (`application/pdf`), `.jpg`, `.jpeg` (`image/jpeg`), `.png` (`image/png`) | [`ATH-MaaS/OvisOCR2`](https://huggingface.co/ATH-MaaS/OvisOCR2) — Apache-2.0 | ~0.9 B; formulas and tables; vLLM wrapper (optional `vllm` extra) | GPU required (~1 GB VRAM); not yet benchmarked |
 | `ocr-tele` — `parsecraft[ocr]` | `.pdf` (`application/pdf`), `.jpg`, `.jpeg` (`image/jpeg`), `.png` (`image/png`) | [`StarDoc-AI/TeleOCR`](https://huggingface.co/StarDoc-AI/TeleOCR) — Apache-2.0 ([code](https://github.com/caipeng328/TeleOCR)) | Geometry-aware; camera captures | GPU required (~1.2 GB VRAM); not yet benchmarked |
 | `ocr-unlimited` — `parsecraft[ocr]` | `.pdf` (`application/pdf`), `.jpg`, `.jpeg` (`image/jpeg`), `.png` (`image/png`) | [`baidu/Unlimited-OCR`](https://huggingface.co/baidu/Unlimited-OCR) — MIT | Long-horizon multi-page documents | 3 B; quantization required under an 8 GB budget; not yet benchmarked |
@@ -123,7 +115,7 @@ counted, filtered or projected without re-parsing text.
 | `trafilatura` | typed | — (image syntax dropped) | — (formula syntax dropped) |
 | `pdf-inspector` | unverified | — | — |
 | `marker` | text | text | text |
-| `mineru` | typed (kind only) | unverified | unverified |
+| `mineru` | typed | unverified | unverified |
 | `ocr-ovis` … `ocr-qianfan` | — | — | — |
 | `ocr-tesseract` | — | — | — |
 
@@ -138,10 +130,11 @@ shared Markdown projection, which is also where their one shared limit lives:
 a table row whose cells are present but whose separator row is missing does
 not become a `TABLE` chunk (see the trafilatura quirks below).
 
-`mineru` emits `TABLE` chunks but the structured `rows` are not pinned by a
-test yet, so the cell says "kind only". `docling` is the strongest typed-table
-case: rows are built from the vendor's own cell grid and a test pins cell
-agreement with the Markdown content.
+`mineru`'s native path emits `TABLE` chunks with structured `rows` built from
+the recognized OTSL/markdown table (a test pins the cell grid against the
+flattened content). `docling` is the other typed-table case: rows are built
+from the vendor's own cell grid and a test pins cell agreement with the
+Markdown content.
 
 `pandoc` and `marker` pass their structure through as Markdown, so tables,
 figures and equations all survive **as text** in that projection — visible in
@@ -160,20 +153,23 @@ be offered, and the difference is the point:
 
 - **marker — backend + entry point, no extra.** The consumer owns the
   dependency; parsecraft's lock never resolves it.
-- **mineru — the extra IS the opt-in, and parsecraft owns the pin.**
-  `parsecraft[mineru]` resolves the whole 55-package stack and states the
-  licence terms at the point of installation.
+- **mineru — an extra of first-party runtimes.** Since 2026-10-26 there is no
+  third-party `mineru` dependency at all: `parsecraft[mineru]` installs the
+  torch/transformers runtime stack and parsecraft's own code drives the
+  Apache-2.0 checkpoint. The extra remains the unit of consent — for the
+  ~2.3 GiB download and the GPU-class runtime, not for licence terms.
 
 The two must not read identically: a no-extra shape hides the dependency from
-the installer, while an extra shape makes the terms a condition of installing.
+the installer, while an extra shape makes what it pulls a condition of
+installing.
 
 ## External converters
 
-MinerU fetches its own weights, so its cache placement matters: `MINERU_HOME` is
-a revision directory of the managed model cache
-(`<cache>/models/<slug>/<revision>`), which makes those weights visible to
-`parsecraft models list` and reclaimable by `models clean`/`remove` instead of
-accumulating unseen in `~/.mineru`.
+The mineru backend's checkpoint is pinned file-by-file and downloaded by
+parsecraft into a revision directory of the managed model cache
+(`<cache>/models/<slug>/<revision>`), which makes the weights visible to
+`parsecraft models list` and reclaimable by `models clean`/`remove`. Nothing
+accumulates unseen in a vendor directory.
 
 !!! note "Readability-class under-extraction, and two shape quirks"
     `trafilatura` trades completeness for cleanliness, and the counter-case is
@@ -290,8 +286,7 @@ install.
 
 | Extra | Availability |
 | ----- | ------------ |
-| `mineru` | **GIL builds only.** `mineru` → `onnxruntime` (unconditional); onnxruntime 1.31.0 publishes `cp314t` wheels for **manylinux only** — no free-threaded macOS/Windows wheel and no sdist, so `uv sync --all-extras` fails there. |
-| any extra pulling `onnxruntime` | **Free-threaded Linux only** — same mechanism. |
+| any extra pulling `onnxruntime` | **Free-threaded Linux only** — onnxruntime 1.31.0 publishes `cp314t` wheels for **manylinux only**; no free-threaded macOS/Windows wheel and no sdist, so `uv sync --all-extras` fails there. |
 | `vllm` | Linux/WSL2 only — gated by a `sys_platform != 'win32'` marker. |
 
 A matrix-blocked engine that must stay installable uses a **bring-your-own
@@ -313,7 +308,7 @@ it never excludes a language-agnostic backend (see
 | `ocr-tele` | `zh`, `en` |
 | `ocr-ovis`, `ocr-unlimited`, `ocr-qianfan` | agnostic (multilingual) |
 | `ocr-tesseract` | `eng`, `deu` |
-| `pandoc`, `docling`, `pdf-inspector`, `trafilatura` | agnostic (no claim) |
+| `pandoc`, `docling`, `pdf-inspector`, `trafilatura`, `mineru` | agnostic (no claim) |
 | `mineru` | agnostic (no claim) |
 
 ## Hosts: suffixes

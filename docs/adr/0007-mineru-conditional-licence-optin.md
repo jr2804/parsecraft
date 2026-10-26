@@ -118,3 +118,34 @@ on the default Windows/CPU GGUF engine and the ONNX kit (unknown terms —
 stated, not assumed); the conditional code licence with its thresholds,
 attribution duty, and termination clause. The standing-risk consequence
 above applies verbatim to the undeclared GGUF/ONNX artifacts.
+
+## Amendment (2026-10-26): native backend — the mineru package is dropped
+
+The extra shape survived; the dependency did not. MinerU 4.x deliberately
+caps `openai<3` (the PR to lift it, #3750, was closed unmerged), while the
+pydantic-ai model stack needs `openai>=3.26`. The repo's own dev lock papered
+over this with `[tool.uv] override-dependencies`, but **tool installs
+(`uv tool` / mise) cannot carry repository overrides**, so
+`parsecraft[mineru]` was unresolvable exactly where users install it. The
+user ruling: support every backend — re-implement if needed.
+
+Decision (bead `pc-ybv`): parsecraft runs the checkpoint itself.
+
+- The 4.x VLM checkpoint `MinerU2.5-Pro-2605-1.2B` is a **stock
+  `Qwen2VLForConditionalGeneration`** under Apache-2.0 — loadable with
+  base `transformers`, no vendored modeling code.
+- The two-step layout/recognition protocol is **reimplemented from
+  `mineru-vl-utils` (Apache-2.0)** with attribution; prompt strings are
+  parsecraft's own record of that protocol.
+- `parsecraft[mineru]` is reborn dependency-free: `accelerate`, `torch`,
+  `torchvision`, `transformers>=5.17,<6`. Rule 10 now holds jointly with
+  every extra and every downstream model stack, clean-room.
+- **Licence surface shrinks to Apache-2.0 weights + MIT code.** The
+  conditional `LicenseRef-MinerU-Open-Source-License` code licence and both
+  undeclared-licence artifacts (GGUF engine, ONNX kit) leave the surface
+  entirely; the standing-risk item above is closed by removal.
+- The conditional-licence opt-in **precedent** (extra + statement, never
+  silent) stands for future extras; this backend is no longer its instance.
+- `MINERU_HOME` delegation died with the package: parsecraft pins every
+  checkpoint file (`file_pins`) and owns the download through the managed
+  cache.

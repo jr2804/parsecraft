@@ -21,9 +21,9 @@ These install with `pip install parsecraft` (`pyproject.toml` `[project] depende
 | ----- | -------- | ---- |
 | `web` | `httpx`, `trafilatura` | the `trafilatura` HTML backend |
 | `docling` | `docling>=2.130` | layout-aware conversion |
-| `mineru` | `mineru>=4.0.11,<5` | MinerU's VLM pipeline (GIL builds only) |
+| `mineru` | `torch>=2.5`, `transformers>=5.17,<6`, `accelerate`, `torchvision` | the native MinerU2.5 VLM backend (no `mineru` package) |
 | `pymupdf` | `pymupdf>=1.28.2` | PyMuPDF extraction (AGPL) |
-| `pdf-full` | `pymupdf` + `mineru` | the whole PDF stack in one name |
+| `pdf-full` | `pymupdf` + the native VLM stack | the whole PDF stack in one name |
 | `ocr` | `torch`, `transformers`, … | the GPU OCR/VLM backends |
 | `vllm` | `vllm>=0.11` | the vLLM accelerator (Linux/WSL2 only) |
 

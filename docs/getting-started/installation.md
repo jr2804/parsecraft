@@ -67,9 +67,10 @@ Extras add the heavyweight or licence-isolated engines:
 - `parsecraft[docling]` — layout-aware parsing.
 - `parsecraft[pymupdf]` — PyMuPDF extraction for PDF and office documents
   (**AGPL-3.0-or-commercial**).
-- `parsecraft[mineru]` — MinerU's VLM pipeline (conditional licence terms).
+- `parsecraft[mineru]` — the native MinerU2.5 VLM backend (Apache-2.0
+  checkpoint, no `mineru` package).
 - `parsecraft[pdf-full]` — the full PDF stack in one name: PyMuPDF **and**
-  MinerU.
+  the native VLM backend.
 - `parsecraft[ocr]` — the GPU OCR/VLM backends (torch, transformers).
 - `parsecraft[vllm]` — the vLLM accelerator (Linux/WSL2 only).
 - `parsecraft[web]` — the `trafilatura` HTML backend.
@@ -90,23 +91,19 @@ extra (`openpyxl` is core).
 
 ### Conditional-licence extras
 
-Two extras carry licence terms you are consenting to by installing them —
-neither is a core or dev dependency, and both are opt-in:
+One extra carries licence terms you are consenting to by installing it — it
+is neither a core nor a dev dependency and is opt-in:
 
 - `parsecraft[pymupdf]` — PyMuPDF, **AGPL-3.0-or-commercial**.
-- `parsecraft[mineru]` — MinerU's **conditional** terms: Apache-2.0 code plus
-  commercial thresholds (>100M MAU or >USD 20M revenue), an online-service
-  attribution duty, and termination-without-notice; the VLM checkpoint and torch
-  kit are Apache-2.0; the default Windows/CPU GGUF engine and the ONNX kit
-  declare **no licence**. (`parsecraft[pdf-full]` includes both this and
-  PyMuPDF.)
 
 Read the full statement on the [Backends](../reference/backends.md) page before
-installing either.
+installing.
 
-`parsecraft[mineru]` is additionally **GIL-builds-only** at install time — it
-pulls `onnxruntime`, which has no free-threaded macOS/Windows wheel. See
-[Interpreter and platform availability](../reference/backends.md#interpreter-and-platform-availability).
+The `mineru` extra was in this category until 2026-10-26: parsecraft now runs
+the MinerU2.5 checkpoint itself (Apache-2.0 weights, MIT code), and the
+`mineru` package with its conditional code licence — and its
+`onnxruntime`-carrying GIL-builds-only install constraint — is no longer a
+dependency. See ADR-0007's amendment.
 
 ## From source
 

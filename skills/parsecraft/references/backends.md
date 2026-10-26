@@ -24,8 +24,8 @@ judge client, `liteparse`, `openpyxl`, and the pandoc wrapper. Extras
 | `web` | `httpx`, `trafilatura>=2.3.1` | HTML readability backend |
 | `docling` | `docling>=2.130` | MIT |
 | `pymupdf` | `pymupdf>=1.28.2` | **AGPL-3.0-or-commercial** (ADR-0003) |
-| `mineru` | `mineru>=4.0.11,<5` | **conditional licence** (ADR-0007): Apache-2.0 code, commercial thresholds, attribution duty |
-| `pdf-full` | `pymupdf` + `mineru` | inherits both licence warnings |
+| `mineru` | `torch>=2.5`, `transformers>=5.17,<6`, `accelerate`, `torchvision` | native MinerU2.5 VLM backend — Apache-2.0 checkpoint (ADR-0007, amended 2026-10-26); no `mineru` package |
+| `pdf-full` | `pymupdf` + the native VLM stack | inherits the AGPL warning from `pymupdf` only |
 | `ocr` | `torch>=2.5`, `transformers>=5.17,<6`, `accelerate`, … | GPU OCR/VLM backends |
 | `vllm` | `vllm>=0.11` | Linux/WSL2 only (platform marker) |
 
@@ -56,7 +56,7 @@ in the code is MIME, suffixes are joined on by the host layer.
 | `trafilatura` | `parsecraft[web]` | `.html` | Readability-class main-content extraction: starts at the article H1, keeps tables as Markdown, asset-free (no weights) | Under-extracts very long single-page specs (kept 5,592 of 503,420 chars on a 1.2 MB spec); single-row tables without `<thead>` and bare `<pre><code>` lines don't survive as typed blocks |
 | `pdf-inspector` | base | `.pdf` | Fastest verified text-PDF path: Rust/PyO3 straight to Markdown, no ML models, no OCR runtime; classifies text-based vs scanned before extraction | PDF only; no OCR (scanned pages need an OCR backend); prebuilt `cp38-abi3` wheels for Linux x86_64/aarch64, macOS Intel/ARM, Windows x64 |
 | `marker` | bring-your-own `marker-pdf` 2.0.0 (no extra) | `.pdf` | High-fidelity PDF→Markdown: figures, tables, math, reading order; page-aware pagination | PDF only (other formats route via weasyprint/GTK, unverified on Windows); weights fetched at converter creation (network I/O); weights under OpenRAIL-M |
-| `mineru` | `parsecraft[mineru]` (**GIL builds only**) | `.pdf` | VLM layout, tables, equations, reading order; **text PDFs run weight-free** at flash effort (no checkpoint download, no VRAM) | Heavy 55-package web stack; conditional licence; not yet benchmarked against siblings |
+| `mineru` | `parsecraft[mineru]` | `.pdf` | Native MinerU2.5 VLM (no `mineru` package): two-step layout + recognition, tables as HTML, equations; **text PDFs run weight-free** at flash effort (VLM only on textless pages); Apache-2.0 checkpoint, ~2.3 GiB, CPU works slowly | Slower than docling on CPU; medium+ effort loads the checkpoint eagerly |
 | `ocr-ovis` | `parsecraft[ocr]`, GPU | `.pdf`, `.jpg`, `.jpeg`, `.png` | ~0.9 B; formulas and tables; optional vLLM wrapper | GPU required (~1 GB VRAM); not yet benchmarked |
 | `ocr-tele` | `parsecraft[ocr]`, GPU | `.pdf`, `.jpg`, `.jpeg`, `.png` | Geometry-aware; camera captures | GPU required (~1.2 GB VRAM); not yet benchmarked |
 | `ocr-unlimited` | `parsecraft[ocr]`, GPU | `.pdf`, `.jpg`, `.jpeg`, `.png` | Long-horizon multi-page documents | 3 B; quantization required under an 8 GB budget |
@@ -79,9 +79,7 @@ actual detection comes from `nvidia-smi` plus the torch build):
 
 ## Platform and engine availability
 
-- Runtimes: CPython 3.13 (GIL only) and 3.14 (including free-threaded builds);
-  `mineru` additionally needs a GIL build at install time (onnxruntime has no
-  free-threaded macOS/Windows wheel).
+- Runtimes: CPython 3.13 (GIL only) and 3.14 (including free-threaded builds).
 - `vllm` extra: Linux/WSL2 only — the dependency carries a `sys_platform != 'win32'`
   marker, so it is absent on Windows by construction.
 - Torch on Windows/Linux: PyPI wheels are CPU builds; CUDA builds come from

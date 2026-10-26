@@ -15,6 +15,8 @@ scanned pages and page images, which no native backend can read.
 - `_common.py` — the shared machinery every OCR backend uses: the raster
   surface, `analyze_source`, `convert_pages` (all per-page bounds live here),
   `ensure_assets`, and the tokenizer/processor corrections VLM backends need.
+  The `mineru` family imports the raster surface and the load/chat machinery
+  from here too — one raster surface across families (2026-10-26).
 - `_models.py` — the model inventory: names, pinned revisions, licences, file
   pins, and the capability records. No heavy imports; consumed by light
   factories and heavy impls alike.

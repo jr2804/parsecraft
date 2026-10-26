@@ -1,89 +1,80 @@
 # AGENTS.md — src/parsecraft/backends/mineru/
 
-MinerU backend family: conditional-licence opt-in extra, VLM document parsing
-behind `parsecraft[mineru]` (ADR-0007).
+MinerU backend family: **native** VLM document parsing. The `mineru` pip
+package is gone — parsecraft runs the Apache-2.0 MinerU2.5 checkpoint itself
+behind `parsecraft[mineru]` (ADR-0007, amended 2026-10-26).
 
 ## Purpose
 
-Expose `mineru` (4.0.11) as a `DocumentBackend`: a cheap, model-free
-`analyze()` and a bound-checked `convert()` that maps MinerU's Content List
-items to typed IR chunks.
+Expose MinerU2.5-class PDF parsing as a `DocumentBackend`: a cheap, model-free
+`analyze()` and a bound-checked per-page `convert()` that runs the two-step
+VLM protocol (layout detection, then per-block recognition) and maps blocks to
+typed IR chunks.
 
 ## Ownership
 
-- `mineru.py` — light factory (`MinerUFactory`), `MINERU_FORMATS`, `DESCRIPTOR`,
-  `MINERU_BACKEND_VERSION`. Imports no mineru code.
-- `_impl.py` — heavy implementation (`MinerUBackend`, `create`); the only module
-  that imports `mineru`, `docvortex`, and `pypdfium2`.
-- `__init__.py` — package docstring only (entry point lives in `mineru.py`).
+- `mineru.py` — light factory, `DESCRIPTOR`, `MINERU_ASSET` with the pinned
+  file set. Imports nothing heavy.
+- `_impl.py` — heavy implementation: engine load (stock `transformers`), the
+  per-page conversion loop, block→IR mapping. Imports `torch`/`transformers`
+  at module top by design (loaded only from the light factory).
+- `_layout.py` — pure-python layout-stage parser (box/ref token grammar,
+  dedupe, coverage filter). No imports beyond stdlib.
+- `_content.py` — pure-python content post-processing: OTSL→HTML,
+  markdown-table→HTML, equation bracketing, `[Non-Text]` handling, the
+  image-analysis classifier. No imports beyond stdlib.
 
 ## Local Contracts
 
-- **The extra is the opt-in** (ADR-0007): `parsecraft[mineru]` resolves the whole
-  55-package stack and parsecraft owns the pin. This is the *opposite* shape
-  from `marker` (backend + entry point, no extra — ADR-0006); the two must not
-  be documented identically. The licence statement ships in the same change as
-  the extra — never a silent install.
-- Entry point: `parsecraft.backends.mineru.mineru:factory`; heavy imports load
-  through `importlib.import_module` at instantiation, never inline
-  (`pyreorder` would hoist an inline import to module level and break the
-  offline-import gate).
-- `supported_formats` lists only inputs **conversion-verified** against the real
-  library (2026-10-09, mineru 4.0.11): `application/pdf`. MinerU also handles
-  docx/pptx/xlsx and images upstream; they stay undeclared until
-  conversion-verified — mirror the docling/LiteParse contract.
-- **Page indexing is normalized in exactly one place** (house rule):
-  `_page_number` maps MinerU's 0-based `page_idx` to the IR's 1-based
-  `page_number`. MinerU 4.x carries two index conventions in one release
-  (0-based `page_idx` in the content list vs 1-based `page:{page_no}` in the
-  doclib locators); the adapter reads `page_idx` and never the locators.
-- `analyze()` is cheap and model-free: page count, per-page text length, and
-  page size come from `pypdfium2` (a base dependency, ADR-0008 — no extra
-  needed). It never loads a model and never downloads.
-- `convert()` runs one `doc_analyze` pass and maps Content List items by type
-  (`text`, `table`, `equation`, `image`, `index`, `header`, `footer`,
-  `page_number`) to `ChunkKind`. It returns every requested page — empty
-  `PageResult`s included — so the executor's exact page-number check holds.
-- **`page_range` is post-filtered, not forwarded.** MinerU's range-input base is
-  delegated downstream and unverified, so the adapter converts the whole
-  document and filters the result to the requested pages. Correct, but a
-  narrow range on a large document still costs a full pass.
-- **`effort="flash"` + `parse_mode="txt"` is the weight-free path**: MinerU
-  skips model loading entirely for a text PDF at flash effort, so no checkpoint
-  is downloaded and no VRAM is consumed. Verified: an 80-page text PDF converts
-  in ~20 s with the model cache directory still empty. `image_analysis=True`
-  enables docvortex's visual-crop stage and is the only path that rasterizes.
-- **Spawn guard (mandatory test):** docvortex renders page images through
-  `multiprocessing.get_context("spawn")`, and spawn re-imports the parent's
-  `__main__` as `__mp_main__`. An unguarded module body therefore re-executes
-  the whole workload inside every render worker. The backend's own module body
-  is import-safe (no top-level executable code), and
-  `tests/backends/test_mineru.py::test_console_script_spawn_guard_survives_docvortex`
-  pins it end to end with a negative control.
-- Bounds are honored: cancellation, `timeout_s` (checked after the single
-  blocking pass), and `max_output_chars`. Failures stay typed (`CANCELLED`,
-  `TIMEOUT`, `BUDGET_EXCEEDED`, `BACKEND_ERROR`), never raw.
-- **Cache discipline:** `MINERU_HOME` is a revision directory of the managed
-  cache (`<cache>/models/<slug>/<revision>`), so the self-fetched weights are
-  visible to `parsecraft models list` and reclaimable by `models
-  clean`/`remove`; a model is downloaded once per host rather than per run, and
-  third-party loader progress bars are muted so the CLI output stays readable.
-- **Offline:** `options["offline"]` is read before any model work; a declared
-  offline run refuses a checkpoint download instead of attempting it.
-- Rule 10: the `mineru` extra must resolve jointly with every other extra —
-  no `[tool.uv] conflicts`, no exception pins. Verified by dry-run resolution
-  on Python 3.13 and 3.14 (2026-10-09); re-verify if mineru's pins move.
+- **The extra is dependency-free (ADR-0007 amendment, 2026-10-26):**
+  `parsecraft[mineru]` = `accelerate`, `torch`, `torchvision`,
+  `transformers>=5.17,<6`. The `mineru` package (openai<3 cap, PR #3750 to
+  lift it closed unmerged) is dropped — the extra now resolves jointly with
+  every other extra AND with downstream model stacks (rule 10), including
+  clean-room `uv tool` installs that cannot carry repository overrides.
+- **Protocol ported, not vendored:** the two-step layout/recognition protocol
+  is reimplemented from `mineru-vl-utils` (Apache-2.0, attribution in the
+  module docstrings). Layout runs on a 1036×1036 raster with `<|box_start|>`/
+  `<|ref_start|>` tokens; recognition crops blocks from the full-resolution
+  raster. Prompt strings are parsecraft's own record of that protocol.
+- **Effort is the VLM dial:** `flash` = text-layer-first via `pypdfium2`
+  signals — weight-free for text PDFs, the engine loads lazily only for
+  textless pages; `medium`/`high`/`xhigh` = VLM on every page, engine loaded
+  eagerly at `create()` (fail fast), generation budget escalating
+  (`EFFORT_BUDGETS` 2048/2048/4096/8192). A request's `max_context_tokens`
+  beats the dial.
+- **`page_range` is honored natively** — the per-page loop converts only the
+  requested window (no whole-document pass, no post-filter). Page geometry:
+  layout bboxes are fractions scaled by the page's point size.
+- **Asset discipline:** every checkpoint file is pinned (`file_pins`) and the
+  download is owned by parsecraft (`ensure_assets`) into the managed revision
+  directory — visible to `parsecraft models list`, reclaimable by `models
+  clean`/`remove`. `options["offline"]` refuses before any transfer; offline
+  eligibility follows the cached-assets marker
+  `opendatalab/MinerU2.5-Pro-2605-1.2B@<revision>`.
+- **Declared from measurement:** `gpu_requirement` GPU_OPTIONAL (0.5 — CPU
+  works, slowly), `estimated_vram_gb` 4.0 (1.2B BF16 ≈ 2.3 GiB weights plus
+  activations). A GPU host is preferred by routing, never required.
+- **Cross-family reuse:** the raster surface and the tokenizer/processor
+  load machinery are imported from `backends/ocr/_common` — one raster
+  surface across families (300 dpi, `MAX_RASTER_PIXELS` cap; see
+  `../ocr/AGENTS.md`).
+- **Bounds are per-page:** cancellation checked between pages, `timeout_s`
+  before and after each page, a per-page exception becomes one typed
+  `BACKEND_ERROR` failure and the loop continues, `max_output_chars` stops
+  the loop before overflow. Failures stay typed, never raw.
+- `supported_formats` lists only conversion-verified inputs:
+  `application/pdf` (native path, 2026-10-26).
+- No multiprocessing anywhere — the docvortex spawn hazard died with the
+  package, and its guard test with it.
 
 ## Verification
 
-`mise all` — green (1163 passed, 100% coverage, 2026-10-09). The
-backend's own suite is `tests/backends/test_mineru.py` (offline; the heavy
-imports are stub modules in `sys.modules`). The spawn test is extra-gated: it
-skips unless `mineru` and `pypdf` are both importable, because it needs a real
-render pass.
+`mise run test` — green (1451 passed, 100% coverage, 2026-10-26). The
+family's suites are `tests/backends/test_mineru.py` (engine seam, conversion
+loop, mapping, bounds — heavy imports are stub modules in `sys.modules`) and
+`tests/backends/test_mineru_layout.py` (pure parser grammar).
 
-Live smoke (never part of `mise test`/CI): `uv run --isolated --extra mineru
-parsecraft convert FIXTURE` in a throwaway environment — dependencies are never
-installed with `uv pip install`, the project routes dependency changes through
-`uv add` (root rule), and `--isolated --extra` is the idiom for exercising a
-real conversion.
+Live smoke (never CI): `uv run --isolated --extra mineru parsecraft convert
+FIXTURE` in a throwaway environment — dependencies route through `uv add`
+only (root rule).
