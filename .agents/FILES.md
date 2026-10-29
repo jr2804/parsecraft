@@ -24,8 +24,8 @@ Kept compact — agents hallucinate less when they know where definitions live.
 | mise tasks             | `.config/mise/config.toml` + `.config/mise/conf.d/*.toml`       | `[tasks.dev]`, `[tasks.test]`, ...              |
 | Copier answers         | `.copier-answers.yml`                                           | Template version + answers (regenerated)        |
 | Pre-commit config      | `.pre-commit-config.yaml`                                       | Hook list                                       |
-| MCP server config      | `.config/mise/conf.d/mcp.toml`                                  | `[tasks.add-mcp-servers]`, tool list            |
-| Skills install task    | `.config/mise/conf.d/skills.toml`                               | `[tasks.add-skills]`, skill list                |
+| MCP server config      | `.config/mise/conf.d/mcp.toml`                                  | `[tasks.add-mcp-servers]`; manifest is `.config/mise/data/dev-features.csv` |
+| Skills install task    | `.config/mise/conf.d/skills.toml`                               | `[tasks.add-skills]`; manifests are `.config/mise/data/dev-features.csv`, `.config/mise/data/skills.csv` |
 
 ## Naming conventions
 

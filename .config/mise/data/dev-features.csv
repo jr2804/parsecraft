@@ -1,8 +1,21 @@
-category,tool,tool_value,mcp_command,mcp_name,skill_repo,skill
-codebase,npm:@colbymchenry/codegraph,latest,codegraph serve --mcp,codegraph,https://codeberg.org/jr2804/copier-uv-plus.git,cli-codegraph
-codebase,github:1broseidon/ketch,latest,ketch mcp serve,ketch,1broseidon/ketch,ketch
-tracking,github:gastownhall/beads,latest,,,gastownhall/beads,
-tracking,github:dolthub/dolt,latest,,,,
-tracking,pypi:beads-mcp,latest,mise x -- uvx --python 3.13 beads-mcp,beads,,
-general,,,bun x @modelcontextprotocol/server-sequential-thinking,sequential-thinking,,
-general,npm:@jkudish/jev-mcp,latest,mise x --command jev-mcp,jev,jkudish/jev-mcp
+enabled,category,tool,tool_value,mcp_command,mcp_name,skill_repo,skill
+0,slop,pypi:sloppylint,latest,,,https://codeberg.org/jr2804/copier-uv-plus.git,cli-sloppylint
+0,slop,pypi:ai-slop-detector,"{ version = ""latest"", extras = [""all""] }",,,https://codeberg.org/jr2804/copier-uv-plus.git,cli-ai-slop-detector
+0,slop,npm:@yuvrajangadsingh/vibecheck,latest,vibecheck --mcp,vibecheck,https://codeberg.org/jr2804/copier-uv-plus.git,cli-vibecheck
+0,slop,npm:aislop,latest,mise x --command aislop-mcp,aislop,https://codeberg.org/jr2804/copier-uv-plus.git,cli-aislop
+0,slop,,,,,https://codeberg.org/jr2804/copier-uv-plus.git,cli-deep-slop-scan
+0,slop,github:djinn-soul/CytoScnPy,latest,cytoscnpy mcp-server,cytoscnpy,,
+0,slop,github:ChuprinaDaria/Vibecode-Cleaner-Fartrun,latest,fartrun mcp,fartrun,https://codeberg.org/jr2804/copier-uv-plus.git,cli-fartrun
+0,codebase,github:yoanbernabeu/grepai,latest,grepai mcp-serve,grepai,https://codeberg.org/jr2804/copier-uv-plus.git,cli-grepai
+1,codebase,npm:@colbymchenry/codegraph,latest,codegraph serve --mcp,codegraph,https://codeberg.org/jr2804/copier-uv-plus.git,cli-codegraph
+0,codebase,pypi:repowise,latest,repowise mcp .,repowise,https://codeberg.org/jr2804/copier-uv-plus.git,cli-repowise
+1,codebase,github:1broseidon/ketch,latest,ketch mcp serve,ketch,1broseidon/ketch,ketch
+0,dev,github:AlmogBaku/debug-skill,latest,,,AlmogBaku/debug-skill,
+0,dev,github:rtk-ai/rtk,latest,,,https://github.com/FlorianBruniaux/claude-code-ultimate-guide/tree/main/examples,rtk-optimizer
+1,tracking,github:gastownhall/beads,latest,,,gastownhall/beads,
+1,tracking,github:dolthub/dolt,latest,,,,
+1,tracking,pypi:beads-mcp,"{ version = ""latest"", uvx_args = ""-p 3.13"" }",mise x --command beads-mcp,beads,,
+0,general,,,bun x @wonderwhy-er/desktop-commander@latest,desktop-commander,wonderwhy-er/DesktopCommanderMCP,desktop-commander-overview
+1,general,,,bun x @modelcontextprotocol/server-sequential-thinking,sequential-thinking,,
+1,general,npm:@jkudish/jev-mcp,latest,mise x --command jev-mcp,jev,jkudish/jev-mcp
+0,rust,rust-skills,,,https://codeberg.org/jr2804/copier-uv-plus.git,rust-skills,
