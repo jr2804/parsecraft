@@ -10,6 +10,14 @@
 - **Related:** gh-1, ADR-0003 (optional AGPL extra), ADR-0005 (GPL system binary),
   recon `.agents/plans/marker-backend/00-recon.md` (gitignored, bead `pc-bkk`),
   root AGENTS.md rule 10
+- **2026-10-29 amendment (bead `pc-9gz`).** Decision 2 has its first
+  consumer: `ocr-surya` ships the Surya 2.5 checkpoint recognition-only
+  (phase 1) behind its own `parsecraft[surya]` extra with
+  `requires_user_acceptance=True`, per the discipline above. `marker` itself
+  stays deferred — `marker-pdf` 2.1.0 keeps `pillow<11` and
+  `opencv-python-headless==4.11.0.86` and adds an `openai<3` pin, so every
+  blocker in Context still stands. Phase 2 (selective-VLM orchestration
+  port) is bead `pc-81q`.
 
 ## Context
 

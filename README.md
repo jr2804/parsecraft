@@ -40,6 +40,24 @@ binary on the host. No base install converts an office document.
 Per-backend formats, licences, and platform limits: the
 [backend catalog](https://jr2804.github.io/parsecraft/reference/backends/).
 
+## OCR/VLM models
+
+Every model runs behind its backend inside the `ocr`, `surya`, or `mineru`
+extra — no model weights load at import time. Weights download into the managed
+asset cache on first use (`parsecraft models list` shows them). Surya weights
+are OpenRAIL-M (restricted use: research, personal, and capped startups) and
+need `--accept-license` on install — check before commercial deployment.
+
+| Backend | Model | Weights licence | Extra | VRAM |
+| ------- | ----- | --------------- | ----- | ---- |
+| `ocr-ovis` | OvisOCR2 (`ATH-MaaS/OvisOCR2`) | Apache-2.0 | `ocr` | 1.0 GB |
+| `ocr-tele` | TeleOCR (`StarDoc-AI/TeleOCR`, zh + en) | Apache-2.0 | `ocr` | 1.2 GB |
+| `ocr-unlimited` | Unlimited-OCR (`baidu/Unlimited-OCR`) | MIT | `ocr` | 3.0 GB |
+| `ocr-qianfan` | Qianfan-OCR (`baidu/Qianfan-OCR`) | Apache-2.0 | `ocr` | 4.0 GB |
+| `ocr-surya` | Surya-OCR 2.5 (`datalab-to/surya-ocr-2.5`) | OpenRAIL-M (weights; code Apache-2.0) | `surya` | 1.0 GB |
+| `ocr-tesseract` | Tesseract engine (OS binary, `eng` + `deu`) | Apache-2.0 (tessdata) | base install | CPU only |
+| `mineru` | MinerU2.5-Pro (`opendatalab/MinerU2.5-Pro-2605-1.2B`) | Apache-2.0 | `mineru` | 4.0 GB (GPU optional) |
+
 ## Install and Quick Start
 
 Install the released package and list the available backends:

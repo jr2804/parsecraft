@@ -53,6 +53,7 @@ and the extension is the suffix the host layer joins onto it.
 | `ocr-tele` — `parsecraft[ocr]` | `.pdf` (`application/pdf`), `.jpg`, `.jpeg` (`image/jpeg`), `.png` (`image/png`) | [`StarDoc-AI/TeleOCR`](https://huggingface.co/StarDoc-AI/TeleOCR) — Apache-2.0 ([code](https://github.com/caipeng328/TeleOCR)) | Geometry-aware; camera captures | GPU required (~1.2 GB VRAM); not yet benchmarked |
 | `ocr-unlimited` — `parsecraft[ocr]` | `.pdf` (`application/pdf`), `.jpg`, `.jpeg` (`image/jpeg`), `.png` (`image/png`) | [`baidu/Unlimited-OCR`](https://huggingface.co/baidu/Unlimited-OCR) — MIT | Long-horizon multi-page documents | 3 B; quantization required under an 8 GB budget; not yet benchmarked |
 | `ocr-qianfan` — `parsecraft[ocr]` | `.pdf` (`application/pdf`), `.jpg`, `.jpeg` (`image/jpeg`), `.png` (`image/png`) | [`baidu/Qianfan-OCR`](https://huggingface.co/baidu/Qianfan-OCR) — Apache-2.0 (`Layout-as-Thought`) | Strong element, box, and reading-order control | 4 B; quantization required under an 8 GB budget; not yet benchmarked |
+| `ocr-surya` — `parsecraft[surya]` | `.pdf` (`application/pdf`), `.jpg`, `.jpeg` (`image/jpeg`), `.png` (`image/png`) | [`datalab-to/surya-ocr-2.5`](https://huggingface.co/datalab-to/surya-ocr-2.5) — code Apache-2.0, weights under **OpenRAIL-M** (restricted use: free for research, personal use, and startups under a funding/revenue cap — check before commercial deployment) | ~0.7 B multimodal OCR; HTML block segmentation with layout bboxes | GPU required (~1 GB VRAM); weight install requires `--accept-license`; not yet benchmarked |
 | `ocr-tesseract` — base install | `.pdf` (`application/pdf`), `.jpg`, `.jpeg` (`image/jpeg`), `.png` (`image/png`), `.tif`, `.tiff` (`image/tiff`) | [`tesseract-ocr/tessdata_fast`](https://github.com/tesseract-ocr/tessdata_fast) — Apache-2.0 | No extra, no GPU, no model weights; runs anywhere the OS engine is installed | Needs the `tesseract` OS binary (parsecraft never installs it); weaker layout and formula handling than the VLM backends |
 
 ## Native (in-package)
@@ -116,7 +117,7 @@ counted, filtered or projected without re-parsing text.
 | `pdf-inspector` | unverified | — | — |
 | `marker` | text | text | text |
 | `mineru` | typed | unverified | unverified |
-| `ocr-ovis` … `ocr-qianfan` | — | — | — |
+| `ocr-ovis` … `ocr-surya` | — | — | — |
 | `ocr-tesseract` | — | — | — |
 
 **No backend extracts equations as typed chunks.** There is no `EQUATION`
@@ -199,14 +200,23 @@ Model pins and licences are recorded once in
 `src/parsecraft/backends/ocr/_models.py`. The adapters are implemented but **not
 yet benchmarked with weights** — GPU runs are pending.
 
-All four models share **one** extra — `parsecraft[ocr]` (`transformers` window
-`>=5.17,<6`, `torch>=2.5`, `torchvision`, `accelerate` and the small model-code
-helpers, declared once in `pyproject.toml`, the authoritative source). The model
-*weights* are downloaded assets, not packages, so one feature extra covers every
-model. The per-model card pins (`transformers==4.57.1` and similar) are advisory
+All five models run the same `transformers` window (`>=5.17,<6`), but
+they do not share one extra. The four permissively-licensed models share
+**one** extra — `parsecraft[ocr]` (`torch>=2.5`, `torchvision`, `accelerate`
+and the small model-code helpers, declared once in `pyproject.toml`, the
+authoritative source) — while `ocr-surya` ships its own `parsecraft[surya]`
+extra (same window) so the `ocr` extra stays Apache-only. The model
+*weights* are downloaded assets, not packages. The per-model card pins
+(`transformers==4.57.1` and similar) are advisory
 origin only: the project range supersedes them, and the TeleOCR/Unlimited models
 ship as local vendored modeling code so they load on the unified major.
-modeling code so they load on the unified major.
+Surya 2.5's card pins `transformers==5.12.1`; the same rule applies, and the
+Qwen3.5 family needs no vendored code.
+
+Surya weights are **OpenRAIL-M**: `models install ocr-surya` needs `--yes`
+*and* `--accept-license`, and the acceptance is recorded in the asset cache
+before the first download. See [Languages](#languages) for why the backend
+declares no language tags despite the multilingual card.
 
 The OCR extras are **not** mutually exclusive: every extra installs alongside
 the others.
@@ -308,7 +318,7 @@ it never excludes a language-agnostic backend (see
 | `ocr-tele` | `zh`, `en` |
 | `ocr-ovis`, `ocr-unlimited`, `ocr-qianfan` | agnostic (multilingual) |
 | `ocr-tesseract` | `eng`, `deu` |
-| `pandoc`, `docling`, `pdf-inspector`, `trafilatura`, `mineru` | agnostic (no claim) |
+| `pandoc`, `docling`, `pdf-inspector`, `trafilatura`, `mineru`, `ocr-surya` | agnostic (no claim) |
 | `mineru` | agnostic (no claim) |
 
 ## Hosts: suffixes
@@ -374,7 +384,7 @@ check one.
 | -------------- | ----- | --- |
 | Digital text PDF | `pymupdf` | Fast native text extraction, no GPU |
 | Digital text PDF, throughput first | `pdf-inspector` | Rust extraction with no OCR runtime; falls back to `pymupdf` when the extra is absent |
-| Scanned pages or camera photos | `ocr-tele`, `ocr-ovis` | No native text; geometry-aware, formula-capable |
+| Scanned pages or camera photos | `ocr-tele`, `ocr-ovis`, `ocr-surya` | No native text; geometry-aware, formula-capable |
 | Multi-page dense tables | `ocr-unlimited` | Long-horizon multi-page handling |
 | Formulas and equations | `ocr-ovis` | Formula-aware extraction |
 | Broad office formats (docx, pptx) | `pandoc` | Convert to a readable format first |
