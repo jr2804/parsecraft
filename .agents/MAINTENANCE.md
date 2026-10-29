@@ -33,5 +33,6 @@ How to keep `.agents/` files current.
 | `FILES.md`     | Path constants, config keys, or naming conventions change              |
 | `HISTORY.md`   | Notable decision made or resolved                                       |
 | `MAINTENANCE.md` | Maintenance procedures, triggers, or principles change               |
+| `TOOLS.md`      | Dev-time tooling inventory changes (new CLI, MCP server, skill, task)      |
 | `plans/`       | New feature implementation starts                                       |
 | `history/`     | HISTORY.md overflow or completed plans archived                         |

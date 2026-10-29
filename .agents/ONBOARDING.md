@@ -41,14 +41,10 @@ mise all        # test + lint + format in one pass
 - `.agents/HISTORY.md` — past decisions and rationale
 - Source-tree AGENTS.md files — local contracts for each area
 
-## Available tools
+## Tooling
 
-If MCP dev-features are enabled (`include_mcp_tasks`), the following may be
-available after running `mise run add-mcp-servers <agent>` and `mise run
-add-skills`:
+Dev-time tool inventory (MCP servers, skills, CLIs, gate commands) lives in
+`.agents/TOOLS.md` — read it when you need a tool, not a rule.
 
-- **repowise** — architecture overview, risk, health scores, change-risk
-- **codegraph** — symbol search, call graphs, dependency maps
-- **grepai** — semantic code search by meaning, not text
-- **bd / beads** — distributed issue tracker (if `tracking` skill category enabled)
-- Various slop/dead-code detectors (see `.config/mise/conf.d/skills.toml`)
+Install/manage MCP servers and skills via `mise run add-mcp-servers <agent>`
+and `mise run add-skills` (manifests + installer documented in TOOLS.md).

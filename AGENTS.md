@@ -85,6 +85,7 @@ change. Summary:
 | `FILES.md`       | Touching files or config    | Path constants, source-of-truth locations       |
 | `HISTORY.md`     | Background (past decisions) | Recorded decisions with git refs                |
 | `MAINTENANCE.md` | Changing `.agents/`         | How to keep DOX files current                   |
+| `TOOLS.md`       | Needing a CLI, MCP server, or skill | Dev-time tooling inventory (one row per tool)   |
 | `plans/`         | Working on a feature        | Implementation plans (gitignored)               |
 | `history/`       | Background (overflow)       | Archived decisions and completed plans          |
 
