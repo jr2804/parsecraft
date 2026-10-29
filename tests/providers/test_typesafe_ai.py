@@ -72,21 +72,22 @@ def test_endpoint_binding_uses_the_sdk_default_base_url(jev_sdk: StubSdk, ts_key
     assert jev_sdk.client_kwargs == [{"api_key": _API_KEY, "model": _MODEL, "base_url": None}]
 
 
-def test_variant_is_rejected_not_silently_ignored(jev_sdk: StubSdk) -> None:
-    with pytest.raises(JudgeSpecError, match="does not accept a variant"):
-        provider.load_judge(JudgeSpec(provider="typesafe-ai", model=_MODEL, variant="fast"))
-    assert jev_sdk.client_kwargs == []
+def test_tag_suffix_passes_through_verbatim(jev_sdk: StubSdk, ts_key: str) -> None:
+    """A `:tag` suffix is part of the model token, not a variant: the SDK gets it untouched."""
+    judge = cast(_jev.JevJudge, provider.load_judge(JudgeSpec(provider="typesafe-ai", model=f"{_MODEL}:fast")))
+    judge.rank(Intent.NATIVE, [_OCR, _NATIVE])
+    assert jev_sdk.client_kwargs == [{"api_key": _API_KEY, "model": f"{_MODEL}:fast", "base_url": None}]
 
 
 def test_spec_error_outranks_a_missing_credential(monkeypatch: pytest.MonkeyPatch) -> None:
     """A caller bug must not hide behind environment state (CLI exit 2 before exit 1).
 
     No key is planted and no SDK stub is installed: the spec check runs first, so
-    the unsupported variant is what the caller hears about.
+    the malformed spec is what the caller hears about.
     """
     monkeypatch.delenv(_TYPESAFE_KEY_ENV, raising=False)
-    with pytest.raises(JudgeSpecError, match="does not accept a variant"):
-        provider.load_judge(JudgeSpec(provider="typesafe-ai", model=_MODEL, variant="fast"))
+    with pytest.raises(JudgeSpecError, match="must look like"):
+        resolve_judge("typesafe-ai")
 
 
 def test_good_spec_without_a_credential_is_unavailable(monkeypatch: pytest.MonkeyPatch, jev_sdk: StubSdk) -> None:

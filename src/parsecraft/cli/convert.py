@@ -97,7 +97,7 @@ def convert_source(
 
     The suffix check runs first, then ONE host probe feeds the analyzer choice,
     the routing constraints, and the seams. ``judge``/``classifier`` are seam
-    spec strings (``provider/model[:variant]``) resolved from that probe before
+    spec strings (``provider/model`` or ``provider:model``, model token verbatim) resolved from that probe before
     the source is read: a malformed spec is a usage error (exit 2), an
     unavailable provider is a runtime failure (exit 1). ``backend`` and
     ``judge`` are mutually exclusive — both choose the lead candidate.

@@ -88,19 +88,32 @@ def test_resolve_judge_reaches_both_providers_lazily(jev_sdk: StubSdk, monkeypat
     assert isinstance(resolve_judge(f"{provider_name}/m"), _jev.JevJudge)
 
 
-@pytest.mark.parametrize("module", [zen, ollama])
-def test_variants_are_rejected_for_every_endpoint(jev_sdk: StubSdk, module: Any) -> None:
-    """No credential is planted: the spec check precedes credential resolution."""
-    with pytest.raises(JudgeSpecError, match="does not accept a variant"):
-        module.load_judge(JudgeSpec(provider=module.PROVIDER_NAME, model="m", variant="latest"))
-    assert jev_sdk.client_kwargs == []
+def test_tag_suffix_passes_through_verbatim(jev_sdk: StubSdk) -> None:
+    """A `:tag` suffix is part of the model token, not a variant: the SDK gets it untouched.
+
+    The user's failing case — an ollama registry name with a quant tag binds
+    without a credential and without rewriting the model token.
+    """
+    judge = cast(
+        _jev.JevJudge,
+        ollama.load_judge(JudgeSpec(provider="ollama", model="hf.co/darkgoatie/TinyJev-4B-GGUF:Q8_0")),
+    )
+    judge.rank(Intent.NATIVE, [_OCR_GPU, _NATIVE])
+    assert jev_sdk.client_kwargs == [
+        {
+            "api_key": "local",
+            "model": "hf.co/darkgoatie/TinyJev-4B-GGUF:Q8_0",
+            "base_url": "http://localhost:11434",
+            "timeout": 120.0,
+        }
+    ]
 
 
 def test_zen_spec_error_outranks_a_missing_credential(monkeypatch: pytest.MonkeyPatch) -> None:
     """A caller bug is reported even when the host has no credential (exit 2 first)."""
     monkeypatch.delenv(_ZEN_KEY_ENV, raising=False)
-    with pytest.raises(JudgeSpecError, match="does not accept a variant"):
-        zen.load_judge(JudgeSpec(provider="zen", model="jev-1.13-free", variant="free"))
+    with pytest.raises(JudgeSpecError, match="must look like"):
+        resolve_judge("zen")
 
 
 def test_zen_good_spec_without_a_credential_is_unavailable(monkeypatch: pytest.MonkeyPatch, jev_sdk: StubSdk) -> None:

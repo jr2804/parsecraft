@@ -36,7 +36,7 @@ from typing import Protocol, runtime_checkable
 
 from parsecraft.backends.protocol import GPU_NOT_NEEDED, GPU_REQUIRED, BackendDescriptor
 from parsecraft.routing.judge import JudgeSpec, MachineProfile, PageContext
-from parsecraft.routing.judge_providers import JudgeProviderUnavailableError, JudgeSpecError
+from parsecraft.routing.judge_providers import JudgeProviderUnavailableError
 from parsecraft.routing.models import Intent, RoutingError, RoutingPreference
 from parsecraft.routing.rules import extraction_tier, is_ocr
 
@@ -263,11 +263,12 @@ def load_endpoint_judge(
 ) -> JevJudge:
     """Shared provider body: validate the spec, resolve state, bind, build.
 
-    The spec's model token IS the upstream model id (``jev-latest``,
-    ``jev-1.13-free``, ``nimble``), so a ``:variant`` is rejected rather than
-    silently appended. ``api_key_env`` names the required credential, or is
-    ``None`` for a local endpoint that needs none (the SDK still rejects an empty
-    key, so :data:`LOCAL_API_KEY` is sent and the daemon ignores it).
+    The spec's model token IS the upstream model id, verbatim (``jev-latest``,
+    ``jev-1.13-free``, ``nimble``, or a full local name like
+    ``hf.co/darkgoatie/TinyJev-4B-GGUF:Q8_0``): tags and registry paths pass
+    through to the SDK untouched. ``api_key_env`` names the required credential,
+    or is ``None`` for a local endpoint that needs none (the SDK still rejects
+    an empty key, so :data:`LOCAL_API_KEY` is sent and the daemon ignores it).
     ``timeout_s`` overrides the SDK's per-operation bound — only the local
     endpoint needs it (a cold model load is slower than any cloud round trip).
 
@@ -275,11 +276,9 @@ def load_endpoint_judge(
     caller bug (CLI exit 2) and must outrank environment state (an unusable SDK
     or a missing credential, exit 1), so a bad request never hides behind an
     unconfigured host — the same reasoning that checks the source suffix before
-    probing.
+    probing. Spec-shape validation lives in :func:`parse_judge_spec`, which
+    runs before any loader, so this body only resolves environment state.
     """
-    if spec.variant is not None:
-        msg = f"{provider} takes the upstream model id as its model token — {spec.provider}/{spec.model} does not accept a variant"
-        raise JudgeSpecError(msg)
     module = sdk_module(provider)
     api_key = LOCAL_API_KEY if api_key_env is None else _required_api_key(provider, api_key_env)
     endpoint = SdkEndpoint(module=module, api_key=api_key, model=spec.model, base_url=base_url, timeout_s=timeout_s)

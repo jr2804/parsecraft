@@ -25,11 +25,11 @@ Contract (ADR-0004 A4):
   ``None`` and never a silently empty fact set. The analysis boundary then
   falls back to the rule table (ADR-0004 A3).
 
-Spec: ``pdfinspector/<mode>`` where the mode token names the upstream detection
-call this provider makes — currently exactly ``detect_pdf``. The provider is
-model-free, so a variant (``:something``) is rejected rather than ignored.
-``pdfinspector`` is the provider token (hyphens are legal spec characters but
-would not resolve to a module name).
+Spec: ``pdfinspector/<mode>`` (or ``pdfinspector:<mode>``) where the mode token
+names the upstream detection call this provider makes — currently exactly
+``detect_pdf``. The provider is model-free, so any other mode token is
+rejected. ``pdfinspector`` is the provider token (hyphens are legal spec
+characters but would not resolve to a module name).
 """
 
 from __future__ import annotations
@@ -107,8 +107,8 @@ class PdfInspectorClassifier:
 
 def load_classifier(spec: ClassifierSpec) -> PageOcrClassifier:
     """Provider entry point required by ``routing.classifier`` (pc-3's contract)."""
-    if spec.model != SUPPORTED_MODE or spec.variant is not None:
-        msg = f"pdfinspector supports only {PROVIDER_NAME}/{SUPPORTED_MODE} — got {_spec_text(spec)!r} (it is model-free, so no variant)"
+    if spec.model != SUPPORTED_MODE:
+        msg = f"pdfinspector supports only {PROVIDER_NAME}/{SUPPORTED_MODE} — got {_spec_text(spec)!r} (it is model-free, so no other mode token)"
         raise ClassifierSpecError(msg)
     try:
         module = import_module(_MODULE_NAME)
@@ -139,9 +139,8 @@ def _facts(detection: Detection, *, version: str) -> OcrFacts:
 
 
 def _spec_text(spec: ClassifierSpec) -> str:
-    """Render a parsed spec back to its ``provider/model[:variant]`` spelling."""
-    variant = "" if spec.variant is None else f":{spec.variant}"
-    return f"{spec.provider}/{spec.model}{variant}"
+    """Render a parsed spec back to its ``provider/model`` spelling."""
+    return f"{spec.provider}/{spec.model}"
 
 
 def _source_bytes(source: SourceDocument) -> bytes:

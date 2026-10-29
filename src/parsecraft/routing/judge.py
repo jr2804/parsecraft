@@ -167,11 +167,15 @@ class PageContext(BaseModel):
 
 
 class JudgeSpec(BaseModel):
-    """Parsed ``provider/model[:variant]`` judge-spec string (config/CLI input)."""
+    """Parsed ``provider/model`` (or ``provider:model``) judge-spec string (config/CLI input).
+
+    The model token is everything after the first separator, verbatim —
+    registry paths and ``:tag`` suffixes pass through untouched, exactly as
+    the model is named upstream (``ollama/hf.co/darkgoatie/TinyJev-4B-GGUF:Q8_0``).
+    """
 
     provider: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]*$")
     model: str = Field(min_length=1)
-    variant: str | None = Field(default=None, min_length=1)
 
 
 class MachineProfile(BaseModel):

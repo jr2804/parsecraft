@@ -161,8 +161,8 @@ def test_resolve_classifier_loads_the_provider_lazily(stub: _Stub) -> None:
     assert classifier is not None  # resolve_classifier(None) is None, a spec is not
 
 
-@pytest.mark.parametrize("spec", ["pdfinspector/other", "pdfinspector/detect_pdf:fast"])
-def test_load_classifier_rejects_other_modes_and_variants(stub: _Stub, spec: str) -> None:
+@pytest.mark.parametrize("spec", ["pdfinspector/other", "pdfinspector/detect_pdf:fast", "pdfinspector:other"])
+def test_load_classifier_rejects_other_modes(stub: _Stub, spec: str) -> None:
     with pytest.raises(ClassifierSpecError, match="supports only pdfinspector/detect_pdf"):
         provider.load_classifier(parse_classifier_spec(spec))
 

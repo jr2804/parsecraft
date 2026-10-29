@@ -145,17 +145,21 @@ def test_core_never_imports_a_provider() -> None:
 # ── parse_classifier_spec ──────────────────────────────────────────────────
 
 
-def test_parse_full_spec_with_variant() -> None:
+def test_parse_tag_suffix_stays_part_of_the_model() -> None:
     spec = parse_classifier_spec("pdfinspector/detect:fast")
-    assert spec == ClassifierSpec(provider="pdfinspector", model="detect", variant="fast")
+    assert spec == ClassifierSpec(provider="pdfinspector", model="detect:fast")
 
 
-def test_parse_spec_without_variant_and_with_whitespace() -> None:
-    assert parse_classifier_spec("pdfinspector/detect").variant is None
+def test_parse_colon_form_spells_the_same_model() -> None:
+    assert parse_classifier_spec("pdfinspector:detect_pdf") == ClassifierSpec(provider="pdfinspector", model="detect_pdf")
+
+
+def test_parse_spec_with_whitespace() -> None:
+    assert parse_classifier_spec("pdfinspector/detect").model == "detect"
     assert parse_classifier_spec("  pdfinspector/detect \n").provider == "pdfinspector"
 
 
-@pytest.mark.parametrize("bad_spec", ["nodash", "", "a/", "/b", "a/b:", "a.b/c", "A/B"])
+@pytest.mark.parametrize("bad_spec", ["nodash", "", "a/", "a:", "/b", ":b", "a.b/c", "A/B"])
 def test_parse_rejects_malformed_specs(bad_spec: str) -> None:
     with pytest.raises(ClassifierSpecError):
         parse_classifier_spec(bad_spec)
@@ -192,13 +196,13 @@ def test_registered_loader_receives_typed_spec() -> None:
     register_classifier_provider("fakec", loader)
     classifier = resolve_classifier("fakec/model:v1")
     assert isinstance(classifier, _StubClassifier)
-    assert captured == [ClassifierSpec(provider="fakec", model="model", variant="v1")]
+    assert captured == [ClassifierSpec(provider="fakec", model="model:v1")]
 
 
 def test_register_rejects_bad_name_and_loader() -> None:
-    with pytest.raises(ClassifierSpecError, match="slash-free"):
+    with pytest.raises(ClassifierSpecError, match="separator-free"):
         register_classifier_provider("bad/name", lambda spec: _StubClassifier(facts()))
-    with pytest.raises(ClassifierSpecError, match="slash-free"):
+    with pytest.raises(ClassifierSpecError, match="separator-free"):
         register_classifier_provider("", lambda spec: _StubClassifier(facts()))
     with pytest.raises(ClassifierError, match="must be callable"):
         register_classifier_provider("noloadc", cast("Any", "not-callable"))

@@ -118,7 +118,7 @@ def convert(
         typer.Option(
             "--judge",
             help=(
-                "Route with a judge provider (`provider/model[:variant]`); mutually exclusive with --backend; "
+                "Route with a judge provider (`provider/model`, or `provider:model`; the model token is verbatim); mutually exclusive with --backend; "
                 "combinable with --classifier; may use the network. Run `parsecraft judges` for the built-in "
                 "providers and their model tokens"
             ),
@@ -126,7 +126,7 @@ def convert(
     ] = None,
     classifier: Annotated[
         str | None,
-        typer.Option("--classifier", help="Fold OCR-need facts from a classifier provider (`provider/model[:variant]`) into the analysis"),
+        typer.Option("--classifier", help="Fold OCR-need facts from a classifier provider (`provider/model`, or `provider:model`) into the analysis"),
     ] = None,
     auto: Annotated[
         bool,

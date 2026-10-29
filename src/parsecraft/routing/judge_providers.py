@@ -1,4 +1,4 @@
-"""Judge provider registry: resolve ``provider/model[:variant]`` strings.
+"""Judge provider registry: resolve ``provider/model`` (or ``provider:model``) strings.
 
 Resolution is lazy and offline: a provider module
 (``parsecraft.providers.<provider>``) is imported via ``import_module``
@@ -65,8 +65,8 @@ def register_judge_provider(name: str, loader: JudgeProviderLoader) -> None:
     Last registration wins — re-registering enables overrides and test
     isolation. An explicit registration always beats the lazy module path.
     """
-    if not name or "/" in name:
-        raise JudgeSpecError(f"provider name must be non-empty and slash-free, got {name!r}")
+    if not name or "/" in name or ":" in name:
+        raise JudgeSpecError(f"provider name must be non-empty and separator-free, got {name!r}")
     if not callable(loader):
         raise JudgeError(f"loader for provider {name!r} must be callable")
     _PROVIDERS[name] = loader
@@ -110,14 +110,22 @@ def resolve_judge(
 
 
 def parse_judge_spec(spec: str) -> JudgeSpec:
-    """Parse ``provider/model[:variant]`` into a typed :class:`JudgeSpec`."""
+    """Parse ``provider/model`` (or ``provider:model``) into a typed :class:`JudgeSpec`.
+
+    The model token is everything after the first separator, verbatim: a
+    ``:tag`` suffix or ``/``-separated registry path stays part of the model
+    (``ollama/hf.co/darkgoatie/TinyJev-4B-GGUF:Q8_0``), exactly as the model
+    is named upstream. Whichever separator comes first wins, so both the
+    slash form and the colon form spell the same model token.
+    """
     text = spec.strip()
-    provider, separator, rest = text.partition("/")
-    if not separator:
-        raise JudgeSpecError(f"judge spec {spec!r} must look like 'provider/model[:variant]'")
-    model, colon, variant = rest.partition(":")
+    cuts = [pos for pos in (text.find("/"), text.find(":")) if pos >= 0]
+    if not cuts:
+        raise JudgeSpecError(f"judge spec {spec!r} must look like 'provider/model' or 'provider:model'")
+    cut = min(cuts)
+    provider, model = text[:cut], text[cut + 1 :]
     try:
-        return JudgeSpec(provider=provider, model=model, variant=variant if colon else None)
+        return JudgeSpec(provider=provider, model=model)
     except ValidationError as exc:
         raise JudgeSpecError(f"invalid judge spec {spec!r}: {exc}") from exc
 

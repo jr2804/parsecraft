@@ -85,11 +85,14 @@ class PageOcrClassifier(Protocol):
 
 
 class ClassifierSpec(BaseModel):
-    """Parsed ``provider/model[:variant]`` classifier-spec string (config input)."""
+    """Parsed ``provider/model`` (or ``provider:model``) classifier-spec string (config input).
+
+    The model token is everything after the first separator, verbatim —
+    ``:tag`` suffixes and ``/``-separated paths pass through untouched.
+    """
 
     provider: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]*$")
     model: str = Field(min_length=1)
-    variant: str | None = Field(default=None, min_length=1)
 
 
 #: What a registered classifier provider receives and must return.
@@ -133,8 +136,8 @@ def register_classifier_provider(name: str, loader: ClassifierProviderLoader) ->
     Last registration wins — re-registering enables overrides and test
     isolation. An explicit registration always beats the lazy module path.
     """
-    if not name or "/" in name:
-        raise ClassifierSpecError(f"provider name must be non-empty and slash-free, got {name!r}")
+    if not name or "/" in name or ":" in name:
+        raise ClassifierSpecError(f"provider name must be non-empty and separator-free, got {name!r}")
     if not callable(loader):
         raise ClassifierError(f"loader for provider {name!r} must be callable")
     _PROVIDERS[name] = loader
@@ -171,14 +174,19 @@ def resolve_classifier(spec: str | PageOcrClassifier | None) -> PageOcrClassifie
 
 
 def parse_classifier_spec(spec: str) -> ClassifierSpec:
-    """Parse ``provider/model[:variant]`` into a typed :class:`ClassifierSpec`."""
+    """Parse ``provider/model`` (or ``provider:model``) into a typed :class:`ClassifierSpec`.
+
+    Whichever separator comes first wins; the model token is everything
+    after it, verbatim (see :func:`parse_judge_spec` for the rationale).
+    """
     text = spec.strip()
-    provider, separator, rest = text.partition("/")
-    if not separator:
-        raise ClassifierSpecError(f"classifier spec {spec!r} must look like 'provider/model[:variant]'")
-    model, colon, variant = rest.partition(":")
+    cuts = [pos for pos in (text.find("/"), text.find(":")) if pos >= 0]
+    if not cuts:
+        raise ClassifierSpecError(f"classifier spec {spec!r} must look like 'provider/model' or 'provider:model'")
+    cut = min(cuts)
+    provider, model = text[:cut], text[cut + 1 :]
     try:
-        return ClassifierSpec(provider=provider, model=model, variant=variant if colon else None)
+        return ClassifierSpec(provider=provider, model=model)
     except ValidationError as exc:
         raise ClassifierSpecError(f"invalid classifier spec {spec!r}: {exc}") from exc
 

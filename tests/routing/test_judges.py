@@ -64,13 +64,29 @@ def test_resolve_judge_rejects_unsupported_type() -> None:
 # ── parse_judge_spec ───────────────────────────────────────────────────────
 
 
-def test_parse_full_spec_with_variant() -> None:
+def test_parse_tag_suffix_stays_part_of_the_model() -> None:
     spec = parse_judge_spec("cli-fake/laya:typed-decisions")
-    assert spec == JudgeSpec(provider="cli-fake", model="laya", variant="typed-decisions")
+    assert spec == JudgeSpec(provider="cli-fake", model="laya:typed-decisions")
 
 
-def test_parse_spec_without_variant_and_with_whitespace() -> None:
-    assert parse_judge_spec("typesafeai/jev").variant is None
+def test_parse_colon_form_spells_the_same_model() -> None:
+    assert parse_judge_spec("cli-fake:laya") == JudgeSpec(provider="cli-fake", model="laya")
+    assert parse_judge_spec("ollama:parable-tinyjev:latest") == JudgeSpec(provider="ollama", model="parable-tinyjev:latest")
+
+
+def test_parse_registry_path_with_tag_stays_verbatim() -> None:
+    spec = parse_judge_spec("ollama/hf.co/darkgoatie/TinyJev-4B-GGUF:Q8_0")
+    assert spec == JudgeSpec(provider="ollama", model="hf.co/darkgoatie/TinyJev-4B-GGUF:Q8_0")
+    assert parse_judge_spec("ollama:hf.co/darkgoatie/TinyJev-4B-GGUF:Q8_0") == spec
+
+
+def test_parse_first_separator_wins() -> None:
+    assert parse_judge_spec("a:b/c") == JudgeSpec(provider="a", model="b/c")
+    assert parse_judge_spec("a/b:c") == JudgeSpec(provider="a", model="b:c")
+
+
+def test_parse_spec_with_whitespace() -> None:
+    assert parse_judge_spec("typesafeai/jev").model == "jev"
     assert parse_judge_spec("  openrouter/jev \n").provider == "openrouter"
 
 
@@ -80,8 +96,9 @@ def test_parse_spec_without_variant_and_with_whitespace() -> None:
         "nodash",
         "",
         "a/",
+        "a:",
         "/b",
-        "a/b:",
+        ":b",
         "a.b/c",
         "A/B",
     ],
@@ -108,7 +125,7 @@ def test_registered_loader_receives_typed_spec_and_host_facts() -> None:
     register_judge_provider("fake", loader)
     judge = resolve_judge("fake/model:v1", machine=MachineProfile(vram_budget_gb=12.5))
     assert isinstance(judge, DeterministicJudge)
-    assert captured == [(JudgeSpec(provider="fake", model="model", variant="v1"), MachineProfile(vram_budget_gb=12.5))]
+    assert captured == [(JudgeSpec(provider="fake", model="model:v1"), MachineProfile(vram_budget_gb=12.5))]
 
 
 def test_resolve_judge_without_host_facts_passes_none() -> None:
@@ -183,9 +200,9 @@ def test_explicit_registration_beats_lazy_module_path(monkeypatch: pytest.Monkey
 
 
 def test_register_rejects_bad_name_and_loader() -> None:
-    with pytest.raises(JudgeSpecError, match="slash-free"):
+    with pytest.raises(JudgeSpecError, match="separator-free"):
         register_judge_provider("bad/name", lambda spec, machine=None, preference=None: DeterministicJudge())
-    with pytest.raises(JudgeSpecError, match="slash-free"):
+    with pytest.raises(JudgeSpecError, match="separator-free"):
         register_judge_provider("", lambda spec, machine=None, preference=None: DeterministicJudge())
     with pytest.raises(JudgeError, match="must be callable"):
         register_judge_provider("noload", cast(Any, "not-callable"))
