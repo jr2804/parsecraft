@@ -106,8 +106,8 @@ identical plan.
   `resolve_judge(spec: str | RoutingJudge | None, *, machine: MachineProfile |
   None = None, preference: RoutingPreference = RoutingPreference.BALANCED) -> RoutingJudge` —
   `None` → `DeterministicJudge`, instance → passthrough, else parse
-  `provider/model[:variant]` (`parse_judge_spec` → `JudgeSpec` in
-  `judge.py`) and dispatch. Loaders register via
+  `provider/model` (or `provider:model`; model token verbatim)
+  (`parse_judge_spec` → `JudgeSpec` in `judge.py`) and dispatch. Loaders register via
   `register_judge_provider(name, loader)` (last wins; explicit beats the
   lazy path); unresolved providers lazy-load
   `parsecraft.providers.<provider>.load_judge(spec, machine, preference)` through

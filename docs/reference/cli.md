@@ -97,8 +97,8 @@ parsecraft convert SOURCE [OPTIONS]
 | Option | Default | Behaviour |
 | ------ | ------- | --------- |
 | `--backend`, `-b NAME` | unset | Non-auto: lead with this backend (it must be eligible) |
-| `--judge SPEC` | unset | Route with a judge provider (`provider/model[:variant]`); mutually exclusive with `--backend`, combinable with `--classifier`; may use the network (except `ollama/<model>`, which is local) |
-| `--classifier SPEC` | unset | Fold OCR-need facts from a classifier provider (`provider/model[:variant]`) into the analysis |
+| `--judge SPEC` | unset | Route with a judge provider (`provider/model`, or `provider:model`; model token verbatim); mutually exclusive with `--backend`, combinable with `--classifier`; may use the network (except `ollama/<model>`, which is local) |
+| `--classifier SPEC` | unset | Fold OCR-need facts from a classifier provider (`provider/model`, or `provider:model`) into the analysis |
 | `--auto` / `--no-auto` | `--auto` | Route automatically; `--no-auto` requires `--backend` |
 | `--max-passes N` | `1` | Fallback passes per page group (`N >= 1`) |
 | `--no-ocr` | off | Forbid OCR backends |
@@ -183,8 +183,8 @@ Two rules govern the fold:
   else in the output changes.
 
 It works in auto mode and under `--no-auto` (the fold is analysis-level),
-needs no credential and no network, and — like the judge — a `:variant` is
-rejected (the mode token names the upstream call, `detect_pdf`, which is
+needs no credential and no network, and — like the judge — the mode token is
+matched verbatim (it names the upstream call, `detect_pdf`, which is
 already 1-indexed like the IR).
 
 `--judge` is an explicit opt-in to whatever that provider does — the cloud

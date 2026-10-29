@@ -22,7 +22,7 @@ flowchart TD
     T --> F
     F --> J{"judge spec given?"}
     J -->|"no (default)"| D["DeterministicJudge"]
-    J -->|"provider/model[:variant]"| K["RoutingJudge.rank"]
+    J -->|"provider/model (or provider:model)"| K["RoutingJudge.rank"]
     D --> P["RoutingPlan — per page: intent, candidates, chosen"]
     K --> P
 ```
@@ -233,7 +233,8 @@ with no `--judge`/`--classifier` never leaves the process.
 
 - `None` → `DeterministicJudge` (the unchanged default);
 - a `RoutingJudge` instance → passthrough;
-- a string → parsed as `provider/model[:variant]`
+- a string → parsed as `provider/model` (or `provider:model`; the model
+  token is everything after the first separator, verbatim)
   (`parse_judge_spec` → `JudgeSpec`), then dispatched to a runtime-registered
   loader (`register_judge_provider`, last registration wins) or lazily
   imported from `parsecraft.providers.<provider>.load_judge(spec)` at resolve
@@ -333,7 +334,8 @@ unwired until then.
 `resolve_classifier(spec | instance | None)` (`src/parsecraft/routing/classifier.py`)
 resolves `None → None` — unlike the judge, there is **no** default
 implementation (A4), so absence is exactly the rule-table behaviour. A string is
-parsed as `provider/model[:variant]` and dispatched to a runtime-registered
+parsed as `provider/model` (or `provider:model`, model token verbatim) and
+dispatched to a runtime-registered
 loader (`register_classifier_provider`, last registration wins) or lazily
 imported from `parsecraft.providers.<provider>.load_classifier(spec)` at resolve
 time only — never at module import, never inline. Failures are typed:
@@ -384,12 +386,12 @@ state as a per-page fact also reaches the memo key, while plan-constant facts
 (`hints`, `machine`, `preference`) stay out of it so they cannot fragment the
 memo. The judge stays inside the code-owned funnel: it only re-ranks what
 `plan_route` already found eligible (decisions 3-5), and neither the host budget
-nor the page class is a filter. The model id is the spec's model token
-(`typesafe-ai/jev-latest`, `zen/jev-1.13-free`, `ollama/nimble`); a `:variant` is
-rejected rather than
-ignored — note that this makes Ollama's tag form unusable
-(`ollama/nimble:latest` parses as a variant), which is harmless because the
-daemon resolves a bare `nimble` to its `:latest` tag.
+nor the page class is a filter. The model id is the spec's model token, verbatim
+(`typesafe-ai/jev-latest`, `zen/jev-1.13-free`, `ollama/nimble`,
+`ollama/hf.co/darkgoatie/TinyJev-4B-GGUF:Q8_0`): registry paths and `:tag`
+suffixes pass through to the endpoint untouched, so Ollama's tag form works
+as spelled — `ollama/nimble:latest` and `ollama:nimble:latest` name the same
+model. (A bare `nimble` also works: the daemon resolves it to `:latest`.)
 
 Bounding defaults come from the SDK unless an endpoint overrides them: 10 s per
 HTTP operation, 3 attempts, a 30 s retry budget. The local endpoint alone raises

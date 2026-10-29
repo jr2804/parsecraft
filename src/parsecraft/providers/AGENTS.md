@@ -89,10 +89,12 @@ by `routing/judge_providers.py` (each turns a `JudgeSpec` into a
   credential at all (the shared loader sends the SDK's local sentinel), and one
   endpoint's `load_judge` must never probe the host, the network, or the daemon
   at resolution.
-- Order inside `load_endpoint_judge`: **spec, then environment**. An invalid
-  spec (unsupported `:variant`) is a caller bug and raises `JudgeSpecError`
-  (CLI exit 2) before the credential is consulted (exit 1), so a malformed
-  request never hides behind an unconfigured host.
+- Order at resolution: **spec, then environment**. A malformed spec string
+  is a caller bug and raises `JudgeSpecError` (CLI exit 2) in
+  `parse_judge_spec` before any loader — and therefore before the credential
+  is consulted (exit 1) — so a malformed request never hides behind an
+  unconfigured host. The model token itself is verbatim (tags and registry
+  paths pass through); loaders validate nothing about its shape.
 
 ## Verification
 

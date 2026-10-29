@@ -180,8 +180,9 @@ Decision 7 stands: the judge seam is the LLM integration point for
 re-ranking. The classifier seam extends the same pattern to OCR-need facts;
 a Jev-backed judge OR classifier would ship as its own optional extra,
 subject to A1–A4. The requirement "a no-heuristic LLM path must be
-configurable" is met by spec-string resolution (`provider/model[:variant]`)
-on both seams; the heuristic path remains the default when no spec is given.
+configurable" is met by spec-string resolution (`provider/model` or
+`provider:model`, model token verbatim) on both seams; the heuristic path
+remains the default when no spec is given.
 
 ### A8. The judge ranks with page context — authority refinement, not a boundary move (2026-10-02 amendment)
 

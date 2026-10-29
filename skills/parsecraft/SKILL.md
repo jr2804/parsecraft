@@ -82,8 +82,8 @@ parsecraft convert report.pdf --preference quality      # rank for VRAM headroom
 | `-o, --output FILE` | stdout | Write the result to FILE (parent dir must exist) |
 | `-b, --backend NAME` | — | Lead backend for every eligible page |
 | `--auto / --no-auto` | `--auto` | Auto-mode switch; `--no-auto` requires `--backend` |
-| `--judge provider/model[:variant]` | — | Learned re-ranking of eligible backends; may use the network; mutually exclusive with `--backend` |
-| `--classifier provider/model[:variant]` | — | Fold OCR-need facts from a classifier into the analysis |
+| `--judge provider/model` (or `provider:model`; model token verbatim) | — | Learned re-ranking of eligible backends; may use the network; mutually exclusive with `--backend` |
+| `--classifier provider/model` (or `provider:model`) | — | Fold OCR-need facts from a classifier into the analysis |
 | `--preference speed\|balanced\|quality` | `balanced` | Ranking axis inside the eligible family |
 | `--max-passes N` | `1` | Up to `N-1` ordered fallback passes per page group |
 | `--no-ocr` | off | Forbid OCR backends |
@@ -162,7 +162,7 @@ Auto mode is on by default and needs no model: a deterministic rule table
 decides — `parsecraft judges` states it plainly: "no --judge: the deterministic
 rule table decides; no provider is resolved and no network is used".
 
-- `--judge provider/model[:variant]` swaps in a learned re-ranking of the
+- `--judge provider/model` (or `provider:model`; the model token is verbatim, tags and registry paths included) swaps in a learned re-ranking of the
   candidates the hard constraints already admitted. Built-in providers (from
   `parsecraft judges`):
 

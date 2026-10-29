@@ -76,9 +76,12 @@ classifier ship in the base install, so every provider above works on a plain
 `pip install parsecraft`. What remains separate are the extraction engines —
 add the PDF/OCR backends you want as their own extras.
 
-The spec is `provider/model[:variant]`: the provider token names **who serves**
-the model, the model token is the upstream model id, and a `:variant` is
-rejected rather than ignored. `parsecraft judges` is the live list — it reports
+The spec is `provider/model` (or `provider:model`): the provider token names
+**who serves** the model, and the model token is everything after the first
+separator, verbatim — registry paths and `:tag` suffixes pass through
+untouched, exactly as the model is named upstream
+(`ollama/hf.co/darkgoatie/TinyJev-4B-GGUF:Q8_0`). `parsecraft judges` is the
+live list — it reports
 each provider's model tokens, its credential, and whether this host currently
 has that credential exported:
 
