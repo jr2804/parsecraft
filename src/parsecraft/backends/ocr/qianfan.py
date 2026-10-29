@@ -10,9 +10,8 @@ from __future__ import annotations
 from parsecraft.backends.ocr._common import load_impl
 from parsecraft.backends.ocr._models import (
     OCR_BACKEND_VERSION,
+    QIANFAN,
     QIANFAN_CAPABILITIES,
-    QIANFAN_EXTRA,
-    QIANFAN_NAME,
 )
 from parsecraft.backends.protocol import BackendConfig, BackendDescriptor, DocumentBackend
 
@@ -20,7 +19,7 @@ _IMPL_MODULE = "parsecraft.backends.ocr._qianfan_impl"
 
 DESCRIPTOR = BackendDescriptor(
     version=OCR_BACKEND_VERSION,
-    name=QIANFAN_NAME,
+    name=QIANFAN.name,
     capabilities=QIANFAN_CAPABILITIES,
 )
 
@@ -31,7 +30,7 @@ class QianfanFactory:
     descriptor: BackendDescriptor = DESCRIPTOR
 
     def __call__(self, config: BackendConfig) -> DocumentBackend:
-        impl = load_impl(_IMPL_MODULE, extra=QIANFAN_EXTRA)
+        impl = load_impl(_IMPL_MODULE, extra=QIANFAN.extra)
         return impl.create(config)
 
 

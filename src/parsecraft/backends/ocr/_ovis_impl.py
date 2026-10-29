@@ -25,10 +25,9 @@ from parsecraft.backends.ocr._common import (
 )
 from parsecraft.backends.ocr._models import (
     OCR_BACKEND_VERSION,
+    OVIS,
     OVIS_ASSET,
     OVIS_CAPABILITIES,
-    OVIS_EXTRA,
-    OVIS_NAME,
 )
 from parsecraft.backends.protocol import (
     AnalysisResult,
@@ -53,7 +52,7 @@ PROMPT = (
 class _OvisBackend:
     """Instantiated OvisOCR2 backend: bound transcriber + light orchestration."""
 
-    name = OVIS_NAME
+    name = OVIS.name
     capabilities: BackendCapabilities = OVIS_CAPABILITIES
 
     def __init__(self, config: BackendConfig, transcriber: Transcriber) -> None:
@@ -66,7 +65,7 @@ class _OvisBackend:
             return self._transcribe(image, inner.max_context_tokens)
 
         return convert_pages(
-            backend_name=OVIS_NAME,
+            backend_name=OVIS.name,
             backend_version=OCR_BACKEND_VERSION,
             asset=OVIS_ASSET,
             source=request.source,
@@ -93,7 +92,7 @@ def create(config: BackendConfig) -> DocumentBackend:
             engine,
             module=vllm_module,
             prompt=templated,
-            image_extra=OVIS_EXTRA,
+            image_extra=OVIS.extra,
         )
     else:
         pipe = load_transformers_pipeline(
@@ -104,5 +103,5 @@ def create(config: BackendConfig) -> DocumentBackend:
             require_gpu=True,  # GPU_REQUIRED capability: never a silent CPU fallback
         )
         templated = chat_prompt(pipe.tokenizer, user_text=PROMPT, enable_thinking=False)
-        transcriber = transformers_transcriber(pipe, prompt=templated, image_extra=OVIS_EXTRA)
+        transcriber = transformers_transcriber(pipe, prompt=templated, image_extra=OVIS.extra)
     return _OvisBackend(config, transcriber)

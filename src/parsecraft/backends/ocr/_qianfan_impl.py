@@ -26,10 +26,9 @@ from parsecraft.backends.ocr._common import (
 )
 from parsecraft.backends.ocr._models import (
     OCR_BACKEND_VERSION,
+    QIANFAN,
     QIANFAN_ASSET,
     QIANFAN_CAPABILITIES,
-    QIANFAN_EXTRA,
-    QIANFAN_NAME,
 )
 from parsecraft.backends.protocol import (
     AnalysisResult,
@@ -48,7 +47,7 @@ PROMPT = "Parse this document to Markdown."
 class _QianfanBackend:
     """Instantiated Qianfan-OCR backend: bound transcriber + light orchestration."""
 
-    name = QIANFAN_NAME
+    name = QIANFAN.name
     capabilities: BackendCapabilities = QIANFAN_CAPABILITIES
 
     def __init__(self, config: BackendConfig, transcriber: Transcriber) -> None:
@@ -61,7 +60,7 @@ class _QianfanBackend:
             return self._transcribe(image, inner.max_context_tokens)
 
         return convert_pages(
-            backend_name=QIANFAN_NAME,
+            backend_name=QIANFAN.name,
             backend_version=OCR_BACKEND_VERSION,
             asset=QIANFAN_ASSET,
             source=request.source,
@@ -88,7 +87,7 @@ def create(config: BackendConfig) -> DocumentBackend:
             engine,
             module=vllm_module,
             prompt=templated,
-            image_extra=QIANFAN_EXTRA,
+            image_extra=QIANFAN.extra,
         )
     else:
         pipe = load_transformers_pipeline(
@@ -99,5 +98,5 @@ def create(config: BackendConfig) -> DocumentBackend:
             require_gpu=True,  # GPU_REQUIRED capability: never a silent CPU fallback
         )
         templated = chat_prompt(pipe.tokenizer, user_text=PROMPT)
-        transcriber = transformers_transcriber(pipe, prompt=templated, image_extra=QIANFAN_EXTRA)
+        transcriber = transformers_transcriber(pipe, prompt=templated, image_extra=QIANFAN.extra)
     return _QianfanBackend(config, transcriber)

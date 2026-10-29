@@ -10,9 +10,8 @@ from __future__ import annotations
 from parsecraft.backends.ocr._common import load_impl
 from parsecraft.backends.ocr._models import (
     OCR_BACKEND_VERSION,
+    OVIS,
     OVIS_CAPABILITIES,
-    OVIS_EXTRA,
-    OVIS_NAME,
 )
 from parsecraft.backends.protocol import BackendConfig, BackendDescriptor, DocumentBackend
 
@@ -20,7 +19,7 @@ _IMPL_MODULE = "parsecraft.backends.ocr._ovis_impl"
 
 DESCRIPTOR = BackendDescriptor(
     version=OCR_BACKEND_VERSION,
-    name=OVIS_NAME,
+    name=OVIS.name,
     capabilities=OVIS_CAPABILITIES,
 )
 
@@ -31,7 +30,7 @@ class OvisFactory:
     descriptor: BackendDescriptor = DESCRIPTOR
 
     def __call__(self, config: BackendConfig) -> DocumentBackend:
-        impl = load_impl(_IMPL_MODULE, extra=OVIS_EXTRA)
+        impl = load_impl(_IMPL_MODULE, extra=OVIS.extra)
         return impl.create(config)
 
 

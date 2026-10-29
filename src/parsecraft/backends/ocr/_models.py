@@ -7,6 +7,8 @@ Pinned revisions and licenses verified against the HF API 2026-09-27
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from parsecraft.backends.protocol import (
     GPU_NOT_NEEDED,
     GPU_REQUIRED,
@@ -19,39 +21,82 @@ from parsecraft.backends.protocol import (
 #: Shared backend version for the whole OCR family (adapter code, not model).
 OCR_BACKEND_VERSION = "0.1.0"
 
-OVIS_NAME = "ocr-ovis"
-OVIS_MODEL_ID = "ATH-MaaS/OvisOCR2"
-OVIS_REVISION = "1fc9221b7823a371d6e97f92d527cc847e24e107"
-OVIS_VRAM_GB = 1.0
-OVIS_EXTRA = "ocr"
 
-TELE_NAME = "ocr-tele"
-TELE_MODEL_ID = "StarDoc-AI/TeleOCR"
-TELE_REVISION = "a61433186527cb53958bf354e34ae673c19cec4b"
-TELE_VRAM_GB = 1.2
-TELE_EXTRA = "ocr"
+@dataclass(frozen=True, slots=True)
+class OcrModelSpec:
+    """One OCR backend's five identity facts: name, Hub id, pin, VRAM, extra.
 
-UNLIMITED_NAME = "ocr-unlimited"
-UNLIMITED_MODEL_ID = "baidu/Unlimited-OCR"
-UNLIMITED_REVISION = "07dea832e22aefee32ad281d4b80551282e1c168"
-UNLIMITED_VRAM_GB = 3.0
-UNLIMITED_EXTRA = "ocr"
+    The loose per-model constants this replaces repeated the same five facts
+    apart from the ``*_ASSET`` and ``*_CAPABILITIES`` blocks built from them;
+    one record keeps each backend's facts together and both blocks read from it.
+    """
+
+    name: str
+    model_id: str
+    revision: str
+    vram_gb: float
+    extra: str
+
+
+OVIS = OcrModelSpec(
+    name="ocr-ovis",
+    model_id="ATH-MaaS/OvisOCR2",
+    revision="1fc9221b7823a371d6e97f92d527cc847e24e107",
+    vram_gb=1.0,
+    extra="ocr",
+)
+
+TELE = OcrModelSpec(
+    name="ocr-tele",
+    model_id="StarDoc-AI/TeleOCR",
+    revision="a61433186527cb53958bf354e34ae673c19cec4b",
+    vram_gb=1.2,
+    extra="ocr",
+)
+
+UNLIMITED = OcrModelSpec(
+    name="ocr-unlimited",
+    model_id="baidu/Unlimited-OCR",
+    revision="07dea832e22aefee32ad281d4b80551282e1c168",
+    vram_gb=3.0,
+    extra="ocr",
+)
 #: ``infer_multi()`` batch size: plan default is deliberately small.
 UNLIMITED_MAX_PAGES_PER_CALL = 4
 
-QIANFAN_NAME = "ocr-qianfan"
-QIANFAN_MODEL_ID = "baidu/Qianfan-OCR"
-QIANFAN_REVISION = "623bf5d20d446abdb36606aa4547cd0c18886fe5"
-QIANFAN_VRAM_GB = 4.0
-QIANFAN_EXTRA = "ocr"
+QIANFAN = OcrModelSpec(
+    name="ocr-qianfan",
+    model_id="baidu/Qianfan-OCR",
+    revision="623bf5d20d446abdb36606aa4547cd0c18886fe5",
+    vram_gb=4.0,
+    extra="ocr",
+)
+
+#: Pinned 2026-10-30 against the HF revision API (``sha`` == tip, ``gated`` false,
+#: created 2026-10-25): 689,356,864 params BF16 (~1.38 GB), ``qwen3_5`` arch,
+#: ``library_name transformers`` — the same Qwen3.5 family ovis runs on, so no new
+#: runtime enters the graph. Weights carry the modified AI Pubs OpenRAIL-M licence
+#: (research/personal/under-cap startups only): this asset is the first consumer of
+#: ``requires_user_acceptance`` (ADR-0006 decision 2 still applies — marker-pdf
+#: itself stays out of the graph, only the checkpoint is wired).
+#: Same daily-use class as ovis (weights ~1.38 GB); pc-6ev benchmarks verify.
+#: Own extra (not ``ocr``): adding OpenRAIL-M weights to the Apache-only ``ocr``
+#: group would void its all-Apache guarantee (README model table, pc-9gz scope).
+SURYA = OcrModelSpec(
+    name="ocr-surya",
+    model_id="datalab-to/surya-ocr-2.5",
+    revision="00c843e9cae45611dca0a6dc2c9bbbf2dadaaed3",
+    vram_gb=1.0,
+    extra="surya",
+)
 
 #: One MIME vocabulary for eligibility (native backends declare MIME too):
 #: `RoutingConstraints.formats` carries the source's media type, so extensions
 #: here would exclude every OCR backend from PDF/image sources (found while
 #: wiring `convert --auto`). Exactly the payloads `_common.count_pages` /
 #: `rasterize_page` accept — tiff/webp stay out until the impls handle them.
-#: Unified transformers window for ALL four OCR models (mirrors the four
-#: `ocr-*` extras in pyproject.toml — pinned equal by tests).
+#: Unified transformers window for all five OCR models (mirrors the `ocr` +
+#: `surya` extras in pyproject.toml — pinned equal by tests).
 TRANSFORMERS_RANGE = ">=5.17,<6"
 
 OCR_FORMATS: tuple[str, ...] = ("application/pdf", "image/jpeg", "image/png")
@@ -69,8 +114,8 @@ OVIS_FILE_PINS: tuple[AssetFilePin, ...] = (
 )
 
 OVIS_ASSET = ModelAssetDescriptor(
-    model_id=OVIS_MODEL_ID,
-    model_revision=OVIS_REVISION,
+    model_id=OVIS.model_id,
+    model_revision=OVIS.revision,
     model_license="apache-2.0",
     code_license="MIT",
     asset_license="apache-2.0",
@@ -82,7 +127,7 @@ OVIS_ASSET = ModelAssetDescriptor(
     ],
     size_bytes=None,
     quantization=None,
-    estimated_vram_gb=OVIS_VRAM_GB,
+    estimated_vram_gb=OVIS.vram_gb,
     file_pins=OVIS_FILE_PINS,
 )
 
@@ -103,8 +148,8 @@ TELE_FILE_PINS: tuple[AssetFilePin, ...] = (
 )
 
 TELE_ASSET = ModelAssetDescriptor(
-    model_id=TELE_MODEL_ID,
-    model_revision=TELE_REVISION,
+    model_id=TELE.model_id,
+    model_revision=TELE.revision,
     model_license="apache-2.0",
     code_license="MIT",
     asset_license="apache-2.0",
@@ -116,7 +161,7 @@ TELE_ASSET = ModelAssetDescriptor(
     ],
     size_bytes=None,
     quantization=None,
-    estimated_vram_gb=TELE_VRAM_GB,
+    estimated_vram_gb=TELE.vram_gb,
     file_pins=TELE_FILE_PINS,
 )
 
@@ -136,8 +181,8 @@ UNLIMITED_FILE_PINS: tuple[AssetFilePin, ...] = (
 )
 
 UNLIMITED_ASSET = ModelAssetDescriptor(
-    model_id=UNLIMITED_MODEL_ID,
-    model_revision=UNLIMITED_REVISION,
+    model_id=UNLIMITED.model_id,
+    model_revision=UNLIMITED.revision,
     model_license="MIT",
     code_license="MIT",
     asset_license="MIT",
@@ -149,7 +194,7 @@ UNLIMITED_ASSET = ModelAssetDescriptor(
     ],
     size_bytes=None,
     quantization=None,
-    estimated_vram_gb=UNLIMITED_VRAM_GB,
+    estimated_vram_gb=UNLIMITED.vram_gb,
     file_pins=UNLIMITED_FILE_PINS,
 )
 
@@ -172,8 +217,8 @@ QIANFAN_FILE_PINS: tuple[AssetFilePin, ...] = (
 )
 
 QIANFAN_ASSET = ModelAssetDescriptor(
-    model_id=QIANFAN_MODEL_ID,
-    model_revision=QIANFAN_REVISION,
+    model_id=QIANFAN.model_id,
+    model_revision=QIANFAN.revision,
     model_license="apache-2.0",
     code_license="MIT",
     asset_license="apache-2.0",
@@ -185,8 +230,37 @@ QIANFAN_ASSET = ModelAssetDescriptor(
     ],
     size_bytes=None,
     quantization=None,
-    estimated_vram_gb=QIANFAN_VRAM_GB,
+    estimated_vram_gb=QIANFAN.vram_gb,
     file_pins=QIANFAN_FILE_PINS,
+)
+
+SURYA_FILE_PINS: tuple[AssetFilePin, ...] = (
+    AssetFilePin(path="chat_template.jinja", sha256="86f17a85672e7f367b5e6c6de6f67f53ede0fba4abb3d67c583a6ef647c1aa85", size=2872),
+    AssetFilePin(path="config.json", sha256="37b7e37ff4ca2e6ec7c67e2808b61274c0d08aeef80bb03349637743ae7db2ec", size=2695),
+    AssetFilePin(path="generation_config.json", sha256="b3bb9900f84f37fe8686fdb70f3a435d30ea89076810b5332b70fd21edde81e4", size=132),
+    AssetFilePin(path="model.safetensors", sha256="6940baca2d16a20b15b7302cac7253246c78c95469920fcdb064963f48b5cb17", size=1378772208),
+    AssetFilePin(path="preprocessor_config.json", sha256="27225450ac9c6529872ee1924fcb0962ff5634834f817040f444118116f4e516", size=390),
+    AssetFilePin(path="processor_config.json", sha256="d89ef49ce9cd37fbf510158e13c1ef063d9286411c1ec9049932dbe0487143b1", size=1191),
+    AssetFilePin(path="tokenizer.json", sha256="49753fd82a5800f975d18d301203450d42f1a46c2b0247343c93239f122684c1", size=4228747),
+    AssetFilePin(path="tokenizer_config.json", sha256="273af4267d997926aea04103971a6f317c16c503f2ef924150f83ed0eb3bdcfd", size=775),
+    AssetFilePin(path="video_preprocessor_config.json", sha256="7768af27c1fafa9cc9011c1dc20067e03f8915e03b63504550e11d5066986d13", size=385),
+)
+
+SURYA_ASSET = ModelAssetDescriptor(
+    model_id=SURYA.model_id,
+    model_revision=SURYA.revision,
+    model_license="OpenRAIL-M",
+    code_license="Apache-2.0",
+    asset_license="OpenRAIL-M",
+    requires_user_acceptance=True,
+    source_urls=[
+        "https://huggingface.co/datalab-to/surya-ocr-2.5",
+        "https://github.com/datalab-to/surya",
+    ],
+    size_bytes=None,
+    quantization=None,
+    estimated_vram_gb=SURYA.vram_gb,
+    file_pins=SURYA_FILE_PINS,
 )
 
 
@@ -234,36 +308,48 @@ def ocr_capabilities(
 
 OVIS_CAPABILITIES = ocr_capabilities(
     asset=OVIS_ASSET,
-    optional_dependency_group=OVIS_EXTRA,
-    convert_extra=OVIS_EXTRA,
+    optional_dependency_group=OVIS.extra,
+    convert_extra=OVIS.extra,
     supports_multi_page=False,
-    estimated_vram_gb=OVIS_VRAM_GB,
+    estimated_vram_gb=OVIS.vram_gb,
 )
 
 TELE_CAPABILITIES = ocr_capabilities(
     asset=TELE_ASSET,
-    optional_dependency_group=TELE_EXTRA,
-    convert_extra=TELE_EXTRA,
+    optional_dependency_group=TELE.extra,
+    convert_extra=TELE.extra,
     supports_multi_page=False,
-    estimated_vram_gb=TELE_VRAM_GB,
+    estimated_vram_gb=TELE.vram_gb,
     # TeleOCR's HF card declares exactly zh + en (cardData.language, 2026-09-27):
     languages=("zh", "en"),
 )
 
 UNLIMITED_CAPABILITIES = ocr_capabilities(
     asset=UNLIMITED_ASSET,
-    optional_dependency_group=UNLIMITED_EXTRA,
-    convert_extra=UNLIMITED_EXTRA,
+    optional_dependency_group=UNLIMITED.extra,
+    convert_extra=UNLIMITED.extra,
     supports_multi_page=True,
-    estimated_vram_gb=UNLIMITED_VRAM_GB,
+    estimated_vram_gb=UNLIMITED.vram_gb,
 )
 
 QIANFAN_CAPABILITIES = ocr_capabilities(
     asset=QIANFAN_ASSET,
-    optional_dependency_group=QIANFAN_EXTRA,
-    convert_extra=QIANFAN_EXTRA,
+    optional_dependency_group=QIANFAN.extra,
+    convert_extra=QIANFAN.extra,
     supports_multi_page=False,
-    estimated_vram_gb=QIANFAN_VRAM_GB,
+    estimated_vram_gb=QIANFAN.vram_gb,
+)
+
+SURYA_CAPABILITIES = ocr_capabilities(
+    asset=SURYA_ASSET,
+    optional_dependency_group=SURYA.extra,
+    convert_extra=SURYA.extra,
+    supports_multi_page=False,
+    estimated_vram_gb=SURYA.vram_gb,
+    # Surya 2.5's card reports 91 languages (74.9% overall pass rate, 2026-10-25):
+    # a "multilingual" card stays language-agnostic on purpose — an empty tuple is
+    # never excluded by a language request, the fail-safe direction (see the
+    # ``languages`` contract on :func:`ocr_capabilities`).
 )
 
 # ── tesseract: the base-install OCR backend (ADR-0008) ──────────────────────

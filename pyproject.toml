@@ -72,6 +72,16 @@ ocr = [
     "torchvision",
 ]
 
+# SuryaOCR 2.5 checkpoint (pc-9gz) — own extra, not part of `ocr`: the weights are
+# OpenRAIL-M, so folding them into `ocr` would void its all-Apache guarantee.
+# Mirrors the `mineru` extra (same Qwen3.5/transformers runtime, no wrapper dep).
+surya = [
+    "accelerate>=0.34",
+    "torch>=2.5",
+    "transformers>=5.17,<6",
+    "torchvision",
+]
+
 vllm = ["vllm>=0.11 ; sys_platform != 'win32'"]  # Linux/WSL2 accelerator
 
 [project.entry-points."parsecraft.backends"]
@@ -95,6 +105,7 @@ ocr-ovis = "parsecraft.backends.ocr.ovis:factory"
 ocr-tele = "parsecraft.backends.ocr.tele:factory"
 ocr-unlimited = "parsecraft.backends.ocr.unlimited:factory"
 ocr-qianfan = "parsecraft.backends.ocr.qianfan:factory"
+ocr-surya = "parsecraft.backends.ocr.surya:factory"
 # Base-install OCR (ADR-0008): a binary engine, so no extra is declared and the
 # backend is in the default install. Eligible only where the engine is present.
 ocr-tesseract = "parsecraft.backends.ocr.tesseract:factory"

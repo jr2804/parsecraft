@@ -36,7 +36,7 @@ from parsecraft.assets.errors import OfflineModeError
 from parsecraft.assets.models import AssetPin
 from parsecraft.backends import registry as registry_module
 from parsecraft.backends.errors import BackendError, DependencyUnavailableError, UnsupportedDependencyVersionError
-from parsecraft.backends.ocr import _common, _models, ovis, qianfan, tele, unlimited
+from parsecraft.backends.ocr import _common, _models, ovis, qianfan, surya, tele, unlimited
 from parsecraft.backends.ocr._common import VllmCompletion, VllmOutput
 from parsecraft.backends.protocol import (
     AssetFilePin,
@@ -61,6 +61,7 @@ _FACTORY_MODULES: tuple[tuple[FactoryModule, str, str, float, bool], ...] = (
     (tele, "ocr-tele", "ocr", 1.2, False),
     (unlimited, "ocr-unlimited", "ocr", 3.0, True),
     (qianfan, "ocr-qianfan", "ocr", 4.0, False),
+    (surya, "ocr-surya", "surya", 1.0, False),
 )
 
 _ASSETS: tuple[tuple[FactoryModule, ModelAssetDescriptor, str, str], ...] = (
@@ -76,6 +77,7 @@ _PINNED_ASSETS = (
     (_models.TELE_ASSET, "tele"),
     (_models.UNLIMITED_ASSET, "unlimited"),
     (_models.QIANFAN_ASSET, "qianfan"),
+    (_models.SURYA_ASSET, "surya"),
 )
 
 
@@ -489,16 +491,36 @@ class _ProcessorLoader:
         return self.result
 
 
+def test_surya_asset_carries_the_openrail_acceptance_gate() -> None:
+    """Surya weights are OpenRAIL-M: acceptance-gated, unlike the permissive OCR assets."""
+    asset = _models.SURYA_ASSET
+    assert asset.model_id == "datalab-to/surya-ocr-2.5"
+    assert re.fullmatch(r"[0-9a-f]{40}", asset.model_revision)
+    assert asset.model_license == "OpenRAIL-M"
+    assert asset.asset_license == "OpenRAIL-M"
+    assert asset.code_license == "Apache-2.0"
+    assert asset.requires_user_acceptance is True
+    assert asset.size_bytes is None
+    assert asset.quantization is None
+    assert asset.source_urls
+    assert all(url.startswith("https://") for url in asset.source_urls)
+    assert asset.file_pins, "every pinned model needs a non-empty file manifest"
+    capabilities = surya.factory.descriptor.capabilities
+    assert asset.estimated_vram_gb == capabilities.estimated_vram_gb == _models.SURYA.vram_gb
+    assert capabilities.optional_dependency_group == capabilities.convert_extra == "surya"
+
+
 # ── Descriptors and model assets (light, no stubs) ──────────────────────────────
 
 
 def test_factory_modules_satisfy_the_entry_point_protocol() -> None:
-    modules: list[FactoryModule] = [ovis, tele, unlimited, qianfan]
+    modules: list[FactoryModule] = [ovis, tele, unlimited, qianfan, surya]
     assert [module.factory.descriptor.name for module in modules] == [
         "ocr-ovis",
         "ocr-tele",
         "ocr-unlimited",
         "ocr-qianfan",
+        "ocr-surya",
     ]
 
 
@@ -552,6 +574,9 @@ def test_transformers_range_matches_the_pyproject_extras() -> None:
     extras = data["project"]["optional-dependencies"]
     expected = f"transformers{_models.TRANSFORMERS_RANGE}"
     assert expected in extras["ocr"], f"ocr extra missing unified range {expected!r}"
+    # The surya extra runs the same transformers runtime (pc-9gz): it carries the
+    # same window, not a second one.
+    assert expected in extras["surya"], f"surya extra missing unified range {expected!r}"
 
 
 def test_unpinned_tele_descriptor_keeps_the_hub_revision(
@@ -564,11 +589,11 @@ def test_unpinned_tele_descriptor_keeps_the_hub_revision(
     monkeypatch.setattr(impl, "TELE_ASSET", _models.TELE_ASSET.model_copy(update={"file_pins": ()}))
     impl.create(BackendConfig(name="ocr-tele"))
     model_load = state.vendored_model_loads[0]
-    assert model_load["source"] == _models.TELE_MODEL_ID
-    assert model_load["revision"] == _models.TELE_REVISION
+    assert model_load["source"] == _models.TELE.model_id
+    assert model_load["revision"] == _models.TELE.revision
     processor_load = state.processor_load_calls[0]
-    assert processor_load["source"] == _models.TELE_MODEL_ID
-    assert processor_load["revision"] == _models.TELE_REVISION
+    assert processor_load["source"] == _models.TELE.model_id
+    assert processor_load["revision"] == _models.TELE.revision
     assert processor_load["fix_mistral_regex"] is True
 
 
@@ -904,8 +929,8 @@ def test_convert_covers_all_pages_by_default(pdfium: _Pypdfium2Stub) -> None:
     assert result.pages[0].blocks[0].content == "text-1"
     assert result.pages[0].blocks[0].id == "ocr-test-p1-b0"
     assert result.failures == []
-    assert result.backend.model_id == _models.OVIS_MODEL_ID
-    assert result.backend.model_revision == _models.OVIS_REVISION
+    assert result.backend.model_id == _models.OVIS.model_id
+    assert result.backend.model_revision == _models.OVIS.revision
     assert result.backend.version == "9.9.9"
     assert result.elapsed_s >= 0.0
 
@@ -1398,6 +1423,7 @@ def test_extract_generated_rejects_garbage(result: object) -> None:
         (ovis, "parsecraft.backends.ocr._ovis_impl", "ocr-ovis", "Extract all readable content", False, False),
         (tele, "parsecraft.backends.ocr._tele_impl", "ocr-tele", "Please output the text content", None, None),
         (qianfan, "parsecraft.backends.ocr._qianfan_impl", "ocr-qianfan", "Parse this document to Markdown", None, False),
+        (surya, "parsecraft.backends.ocr._surya_impl", "ocr-surya", "OCR this image to HTML", False, False),
     ],
 )
 def test_pipeline_backends_convert_under_the_stub(
@@ -1482,6 +1508,7 @@ def test_pipeline_backends_convert_under_the_stub(
         "parsecraft.backends.ocr._ovis_impl",
         "parsecraft.backends.ocr._tele_impl",
         "parsecraft.backends.ocr._qianfan_impl",
+        "parsecraft.backends.ocr._surya_impl",
     ],
 )
 def test_pipeline_backends_support_the_vllm_runtime(
@@ -1800,7 +1827,7 @@ def test_asset_manager_failures_propagate_typed() -> None:
 def test_model_source_falls_back_to_hub_with_the_pinned_revision() -> None:
     unpinned = _models.OVIS_ASSET.model_copy(update={"file_pins": ()})
     source, revision = _common.model_source_and_revision(unpinned, BackendConfig(name="ocr-ovis"))
-    assert (source, revision) == (_models.OVIS_MODEL_ID, _models.OVIS_REVISION)
+    assert (source, revision) == (_models.OVIS.model_id, _models.OVIS.revision)
 
 
 @pytest.mark.parametrize(("asset", "recorded"), _PINNED_ASSETS)
@@ -1835,13 +1862,19 @@ def test_asset_file_pin_rejects_a_bad_sha256() -> None:
 @pytest.mark.parametrize(
     ("asset_attr", "impl_module", "expected_id", "expected_revision"),
     [
-        ("OVIS_ASSET", "parsecraft.backends.ocr._ovis_impl", _models.OVIS_MODEL_ID, _models.OVIS_REVISION),
-        ("TELE_ASSET", "parsecraft.backends.ocr._tele_impl", _models.TELE_MODEL_ID, _models.TELE_REVISION),
+        ("OVIS_ASSET", "parsecraft.backends.ocr._ovis_impl", _models.OVIS.model_id, _models.OVIS.revision),
+        ("TELE_ASSET", "parsecraft.backends.ocr._tele_impl", _models.TELE.model_id, _models.TELE.revision),
         (
             "QIANFAN_ASSET",
             "parsecraft.backends.ocr._qianfan_impl",
-            _models.QIANFAN_MODEL_ID,
-            _models.QIANFAN_REVISION,
+            _models.QIANFAN.model_id,
+            _models.QIANFAN.revision,
+        ),
+        (
+            "SURYA_ASSET",
+            "parsecraft.backends.ocr._surya_impl",
+            _models.SURYA.model_id,
+            _models.SURYA.revision,
         ),
     ],
 )
@@ -1886,12 +1919,12 @@ def test_unpinned_unlimited_descriptor_keeps_the_hub_revision(
     impl.create(BackendConfig(name="ocr-unlimited"))
     config_load = state.vendored_config_loads[0]
     model_load = state.vendored_model_loads[0]
-    assert config_load["source"] == _models.UNLIMITED_MODEL_ID
-    assert config_load["revision"] == _models.UNLIMITED_REVISION
-    assert model_load["source"] == _models.UNLIMITED_MODEL_ID
-    assert model_load["revision"] == _models.UNLIMITED_REVISION
+    assert config_load["source"] == _models.UNLIMITED.model_id
+    assert config_load["revision"] == _models.UNLIMITED.revision
+    assert model_load["source"] == _models.UNLIMITED.model_id
+    assert model_load["revision"] == _models.UNLIMITED.revision
     tokenizer_load = state.tokenizer_load_calls[0]
-    assert tokenizer_load["revision"] == _models.UNLIMITED_REVISION
+    assert tokenizer_load["revision"] == _models.UNLIMITED.revision
     assert tokenizer_load["fix_mistral_regex"] is True
 
 

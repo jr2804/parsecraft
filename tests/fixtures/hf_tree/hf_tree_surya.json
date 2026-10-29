@@ -1,0 +1,47 @@
+[
+  {
+    "path": "chat_template.jinja",
+    "sha256": "86f17a85672e7f367b5e6c6de6f67f53ede0fba4abb3d67c583a6ef647c1aa85",
+    "size": 2872
+  },
+  {
+    "path": "config.json",
+    "sha256": "37b7e37ff4ca2e6ec7c67e2808b61274c0d08aeef80bb03349637743ae7db2ec",
+    "size": 2695
+  },
+  {
+    "path": "generation_config.json",
+    "sha256": "b3bb9900f84f37fe8686fdb70f3a435d30ea89076810b5332b70fd21edde81e4",
+    "size": 132
+  },
+  {
+    "path": "model.safetensors",
+    "sha256": "6940baca2d16a20b15b7302cac7253246c78c95469920fcdb064963f48b5cb17",
+    "size": 1378772208
+  },
+  {
+    "path": "preprocessor_config.json",
+    "sha256": "27225450ac9c6529872ee1924fcb0962ff5634834f817040f444118116f4e516",
+    "size": 390
+  },
+  {
+    "path": "processor_config.json",
+    "sha256": "d89ef49ce9cd37fbf510158e13c1ef063d9286411c1ec9049932dbe0487143b1",
+    "size": 1191
+  },
+  {
+    "path": "tokenizer.json",
+    "sha256": "49753fd82a5800f975d18d301203450d42f1a46c2b0247343c93239f122684c1",
+    "size": 4228747
+  },
+  {
+    "path": "tokenizer_config.json",
+    "sha256": "273af4267d997926aea04103971a6f317c16c503f2ef924150f83ed0eb3bdcfd",
+    "size": 775
+  },
+  {
+    "path": "video_preprocessor_config.json",
+    "sha256": "7768af27c1fafa9cc9011c1dc20067e03f8915e03b63504550e11d5066986d13",
+    "size": 385
+  }
+]

@@ -28,10 +28,9 @@ from parsecraft.backends.ocr._common import (
 )
 from parsecraft.backends.ocr._models import (
     OCR_BACKEND_VERSION,
+    TELE,
     TELE_ASSET,
     TELE_CAPABILITIES,
-    TELE_EXTRA,
-    TELE_NAME,
 )
 from parsecraft.backends.ocr._vendored.naviocr.modeling_naviocr import Qwen2_5_VLForConditionalGeneration
 from parsecraft.backends.protocol import (
@@ -53,7 +52,7 @@ SYSTEM = "You are a helpful assistant."
 class _TeleBackend:
     """Instantiated TeleOCR backend: bound transcriber + light orchestration."""
 
-    name = TELE_NAME
+    name = TELE.name
     capabilities: BackendCapabilities = TELE_CAPABILITIES
 
     def __init__(self, config: BackendConfig, transcriber: Transcriber) -> None:
@@ -66,7 +65,7 @@ class _TeleBackend:
             return self._transcribe(image, inner.max_context_tokens)
 
         return convert_pages(
-            backend_name=TELE_NAME,
+            backend_name=TELE.name,
             backend_version=OCR_BACKEND_VERSION,
             asset=TELE_ASSET,
             source=request.source,
@@ -93,7 +92,7 @@ def create(config: BackendConfig) -> DocumentBackend:
             engine,
             module=vllm_module,
             prompt=templated,
-            image_extra=TELE_EXTRA,
+            image_extra=TELE.extra,
         )
     else:
         # Vendored modeling (pc-4u7.36): explicit class, no trust_remote_code.
@@ -116,5 +115,5 @@ def create(config: BackendConfig) -> DocumentBackend:
             msg = f"failed to load model {source!r}{where}: {type(exc).__name__}: {exc}"
             raise BackendError(msg) from exc
         templated = chat_prompt(pipe.tokenizer, user_text=PROMPT, system=SYSTEM)
-        transcriber = transformers_transcriber(pipe, prompt=templated, image_extra=TELE_EXTRA)
+        transcriber = transformers_transcriber(pipe, prompt=templated, image_extra=TELE.extra)
     return _TeleBackend(config, transcriber)

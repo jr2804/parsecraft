@@ -41,10 +41,10 @@ from parsecraft.backends.ocr._common import (
 )
 from parsecraft.backends.ocr._models import (
     OCR_BACKEND_VERSION,
+    UNLIMITED,
     UNLIMITED_ASSET,
     UNLIMITED_CAPABILITIES,
     UNLIMITED_MAX_PAGES_PER_CALL,
-    UNLIMITED_NAME,
 )
 from parsecraft.backends.ocr._vendored.unlimited.modeling_unlimitedocr import (
     UnlimitedOCRConfig,
@@ -95,7 +95,7 @@ class LongHorizonModel(Protocol):
 class _UnlimitedBackend:
     """Instantiated Unlimited-OCR backend: bound model + batched light orchestration."""
 
-    name = UNLIMITED_NAME
+    name = UNLIMITED.name
     capabilities: BackendCapabilities = UNLIMITED_CAPABILITIES
 
     def __init__(self, config: BackendConfig, model: LongHorizonModel, tokenizer: object) -> None:
@@ -119,7 +119,7 @@ class _UnlimitedBackend:
             return cache[number]
 
         return convert_pages(
-            backend_name=UNLIMITED_NAME,
+            backend_name=UNLIMITED.name,
             backend_version=OCR_BACKEND_VERSION,
             asset=UNLIMITED_ASSET,
             source=request.source,
@@ -179,7 +179,7 @@ def _page_texts(raw: object, *, batch: int) -> list[str]:
 def create(config: BackendConfig) -> DocumentBackend:
     """Build the backend — the sanctioned heavy-import boundary."""
     if runtime_choice(config) == "vllm":
-        msg = f"backend {UNLIMITED_NAME!r} supports runtime='transformers' only (infer_multi long-horizon API)"
+        msg = f"backend {UNLIMITED.name!r} supports runtime='transformers' only (infer_multi long-horizon API)"
         raise BackendError(msg)
     return _UnlimitedBackend(config, *_load(config))
 
