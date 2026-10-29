@@ -85,3 +85,4 @@ mise.local.toml
 .beads-credential-key
 .beads/proxieddb/
 *.gate.lock*
+opencode.jsonc
