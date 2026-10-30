@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import io
 import os
 import re
 import sys
@@ -24,6 +25,7 @@ from parsecraft.backends.docling.libreoffice import LIBREOFFICE_ENV
 from parsecraft.backends.errors import BackendError, DependencyUnavailableError
 from parsecraft.backends.protocol import BackendConfig, BackendResult, ConversionRequest, DocumentBackend, SourceDocument
 from parsecraft.ir.models import ChunkKind, FailureCode, PageRange, PassKind
+from tests.fixtures.documents import docx_headings_bytes
 
 _PDF_BYTES = b"%PDF-1.7 stub"
 _PDF_SOURCE = SourceDocument(uri="file:///doc.pdf", media_type="application/pdf", content=_PDF_BYTES)
@@ -38,9 +40,10 @@ class _Prov:
 
 
 class _TextItem:
-    def __init__(self, text: str, label: str = "text", page_no: int | None = 1) -> None:
+    def __init__(self, text: str, label: str = "text", page_no: int | None = 1, level: int | None = None) -> None:
         self.text = text
         self.label = label
+        self.level = level
         self.prov = [] if page_no is None else [_Prov(page_no)]
 
 
@@ -289,6 +292,39 @@ def test_convert_builds_typed_ir_per_page(docling_stub: _State) -> None:
     assert result.pages[1].blocks[0].content == "second page"
     assert result.backend.name == "docling"
     assert result.backend.version == docling_module.DOCLING_BACKEND_VERSION
+
+
+@pytest.mark.parametrize(
+    ("label", "level", "expected"),
+    [
+        ("title", None, "1"),
+        ("section_header", 1, "1"),
+        ("section_header", 2, "2"),
+        ("section_header", 3, "3"),
+        ("section_header", 9, "6"),  # clamped at the source: ir.markdown honours 1-6 only
+    ],
+)
+def test_convert_marks_heading_levels_with_the_author_level(docling_stub: _State, label: str, level: int | None, expected: str) -> None:
+    docling_stub.items = [_TextItem("Heading text", label=label, level=level)]
+    result = _convert(_backend())
+    assert result.pages[0].blocks[0].metadata == {"heading_level": expected}
+
+
+def test_convert_omits_heading_level_without_a_docling_level(docling_stub: _State) -> None:
+    docling_stub.items = [_TextItem("Unlevelled header", label="section_header")]
+    result = _convert(_backend())
+    assert "heading_level" not in result.pages[0].blocks[0].metadata
+
+
+def test_convert_omits_heading_level_on_body_text(docling_stub: _State) -> None:
+    docling_stub.items = [_TextItem("Body under the first top-level heading.")]
+    result = _convert(_backend())
+    assert "heading_level" not in result.pages[0].blocks[0].metadata
+
+
+def test_docx_headings_fixture_carries_title_deep_headings_and_body() -> None:
+    styles = [paragraph.style.name for paragraph in importlib.import_module("docx").Document(io.BytesIO(docx_headings_bytes())).paragraphs]
+    assert styles == ["Title", "Heading 1", "Normal", "Heading 2", "Heading 3", "Heading 9"]
 
 
 def test_convert_text_format_omits_page_range_in_the_converter_call(docling_stub: _State) -> None:

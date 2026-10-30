@@ -218,7 +218,7 @@ def _select(
     for item, _level in document.iterate_items():
         if request.cancellation is not None and request.cancellation():
             return _filled_pages(blocks, request.page_range), _failure(request, started, FailureCode.CANCELLED, "cancelled between items")
-        content, kind, rows = _item_content(item, document)
+        content, kind, rows, metadata = _item_content(item, document)
         if not content:
             continue
         page_number = item.prov[0].page_no if item.prov else 1
@@ -236,12 +236,13 @@ def _select(
                 page_number=page_number,
                 reading_order=len(chunks),
                 rows=rows,
+                metadata=metadata,
             )
         )
     return _filled_pages(blocks, request.page_range), None
 
 
-def _item_content(item: object, document: DoclingDocument) -> tuple[str, ChunkKind, tuple[tuple[str, ...], ...] | None]:
+def _item_content(item: object, document: DoclingDocument) -> tuple[str, ChunkKind, tuple[tuple[str, ...], ...] | None, dict[str, str]]:
     """Text + chunk kind for one docling item (tables export to Markdown).
 
     Table cells come from ``TableItem.data.grid`` — the structured grid
@@ -250,11 +251,34 @@ def _item_content(item: object, document: DoclingDocument) -> tuple[str, ChunkKi
     """
     if isinstance(item, TableItem):
         rows = tuple(tuple(cell.text for cell in row) for row in item.data.grid)
-        return (item.export_to_markdown(document) or "").strip(), ChunkKind.TABLE, rows
+        return (item.export_to_markdown(document) or "").strip(), ChunkKind.TABLE, rows, {}
     if isinstance(item, TextItem):
         kind = _LABEL_KINDS.get(str(item.label), ChunkKind.PARAGRAPH)
-        return (item.text or "").strip(), kind, None
-    return "", ChunkKind.UNKNOWN, None
+        return (item.text or "").strip(), kind, None, _heading_metadata(item)
+    return "", ChunkKind.UNKNOWN, None, {}
+
+
+def _heading_metadata(item: TextItem) -> dict[str, str]:
+    """``heading_level`` for titles and section headers, nothing otherwise.
+
+    Follows the house convention every other backend already uses: the
+    author's own level goes into metadata unchanged. ``title`` is level 1;
+    section headers carry ``item.level`` verbatim, clamped to 6 —
+    ``ir.markdown`` only honours 1–6 and silently renders anything above
+    as H2, so the clamp happens here, at the source (the `+1` docling's
+    own Markdown exporter applies is a renderer convention and stays out
+    of the IR). Only headings carry the key: ``item.level`` is ``None``
+    (or absent) on every non-heading ``TextItem``, which falls out for free.
+    """
+    label = str(item.label)
+    if label == "title":
+        return {"heading_level": "1"}
+    if label == "section_header":
+        level = getattr(item, "level", None)
+        if level is None:
+            return {}
+        return {"heading_level": str(min(int(level), 6))}
+    return {}
 
 
 def _filled_pages(blocks: dict[int, list[StructuredChunk]], page_range: PageRange | None) -> list[PageResult]:

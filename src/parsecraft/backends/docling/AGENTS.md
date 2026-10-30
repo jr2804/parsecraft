@@ -60,7 +60,10 @@ plus a bound-checked `convert()` that maps docling items to typed IR chunks.
   directly. It never loads layout models and never downloads.
 - `convert()` runs one `DocumentConverter` pass, passes `page_range` only for
   PDF (`convert(page_range=...)`), maps items per page (`TableItem` →
-  `export_to_markdown`, `TextItem` labels → `ChunkKind`), and returns every
+  `export_to_markdown`, `TextItem` labels → `ChunkKind`; titles and section
+  headers carry `metadata["heading_level"]` with the author's own level —
+  title `"1"`, sections `item.level` verbatim clamped to 6, never the tree
+  depth from `iterate_items()`), and returns every
   requested page — empty `PageResult`s included — so the executor's exact
   page-number check holds.
 - Bounds are honored between items: cancellation, `timeout_s` (checked after
