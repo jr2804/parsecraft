@@ -352,5 +352,78 @@ def test_end_marker_without_key_is_not_frontmatter() -> None:
     assert all("frontmatter" not in block.metadata for block in _blocks(result))
 
 
+# ── CR line endings: the offset table counts what the tokenizer counts ─────
+# Consumer incident (pc-9p6.12): real PDF bodies legally use CR-only line
+# endings (PDF spec §7.5). Presented as .md and replacement-decoded, the
+# CR lines made markdown-it's token maps outrun the LF-built offset table:
+# IndexError in _span. The table and the frontmatter detector now split on
+# the same \r\n?|\n breaks the tokenizer normalizes to, in original
+# coordinates — spans keep slicing the caller's exact bytes, CRLF included.
+
+
+def test_consumer_minimal_cr_case_parses() -> None:
+    # Two CRs are a genuine blank line (≡ LF ``a\\n\\nb``): two paragraphs,
+    # not a crash — the pin is equivalence with the LF shape.
+    result = parse_markdown("a\r\rb", "mem://cr1", produced_at=PRODUCED)
+    expected = parse_markdown("a\n\nb", "mem://cr1b", produced_at=PRODUCED)
+    assert [block.kind for block in _blocks(result)] == [ChunkKind.PARAGRAPH, ChunkKind.PARAGRAPH]
+    assert [block.content for block in _blocks(result)] == [block.content for block in _blocks(expected)]
+
+
+def test_pdf_shaped_cr_body_parses() -> None:
+    objs = "".join(f"{i} 0 obj\r<< /Type /Page >>\rendobj\r" for i in range(1, 9))
+    pdf_bytes = ("%PDF-1.4\n" + objs + "xref\r0 9\r0000000000 65535 f\r" + "\n\n# tail\n").encode("latin-1")
+    text = pdf_bytes.decode("utf-8", errors="replace")
+    result = parse_markdown(text, "mem://cr2", produced_at=PRODUCED)
+    assert any(block.kind is ChunkKind.HEADING and block.content == "tail" for block in _blocks(result))
+
+
+def test_crlf_spans_keep_original_coordinates() -> None:
+    text = "# T\r\n\r\npara\r\n"
+    blocks = _blocks(parse_markdown(text, "mem://cr3", produced_at=PRODUCED))
+    head, para = blocks[0], blocks[1]
+    assert (head.source_span.start, head.source_span.end) == (0, 5)
+    assert text[0:5] == "# T\r\n"
+    assert (para.source_span.start, para.source_span.end) == (7, 13)
+    assert text[7:13] == "para\r\n"
+
+
+def test_mixed_endings_spans_slice_original_text() -> None:
+    text = "# H1\r\npara one\rpara two\npara three\r\n\r\n## H2\rend\r"
+    blocks = _blocks(parse_markdown(text, "mem://cr4", produced_at=PRODUCED))
+    for block in blocks:
+        assert block.source_span is not None
+        assert 0 <= block.source_span.start <= block.source_span.end <= len(text)
+    head = blocks[0]
+    assert (head.source_span.start, head.source_span.end) == (0, 6)
+    assert text[0:6] == "# H1\r\n"
+    para = next(block for block in blocks if block.kind is ChunkKind.PARAGRAPH)
+    raw = text[para.source_span.start : para.source_span.end]
+    assert raw.replace("\r\n", "\n").replace("\r", "\n") == para.content + "\n"
+
+
+def test_cr_frontmatter_is_consumed_verbatim() -> None:
+    text = "---\rkey: value\r---\r\r# Real\r"
+    blocks = _blocks(parse_markdown(text, "mem://cr5", produced_at=PRODUCED))
+    assert [block.kind for block in blocks] == [ChunkKind.UNKNOWN, ChunkKind.HEADING]
+    assert blocks[0].metadata == {"frontmatter": "true"}
+    assert blocks[0].content == "---\nkey: value\n---"
+    span = blocks[1].source_span
+    assert (span.start, span.end) == (20, 27)
+    assert text[20:27] == "# Real\r"
+
+
+def test_endings_parity_across_lf_crlf_cr_and_mixed() -> None:
+    doc = "# T\n\npara one\n\n- a\n- b\n"
+    variants = [
+        doc,
+        doc.replace("\n", "\r\n"),
+        doc.replace("\n", "\r"),
+        "# T\r\n\npara one\r\n- a\r- b\n",
+    ]
+    shapes = [[(block.kind, block.content) for block in _blocks(parse_markdown(v, "mem://crp", produced_at=PRODUCED))] for v in variants]
+    assert all(shape == shapes[0] for shape in shapes[1:])
+
+
 def _blocks(result: Any) -> list[Any]:
     return result.pages[0].blocks

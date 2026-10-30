@@ -47,6 +47,13 @@ _FRONTMATTER_END = "..."
 #: because bare ``Some Title:`` prose also ends in a colon.
 _FRONTMATTER_KEY = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.\-]*[ \t]*:")
 
+#: Line-break pattern mirroring markdown-it's own newline normalization
+#: (``NEWLINES_RE = \\r\\n?|\\n``). Both the offset table and the
+#: frontmatter detector must split lines exactly the way the tokenizer
+#: does; anything narrower undercounts CR-only lines and token maps
+#: outrun the table.
+_LINE_BREAK = re.compile(r"\r\n?|\n")
+
 
 class _ChunkBuilder:
     """Turns a flat markdown-it token stream into ordered ``StructuredChunk``s."""
@@ -297,9 +304,18 @@ def parse_markdown(
 
 def _project(text: str) -> tuple[list[StructuredChunk], list[Diagnostic]]:
     """Shared core: tokenise ``text`` and build the ordered chunk projection."""
+    # Line breaks counted exactly the way markdown-it counts them: its
+    # ``normalize`` core rule folds ``\\r\\n?`` into ``\\n`` before
+    # tokenising, so an offset table built on ``split("\\n")`` undercounts
+    # every lone-CR line and token maps outrun the table (IndexError in
+    # ``_span``). ``finditer`` end positions keep offsets in ORIGINAL
+    # coordinates — no text is rewritten, so ``source_span`` still slices
+    # the caller's string byte-for-byte, CRLF included.
     offsets = [0]
-    for line in text.split("\n"):
-        offsets.append(offsets[-1] + len(line) + 1)
+    for match in _LINE_BREAK.finditer(text):
+        offsets.append(match.end())
+    tail = text[offsets[-1] :]
+    offsets.append(offsets[-1] + len(tail) + 1)
     frontmatter, rest, skipped_lines = _split_frontmatter(text)
     builder = _ChunkBuilder(
         text,
@@ -350,14 +366,14 @@ def _split_frontmatter(text: str) -> tuple[str | None, str, int]:
     tolerance not repair). A consumer can ignore a chunk carrying
     ``{"frontmatter": "true"}`` metadata but cannot recover YAML that was
     silently deleted — unknown kind plus explicit metadata is reversible,
-    deletion is not. Line endings are normalized CRLF→LF like every other
-    chunk (markdown-it normalizes token content; the fence block must not be
-    the lone chunk with mixed endings — otherwise a YAML consumer gets
-    `value\\r` traps), a stray `\\r` clinging to the closing fence is
-    trimmed, and a leading BOM is stripped so `content.startswith("---")`
-    holds. All three normalizations are reversible per pc-oir design item 6.
+    deletion is not. Line endings are never rewritten: the detector splits
+    on the same ``\r\n?|\n`` breaks the tokenizer counts, so a stray ``\r``
+    cannot survive in a detector line by construction — the old explicit
+    CRLF→LF scrub and fence-``\r`` trim are subsumed by the split itself.
+    A leading BOM is stripped so `content.startswith("---")` holds; that
+    strip is reversible per pc-oir design item 6.
     """
-    lines = text.split("\n")
+    lines = _LINE_BREAK.split(text)
     # BOM (`\ufeff`) is not whitespace to `str.strip()`: without the explicit
     # `lstrip` a BOM-prefixed document would silently skip frontmatter. The
     # check tolerates it; the chunk below keeps the original bytes verbatim.
@@ -366,7 +382,7 @@ def _split_frontmatter(text: str) -> tuple[str | None, str, int]:
     for end in range(1, len(lines)):
         if lines[end].strip() in (_FRONTMATTER_FENCE, _FRONTMATTER_END):
             if _has_frontmatter_key(lines, end):
-                raw = "\n".join(lines[: end + 1]).replace("\r\n", "\n").rstrip("\r").removeprefix("\ufeff")
+                raw = "\n".join(lines[: end + 1]).removeprefix("\ufeff")
                 return raw, "\n".join(lines[end + 1 :]), end + 1
             return None, text, 0
     return None, text, 0

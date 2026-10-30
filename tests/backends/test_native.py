@@ -316,6 +316,22 @@ def test_markdown_analyze_single_page() -> None:
     assert analysis.signals[0].image_count == 0
 
 
+def test_markdown_backend_survives_pdf_shaped_cr_bytes() -> None:
+    r"""pc-9p6.12: PDF bodies legally use CR-only line endings (PDF spec §7.5).
+
+    Presented as .md and replacement-decoded, the old LF-only offset table
+    raised IndexError in the adapter's ``_span``. The backend must return
+    pages — the ``\xff`` byte exercises the replacement-decoding path,
+    the ``# tail`` heading proves content past the CR block survives.
+    """
+    objs = "".join(f"{i} 0 obj\r<< /Comment (\xff) >>\rendobj\r" for i in range(1, 9))
+    pdf_bytes = ("%PDF-1.4\n" + objs + "xref\r0 9\r0000000000 65535 f\r" + "\n\n# tail\n").encode("latin-1")
+    backend = markdown_module.factory(_config("native-markdown"))
+    result = backend.convert(_request(pdf_bytes))
+    assert result.failures == []
+    assert any(block.kind is ChunkKind.HEADING and block.content == "tail" for block in result.pages[0].blocks)
+
+
 # ── native-html ────────────────────────────────────────────────────────────
 
 
