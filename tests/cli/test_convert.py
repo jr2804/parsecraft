@@ -916,12 +916,6 @@ def test_convert_judge_endpoint_flags_override_everything(pdf_registry: Path, tm
     assert seen == {"base_url": "https://cli.invalid", "api_key": "cli-key"}
 
 
-def _write_global_config(tmp_path: Path, text: str) -> None:
-    path = tmp_path / "global" / "config.toml"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-
-
 def test_convert_total_pass_failure_is_not_an_empty_success(registry: BackendRegistry, tmp_path: Path) -> None:
     """Every pass failing is exit 1 with a diagnosis — never an empty document and exit 0.
 
@@ -1038,27 +1032,6 @@ def test_text_classifier_spec_unreadable_config_keys_unusable(monkeypatch: pytes
     assert spec.startswith("unusable:")
 
 
-@pytest.fixture
-def pdf_registry(registry: BackendRegistry, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A PDF source plus two native candidates and one OCR candidate (all PDF).
-
-    An OCR extra is reported as installed so ``allow_ocr`` derives ``True`` — the
-    host shape in which an OCR route is reachable at all. Two native candidates
-    let a judge demonstrate re-ranking without crossing the NATIVE contract.
-    """
-    _register(registry, _descriptor("aaa-native", ("application/pdf",)), content="aaa native content")
-    _register(registry, _descriptor("pymupdf", ("application/pdf",)), content="native content")
-    _register(registry, _descriptor("ocr-stub", ("application/pdf",)), content="ocr content")
-    monkeypatch.setattr(
-        convert_module,
-        "probe_environment",
-        lambda: EnvironmentInfo(installed_extras=frozenset({"ocr-stub"}), vram_budget_gb=0.0, offline=False),
-    )
-    path = tmp_path / "doc.pdf"
-    path.write_bytes(minimal_pdf([[_LONG_TEXT]]))
-    return path
-
-
 def test_render_json_and_markdown(tmp_path: Path, registry: BackendRegistry) -> None:
     _register(registry, _descriptor("native-text", ("text/plain",)), content="render me")
     document = convert_module.convert_source(_source_file(tmp_path))
@@ -1106,6 +1079,48 @@ def test_convert_backend_option_reaches_the_backend(tmp_path: Path, registry: Ba
     malformed = runner.invoke(app, ["convert", str(source), "--backend", "native-text", "--backend-option", "nonsense"])
     assert malformed.exit_code == 2
     assert "--backend-option expects KEY=VALUE" in _text(malformed)
+
+
+def _source_file(tmp_path: Path, name: str = "doc.txt", text: str = _LONG_TEXT) -> Path:
+    path = tmp_path / name
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_cache_command_rejects_an_unknown_action() -> None:
+    """`cache clear` is the only positional action; anything else is a usage error."""
+    result = runner.invoke(app, ["cache", "bogus"])
+    assert result.exit_code == 2
+    assert "unknown cache action" in _text(result)
+
+
+def test_convert_timeout_s_zero_and_negative_are_usage_errors(pdf_registry: Path) -> None:
+    """--timeout-s must be positive (mirrors --backend-option's exit-2 pattern)."""
+    for value in ("0", "-5"):
+        result = runner.invoke(app, ["convert", str(pdf_registry), "--timeout-s", value])
+        assert result.exit_code == 2
+        assert "--timeout-s must be positive" in _text(result)
+
+
+@pytest.fixture
+def pdf_registry(registry: BackendRegistry, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A PDF source plus two native candidates and one OCR candidate (all PDF).
+
+    An OCR extra is reported as installed so ``allow_ocr`` derives ``True`` — the
+    host shape in which an OCR route is reachable at all. Two native candidates
+    let a judge demonstrate re-ranking without crossing the NATIVE contract.
+    """
+    _register(registry, _descriptor("aaa-native", ("application/pdf",)), content="aaa native content")
+    _register(registry, _descriptor("pymupdf", ("application/pdf",)), content="native content")
+    _register(registry, _descriptor("ocr-stub", ("application/pdf",)), content="ocr content")
+    monkeypatch.setattr(
+        convert_module,
+        "probe_environment",
+        lambda: EnvironmentInfo(installed_extras=frozenset({"ocr-stub"}), vram_budget_gb=0.0, offline=False),
+    )
+    path = tmp_path / "doc.pdf"
+    path.write_bytes(minimal_pdf([[_LONG_TEXT]]))
+    return path
 
 
 def _descriptor(
@@ -1167,17 +1182,34 @@ def registry(monkeypatch: pytest.MonkeyPatch) -> BackendRegistry:
     return instance
 
 
-def _source_file(tmp_path: Path, name: str = "doc.txt", text: str = _LONG_TEXT) -> Path:
-    path = tmp_path / name
+def test_effective_timeout_s_prefers_the_flag(tmp_path: Path) -> None:
+    """An explicit flag wins without consulting any config (pc-7aw)."""
+    _write_global_config(tmp_path, "timeout_s = 9.0\n")
+    assert convert_module._effective_timeout_s(30.0) == 30.0
+
+
+def test_effective_timeout_s_falls_back_to_the_config_key(tmp_path: Path) -> None:
+    """No flag: the ``timeout_s`` config key applies (pc-7aw)."""
+    _write_global_config(tmp_path, "timeout_s = 9.0\n")
+    assert convert_module._effective_timeout_s(None) == 9.0
+
+
+def test_effective_timeout_s_defaults_to_no_deadline() -> None:
+    """No flag and no key: requests stay unbounded, byte-identical to today."""
+    assert convert_module._effective_timeout_s(None) is None
+
+
+def test_effective_timeout_s_unreadable_config_fails_loudly(tmp_path: Path) -> None:
+    """A corrupt global config fails loudly, matching the pre-existing pattern."""
+    _write_global_config(tmp_path, "timeout_s = [\n")
+    with pytest.raises(convert_module.ConvertError, match="cannot read timeout configuration"):
+        convert_module._effective_timeout_s(None)
+
+
+def _write_global_config(tmp_path: Path, text: str) -> None:
+    path = tmp_path / "global" / "config.toml"
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
-    return path
-
-
-def test_cache_command_rejects_an_unknown_action() -> None:
-    """`cache clear` is the only positional action; anything else is a usage error."""
-    result = runner.invoke(app, ["cache", "bogus"])
-    assert result.exit_code == 2
-    assert "unknown cache action" in _text(result)
 
 
 def _text(result: Result) -> str:

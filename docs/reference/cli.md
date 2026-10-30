@@ -101,6 +101,7 @@ parsecraft convert SOURCE [OPTIONS]
 | `--classifier SPEC` | unset | Fold OCR-need facts from a classifier provider (`provider/model`, or `provider:model`) into the analysis |
 | `--auto` / `--no-auto` | `--auto` | Route automatically; `--no-auto` requires `--backend` |
 | `--max-passes N` | `1` | Fallback passes per page group (`N >= 1`) |
+| `--timeout-s SECONDS` | unset | Per-request backend deadline in seconds (bounds each attempt, not the whole run; must be positive) |
 | `--no-ocr` | off | Forbid OCR backends |
 | `--preference AXIS` | `balanced` | Ranking axis inside the eligible family: `speed`, `balanced`, or `quality`. Reachable in auto mode with or without `--judge`; ignored by `--backend`, which already names the lead |
 | `--json` | off | Emit the IR as JSON instead of the Markdown projection |
@@ -275,7 +276,9 @@ The default model is selected the same way: an explicit `--judge` spec beats
 so a host default resolves with no flag at all. A configured default is still
 a chosen lead: `--backend` cannot be combined with it either. The text-kind
 default is section-only: `[text_classifier] model`, with no flag, no env var,
-and no `[judge]` fallback.
+and no `[judge]` fallback. A per-request backend deadline resolves by the same
+flag-beats-config rule: an explicit `--timeout-s` wins, otherwise the
+`timeout_s` config key applies, otherwise requests stay unbounded.
 
 The config-file sections use kompend-shaped provider names: `[providers.zen]`
 is the `zen` provider, `[providers.typesafe]` is `typesafe-ai`, and
@@ -413,6 +416,7 @@ deterministic report (the harness omits wall-clock metadata).
 | `--markdown` | on | Force the Markdown report (mutually exclusive with `--json`) |
 | `--output`, `-o DIR` | unset | Also write `benchmark.json` and `benchmark.md` into `DIR` |
 | `--max-passes N` | `1` | Fallback passes per page group |
+| `--timeout-s SECONDS` | unset | Per-request backend deadline in seconds (same flag-beats-config rule as `convert`) |
 | `--no-ocr` | off | Forbid OCR backends |
 
 Documents are read locally; a missing or unsupported path becomes a `Skip`
@@ -451,6 +455,7 @@ Recognized settings:
 | `cache_dir` | path | unset | Asset-cache override; resolved relative to its declaring file |
 | `offline` | bool | `false` | Asset-manager offline mode |
 | `min_free_bytes` | int | `0` | Asset-manager free-space floor |
+| `timeout_s` | float | unset | Per-request backend deadline in seconds; an explicit `--timeout-s` flag beats it |
 | `providers.<name>.base_url` | string | provider default | Judge endpoint override; kompend-shaped names (`typesafe` = `typesafe-ai`, `ollama-cloud` = `ollama`) |
 | `providers.<name>.api_key` | string | credential default | Secret; write `${VAR_NAME}`, never a literal. Redacted by `show` |
 | `judge.model` | string | unset | Default decision-model spec; `--judge` and `PARSECRAFT_JUDGE_MODEL` beat it |

@@ -12,7 +12,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import cast
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pydantic_settings import SettingsConfigDict
 
 from parsecraft.cli.args import APP_NAME_UPPERCASE
@@ -99,6 +99,7 @@ class ParsecraftConfig(ConfigSchema):
     cache_dir: str | None = None
     offline: bool = False
     min_free_bytes: int = 0
+    timeout_s: float | None = Field(default=None, gt=0)
     providers: dict[str, ProviderEndpoint] = {}
     judge: JudgeSettings = JudgeSettings()
     text_classifier: TextClassifierSettings = TextClassifierSettings()

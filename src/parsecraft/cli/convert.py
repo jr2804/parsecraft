@@ -22,7 +22,9 @@ from parsecraft.backends import default_registry
 from parsecraft.backends.errors import BackendError, DependencyUnavailableError, UnsupportedDependencyVersionError
 from parsecraft.backends.protocol import SourceDocument
 from parsecraft.cache import ConversionCache
+from parsecraft.cli.config import build_engine
 from parsecraft.cli.errors import CliError
+from parsecraft.config import ConfigError
 from parsecraft.environment import EnvironmentInfo, constraints_from_environment, cuda_runtime_note, probe_environment
 from parsecraft.ir import DocumentResult, to_markdown
 from parsecraft.ir.models import PassFailure
@@ -91,6 +93,7 @@ def convert_source(
     judge_base_url: str | None = None,
     judge_api_key: str | None = None,
     max_passes: int = 1,
+    timeout_s: float | None = None,
     allow_ocr: bool | None = None,
     preference: RoutingPreference = RoutingPreference.BALANCED,
     use_cache: bool = False,
@@ -107,11 +110,16 @@ def convert_source(
     from ``PARSECRAFT_JUDGE_MODEL`` or the ``[judge]`` config section when the
     flag is absent; ``judge_base_url``/``judge_api_key`` override the endpoint
     the same way. ``backend`` and ``judge`` are mutually exclusive — both choose
-    the lead candidate.
+    the lead candidate. ``timeout_s`` is resolved by :func:`_effective_timeout_s`:
+    an explicit flag wins, otherwise the ``timeout_s`` config key applies. That
+    resolution reads the global config a second time (the text classifier
+    already read it once) — one 0.58 ms load, not a cache, by agreement.
     ``preference`` reaches the plan both as a constraint (the judge the planner
     builds itself) and as the resolved judge's ranking axis, so one flag drives
     both paths. All flags default to their neutral values, which is exactly the
-    historical behaviour.
+    historical behaviour. ``timeout_s`` bounds each backend attempt (the CLI
+    flag wins, otherwise the ``timeout_s`` config key); ``None`` means unbounded,
+    exactly as before.
     """
     try:
         media_type = media_type_for(path)
@@ -169,9 +177,9 @@ def convert_source(
             cache=cache,
             ocr_classifier=classifier,
             text_classifier=_text_classifier_spec(),
-            # The seam pc-7aw will fill: empty today, so requests stay
-            # byte-identical while the executor learns to carry knobs.
-            options=RequestOptions(),
+            # Empty options build byte-identical requests to the old bare call
+            # (RequestOptions(timeout_s=None).model_dump() == RequestOptions().model_dump()).
+            options=RequestOptions(timeout_s=_effective_timeout_s(timeout_s)),
         )
     except JudgeViolationError as exc:
         raise ConvertError(f"judge returned an invalid order: {exc}", exit_code=1) from exc
@@ -343,6 +351,16 @@ def _text_classifier_spec() -> str | None:
     except JudgeError as exc:
         return f"unusable:{exc}"
     return spec.strip() if spec else None
+
+
+def _effective_timeout_s(cli_value: float | None) -> float | None:
+    """CLI flag wins; otherwise the ``timeout_s`` config key; ``None`` when unset."""
+    if cli_value is not None:
+        return cli_value
+    try:
+        return build_engine(None).load().timeout_s
+    except ConfigError as exc:
+        raise ConvertError(f"cannot read timeout configuration: {exc}") from exc
 
 
 def read_source(path: Path, media_type: str) -> SourceDocument:

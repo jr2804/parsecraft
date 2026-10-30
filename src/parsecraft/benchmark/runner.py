@@ -48,6 +48,8 @@ def run_benchmark(
     registry: BackendRegistry,
     constraints: RoutingConstraints,
     judge: RoutingJudge | None = None,
+    *,
+    timeout_s: float | None = None,
 ) -> BenchmarkReport:
     """Benchmark every eligible backend on every readable local document.
 
@@ -57,7 +59,7 @@ def run_benchmark(
     results: list[BenchmarkMetrics] = []
     skips: list[BenchmarkSkip] = []
     for path in sorted(documents, key=lambda p: (p.name, str(p))):
-        document_results, skip = _benchmark_document(path, registry, constraints, judge)
+        document_results, skip = _benchmark_document(path, registry, constraints, judge, timeout_s=timeout_s)
         results.extend(document_results)
         if skip is not None:
             skips.append(skip)
@@ -71,6 +73,8 @@ def _benchmark_document(
     registry: BackendRegistry,
     constraints: RoutingConstraints,
     judge: RoutingJudge | None,
+    *,
+    timeout_s: float | None = None,
 ) -> tuple[list[BenchmarkMetrics], BenchmarkSkip | None]:
     document = path.name
     if not path.is_file():
@@ -107,6 +111,7 @@ def _benchmark_document(
             registry,
             selected=None if selected is None else selected == descriptor.name,
             offline=constraints.offline,
+            timeout_s=timeout_s,
         )
         for descriptor in eligible
     ]
@@ -143,6 +148,7 @@ def _measure(
     *,
     selected: bool | None,
     offline: bool = False,
+    timeout_s: float | None = None,
 ) -> BenchmarkMetrics:
     page_range = PageRange(start=1, end=analysis.page_count) if analysis.page_count > 1 else None
     failures: list[BenchmarkFailure] = []
@@ -160,7 +166,7 @@ def _measure(
             failures.append(_failure_from_exception(exc, descriptor.name))
         else:
             try:
-                result = backend.convert(ConversionRequest(source=source, page_range=page_range))
+                result = backend.convert(ConversionRequest(source=source, page_range=page_range, timeout_s=timeout_s))
             except BackendError as exc:
                 failures.append(_failure_from_exception(exc, descriptor.name))
             finally:

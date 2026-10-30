@@ -23,10 +23,12 @@ from parsecraft.backends.protocol import (
     DocumentBackend,
     SourceDocument,
 )
+from parsecraft.cli import config as cli_config
 from parsecraft.cli.app import app
 from parsecraft.cli.errors import CliError
-from parsecraft.environment import EnvironmentInfo
+from parsecraft.environment import EnvironmentInfo, constraints_from_environment
 from parsecraft.ir import ChunkKind, PageResult, PageSignal, StructuredChunk
+from parsecraft.routing import RoutingConstraints
 
 _TEXT = "A paragraph comfortably longer than the forty character routing threshold."
 
@@ -154,17 +156,6 @@ def test_cli_benchmark_json_payload(tmp_path: Path, offline_probe: None, monkeyp
     assert cast("dict[str, object]", rows[0])["backend"] == "native-text"
 
 
-@pytest.fixture
-def offline_probe(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(benchmark_module, "probe_environment", lambda: EnvironmentInfo(installed_extras=frozenset(), vram_budget_gb=0.0, offline=True))
-
-
-def _document(tmp_path: Path, name: str = "doc.txt") -> Path:
-    path = tmp_path / name
-    path.write_text(_TEXT, encoding="utf-8")
-    return path
-
-
 def _cli_registry(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(benchmark_module, "default_registry", _registry())
 
@@ -175,5 +166,72 @@ def _registry() -> BackendRegistry:
     return registry
 
 
+def test_run_benchmark_forwards_timeout_s(tmp_path: Path, offline_probe: None) -> None:
+    """The harness carries the bound to backend.convert (pc-7aw.3)."""
+    registry, seen = _recording_registry()
+    report = benchmark_module.run_benchmark([_document(tmp_path)], registry, _harness_constraints(), timeout_s=7.5)
+    assert [row.backend for row in report.results] == ["native-text"]
+    assert [request.timeout_s for request in seen] == [7.5]
+
+
+def _harness_constraints() -> RoutingConstraints:
+    return constraints_from_environment(EnvironmentInfo(installed_extras=frozenset(), vram_budget_gb=0.0, offline=True), formats=())
+
+
+def test_benchmark_report_threads_timeout_s(tmp_path: Path, offline_probe: None) -> None:
+    """benchmark_report carries an explicit bound to the request (pc-7aw)."""
+    registry, seen = _recording_registry()
+    benchmark_module.benchmark_report([_document(tmp_path)], registry, timeout_s=7.5)
+    assert [request.timeout_s for request in seen] == [7.5]
+
+
+def test_benchmark_report_reads_the_timeout_s_config_key(tmp_path: Path, offline_probe: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    """No flag: the ``timeout_s`` global key applies — the same rule as convert."""
+    config_path = tmp_path / "global" / "config.toml"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text("timeout_s = 9.0\n", encoding="utf-8")
+    monkeypatch.setattr(cli_config, "global_config_path", lambda: config_path)
+    registry, seen = _recording_registry()
+    benchmark_module.benchmark_report([_document(tmp_path)], registry)
+    assert [request.timeout_s for request in seen] == [9.0]
+
+
+def _recording_registry() -> tuple[BackendRegistry, list[ConversionRequest]]:
+    """A one-backend registry that keeps every request the harness issued."""
+    seen: list[ConversionRequest] = []
+
+    class _RecordingBackend(_StubBackend):
+        def convert(self, request: ConversionRequest) -> BackendResult:
+            seen.append(request)
+            return super().convert(request)
+
+    class _RecordingFactory(_StubFactory):
+        def __call__(self, config: BackendConfig) -> DocumentBackend:
+            return _RecordingBackend(self.descriptor.name, self.descriptor.capabilities)
+
+    registry = BackendRegistry()
+    registry.register("native-text", _RecordingFactory(_descriptor()))
+    return registry, seen
+
+
 def _descriptor(name: str = "native-text") -> BackendDescriptor:
     return BackendDescriptor(name=name, capabilities=BackendCapabilities(supported_formats=["text/plain"]))
+
+
+def test_cli_benchmark_timeout_s_zero_and_negative_are_usage_errors(tmp_path: Path, offline_probe: None) -> None:
+    """--timeout-s must be positive (mirrors convert's exit-2 pattern)."""
+    for value in ("0", "-5"):
+        result = runner.invoke(app, ["benchmark", str(_document(tmp_path)), "--timeout-s", value])
+        assert result.exit_code == 2
+        assert "--timeout-s must be positive" in (result.output + (result.stderr or ""))
+
+
+@pytest.fixture
+def offline_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(benchmark_module, "probe_environment", lambda: EnvironmentInfo(installed_extras=frozenset(), vram_budget_gb=0.0, offline=True))
+
+
+def _document(tmp_path: Path, name: str = "doc.txt") -> Path:
+    path = tmp_path / name
+    path.write_text(_TEXT, encoding="utf-8")
+    return path

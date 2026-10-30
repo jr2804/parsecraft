@@ -4,9 +4,12 @@ Reproducible backend benchmark harness (Phase 2).
 
 ## Purpose
 
-`run_benchmark(documents, registry, constraints, judge=None) -> BenchmarkReport`
+`run_benchmark(documents, registry, constraints, judge=None, *, timeout_s=None) -> BenchmarkReport`
 measures every eligible backend on every readable local document and renders
 diff-clean reports via `to_json`/`to_markdown` (+ `write_json`/`write_markdown`).
+`timeout_s` is the same flag-beats-config deadline as `convert` (see
+`cli/benchmark.py:benchmark_report`): the harness bounds the same
+`backend.convert` calls, so a bound the harness could not carry would be dead.
 
 ## Ownership
 

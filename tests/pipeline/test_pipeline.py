@@ -1354,6 +1354,70 @@ def test_empty_request_options_match_a_bare_request() -> None:
     )
 
 
+def test_request_options_timeout_s_none_matches_the_default() -> None:
+    """The default convert path builds byte-identical requests (pc-7aw)."""
+    assert RequestOptions(timeout_s=None).model_dump() == RequestOptions().model_dump()
+
+
+def test_timeout_falls_through_to_the_next_candidate(monkeypatch: pytest.MonkeyPatch) -> None:
+    """TIMEOUT is a failed attempt, not a lost page — with max_passes=2 (pc-7aw)."""
+    registry = make_registry(monkeypatch)
+    slow_calls = add_stub(registry, make_descriptor("aaa-slow"), convert_fn=_timeout_failure)
+    fast_calls = add_stub(registry, make_descriptor("zzz-fast"))
+    result = execute(
+        make_analysis(1),
+        registry,
+        make_constraints(max_passes=2),
+        make_source(),
+        produced_at=PRODUCED,
+        options=RequestOptions(timeout_s=30.0),
+    )
+    assert slow_calls[0].timeout_s == 30.0  # the value arrived at backend.convert
+    assert fast_calls  # the next candidate was actually called
+    attempt = result.groups[0].attempts[0]
+    assert attempt.status == PassStatus.FAILED
+    assert attempt.failure is not None
+    assert attempt.failure.code == FailureCode.TIMEOUT
+    assert result.groups[0].winner == "zzz-fast"
+    assert len(result.document.pages[0].blocks) == 1
+
+
+def test_timeout_with_default_passes_loses_the_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    """max_passes=1 (the default): no fallback is planned — page lost, warning kept (pc-7aw)."""
+    registry = make_registry(monkeypatch)
+    slow_calls = add_stub(registry, make_descriptor("aaa-slow"), convert_fn=_timeout_failure)
+    fast_calls = add_stub(registry, make_descriptor("zzz-fast"))
+    result = execute(make_analysis(1), registry, make_constraints(max_passes=1), make_source(), produced_at=PRODUCED)
+    assert slow_calls  # the attempt ran
+    assert not fast_calls  # the second candidate was never in the plan
+    (page,) = result.document.pages
+    assert page.blocks == []
+    (diagnostic,) = page.diagnostics
+    assert diagnostic.level == DiagnosticLevel.WARNING
+    assert diagnostic.code == ALL_PASSES_FAILED_CODE
+
+
+def _timeout_failure(request: ConversionRequest, name: str) -> BackendResult:
+    """A stub that received the deadline but blew it: returns TIMEOUT, never raises."""
+    return BackendResult(
+        backend=BackendRef(name=name, version=_VERSION),
+        pages=[],
+        failures=[
+            PassFailure(
+                code=FailureCode.TIMEOUT,
+                pass_kind=PassKind.NATIVE,
+                backend=name,
+                backend_version=_VERSION,
+                budget_s=0.0,
+                elapsed_s=0.1,
+                detail="stub blew the 30s deadline",
+                occurred_at=datetime.now(UTC),
+            )
+        ],
+        elapsed_s=0.1,
+    )
+
+
 def test_convert_request_rejects_a_knob_it_does_not_declare() -> None:
     """A ``RequestOptions`` field without a twin must surface, not vanish (pc-c54).
 
