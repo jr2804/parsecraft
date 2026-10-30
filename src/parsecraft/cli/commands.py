@@ -124,6 +124,26 @@ def convert(
             ),
         ),
     ] = None,
+    judge_base_url: Annotated[
+        str | None,
+        typer.Option(
+            "--judge-base-url",
+            help=(
+                "Override the decision-model endpoint base URL (highest precedence; also settable via "
+                "PARSECRAFT_JUDGE_BASE_URL or the [providers.<name>] config section)"
+            ),
+        ),
+    ] = None,
+    judge_api_key: Annotated[
+        str | None,
+        typer.Option(
+            "--judge-api-key",
+            help=(
+                "Override the decision-model credential (highest precedence; also settable via "
+                "PARSECRAFT_JUDGE_API_KEY or the [providers.<name>] config section); prefer the config file with ${VAR}"
+            ),
+        ),
+    ] = None,
     classifier: Annotated[
         str | None,
         typer.Option("--classifier", help="Fold OCR-need facts from a classifier provider (`provider/model`, or `provider:model`) into the analysis"),
@@ -182,6 +202,8 @@ def convert(
                 source,
                 backend=backend,
                 judge=judge,
+                judge_base_url=judge_base_url,
+                judge_api_key=judge_api_key,
                 classifier=classifier,
                 max_passes=max_passes,
                 allow_ocr=False if no_ocr else None,

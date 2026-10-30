@@ -16,6 +16,7 @@ Shared mechanics: :mod:`parsecraft.providers._jev`.
 from __future__ import annotations
 
 from parsecraft.providers import JudgeProviderProfile
+from parsecraft.providers._endpoints import resolve_endpoint
 from parsecraft.providers._jev import load_endpoint_judge
 from parsecraft.routing.judge import JudgeSpec, MachineProfile, RoutingJudge
 from parsecraft.routing.models import RoutingPreference
@@ -37,11 +38,17 @@ def load_judge(
     preference: RoutingPreference = RoutingPreference.BALANCED,
 ) -> RoutingJudge:
     """Provider entry point required by ``routing.judge_providers``."""
+    base_url, api_key = resolve_endpoint(
+        PROFILE.name,
+        default_base_url=PROFILE.base_url,
+        legacy_api_key_env=PROFILE.api_key_env,
+    )
     return load_endpoint_judge(
         provider=PROFILE.name,
         spec=spec,
         machine=machine,
         preference=preference,
         api_key_env=PROFILE.api_key_env,
-        base_url=PROFILE.base_url,
+        api_key=api_key,
+        base_url=base_url,
     )

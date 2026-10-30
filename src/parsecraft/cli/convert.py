@@ -34,6 +34,7 @@ from parsecraft.pipeline.analysis import (
     choose_analyzer,
     media_type_for,
 )
+from parsecraft.providers._endpoints import override_endpoint, select_judge_spec
 from parsecraft.routing import (
     JudgeViolationError,
     MachineProfile,
@@ -86,6 +87,8 @@ def convert_source(
     backend: str | None = None,
     judge: str | None = None,
     classifier: str | None = None,
+    judge_base_url: str | None = None,
+    judge_api_key: str | None = None,
     max_passes: int = 1,
     allow_ocr: bool | None = None,
     preference: RoutingPreference = RoutingPreference.BALANCED,
@@ -99,8 +102,11 @@ def convert_source(
     the routing constraints, and the seams. ``judge``/``classifier`` are seam
     spec strings (``provider/model`` or ``provider:model``, model token verbatim) resolved from that probe before
     the source is read: a malformed spec is a usage error (exit 2), an
-    unavailable provider is a runtime failure (exit 1). ``backend`` and
-    ``judge`` are mutually exclusive — both choose the lead candidate.
+    unavailable provider is a runtime failure (exit 1). ``judge`` may also come
+    from ``PARSECRAFT_JUDGE_MODEL`` or the ``[judge]`` config section when the
+    flag is absent; ``judge_base_url``/``judge_api_key`` override the endpoint
+    the same way. ``backend`` and ``judge`` are mutually exclusive — both choose
+    the lead candidate.
     ``preference`` reaches the plan both as a constraint (the judge the planner
     builds itself) and as the resolved judge's ranking axis, so one flag drives
     both paths. All flags default to their neutral values, which is exactly the
@@ -113,7 +119,9 @@ def convert_source(
     environment = probe_environment()  # a single probe per invocation, shared by analysis and the seams
     warn_unusable_gpu(environment)
     registry_names = frozenset(descriptor.name for descriptor in default_registry.list_backends())
-    resolved_classifier, resolved_judge, preferred_backend = _resolve_providers(classifier, backend, judge, environment, preference, registry_names)
+    resolved_classifier, resolved_judge, preferred_backend = _resolve_providers(
+        classifier, backend, judge, environment, preference, registry_names, judge_base_url, judge_api_key
+    )
     source = read_source(path, media_type)
     registry = default_registry
     try:
@@ -199,6 +207,8 @@ def _resolve_providers(
     environment: EnvironmentInfo,
     preference: RoutingPreference,
     registry_names: frozenset[str],
+    judge_base_url: str | None = None,
+    judge_api_key: str | None = None,
 ) -> tuple[PageOcrClassifier | None, RoutingJudge | None, str | None]:
     """Resolve both provider seams, reporting every failure in one diagnosis.
 
@@ -221,7 +231,7 @@ def _resolve_providers(
     except ProviderResolutionError as exc:
         failures.append(exc)
     try:
-        resolved_judge, preferred_backend = _resolve_judge(backend, judge, environment, preference, registry_names)
+        resolved_judge, preferred_backend = _resolve_judge(backend, judge, environment, preference, registry_names, judge_base_url, judge_api_key)
     except ProviderResolutionError as exc:
         failures.append(exc)
     if len(failures) == 1:
@@ -262,6 +272,8 @@ def _resolve_judge(
     environment: EnvironmentInfo,
     preference: RoutingPreference,
     registry_names: frozenset[str],
+    judge_base_url: str | None = None,
+    judge_api_key: str | None = None,
 ) -> tuple[RoutingJudge | None, str | None]:
     """Resolve the judge seam and the CLI's preferred backend.
 
@@ -271,24 +283,28 @@ def _resolve_judge(
     values never share a cached artifact. The judge (a provider, or
     ``None`` for the default) is returned alongside. A backend name that is
     not in the registry is a usage error raised before any source is read.
+    A missing spec falls back to ``PARSECRAFT_JUDGE_MODEL`` and the ``[judge]``
+    config section, so a configured default resolves without a flag.
     """
-    if backend is not None and spec is not None:
+    selected = select_judge_spec(spec)
+    if backend is not None and selected is not None:
         msg = "--backend and --judge are mutually exclusive: both choose the lead candidate"
-        raise ProviderResolutionError(flag="--judge", spec=spec, body=msg, exit_code=_USAGE_EXIT_CODE)
+        raise ProviderResolutionError(flag="--judge", spec=selected, body=msg, exit_code=_USAGE_EXIT_CODE)
     if backend is not None and registry_names and backend not in registry_names:
         raise ConvertError(
             f"backend {backend!r} is not a registered backend: pick from {sorted(registry_names)}",
             exit_code=_USAGE_EXIT_CODE,
         )
-    if spec is None:
+    if selected is None:
         return None, backend
     machine = MachineProfile(vram_budget_gb=environment.vram_budget_gb, gpu_usable=environment.gpu_usable)
     try:
-        return resolve_judge(spec, machine=machine, preference=preference), backend
+        with override_endpoint(judge_base_url, judge_api_key):
+            return resolve_judge(selected, machine=machine, preference=preference), backend
     except JudgeSpecError as exc:
-        raise ProviderResolutionError(flag="--judge", spec=spec, body=str(exc), exit_code=_USAGE_EXIT_CODE) from exc
+        raise ProviderResolutionError(flag="--judge", spec=selected, body=str(exc), exit_code=_USAGE_EXIT_CODE) from exc
     except JudgeError as exc:
-        raise ProviderResolutionError(flag="--judge", spec=spec, body=str(exc), prefix="judge unavailable") from exc
+        raise ProviderResolutionError(flag="--judge", spec=selected, body=str(exc), prefix="judge unavailable") from exc
 
 
 def read_source(path: Path, media_type: str) -> SourceDocument:

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 from typing import cast
 
 import pytest
@@ -88,6 +89,30 @@ def test_spec_error_outranks_a_missing_credential(monkeypatch: pytest.MonkeyPatc
     monkeypatch.delenv(_TYPESAFE_KEY_ENV, raising=False)
     with pytest.raises(JudgeSpecError, match="must look like"):
         resolve_judge("typesafe-ai")
+
+
+def test_file_endpoint_reaches_the_sdk(jev_sdk: StubSdk, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The kompend-shaped alias section configures the endpoint offline."""
+    config_file = tmp_path / "global" / "config.toml"
+    config_file.parent.mkdir(parents=True, exist_ok=True)
+    config_file.write_text('[providers.typesafe]\nbase_url = "https://file.invalid"\napi_key = "${TS_FILE_KEY}"\n', encoding="utf-8")
+    monkeypatch.setenv("TS_FILE_KEY", "file-key")
+    monkeypatch.setenv(_TYPESAFE_KEY_ENV, "legacy-key")  # the file wins over the legacy env var
+    judge = cast(_jev.JevJudge, provider.load_judge(JudgeSpec(provider="typesafe-ai", model=_MODEL)))
+    judge.rank(Intent.NATIVE, [_OCR, _NATIVE])
+    assert jev_sdk.client_kwargs == [{"api_key": "file-key", "model": _MODEL, "base_url": "https://file.invalid"}]
+
+
+def test_unset_override_keeps_the_legacy_credential_lookup(jev_sdk: StubSdk, ts_key: str) -> None:
+    """An explicit ``None`` is "no override": the legacy env lookup still serves."""
+    judge = _jev.load_endpoint_judge(
+        provider="typesafe-ai",
+        spec=JudgeSpec(provider="typesafe-ai", model=_MODEL),
+        api_key=None,
+        api_key_env=_TYPESAFE_KEY_ENV,
+    )
+    judge.rank(Intent.NATIVE, [_OCR, _NATIVE])
+    assert jev_sdk.client_kwargs == [{"api_key": _API_KEY, "model": _MODEL, "base_url": None}]
 
 
 def test_good_spec_without_a_credential_is_unavailable(monkeypatch: pytest.MonkeyPatch, jev_sdk: StubSdk) -> None:

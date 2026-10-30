@@ -12,6 +12,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import cast
 
+from pydantic import BaseModel
 from pydantic_settings import SettingsConfigDict
 
 from parsecraft.cli.args import APP_NAME_UPPERCASE
@@ -25,6 +26,11 @@ from parsecraft.config import (
 )
 
 APP_NAME = "parsecraft"
+#: Home-relative global config directory (pc-66v): ``~/.config/parsecraft/``
+#: on every platform. This deliberately overrides the engine's platformdirs
+#: rule ("never a hard-coded XDG path") for this app's global layer.
+GLOBAL_CONFIG_DIRNAME = ".config"
+GLOBAL_CONFIG_FILENAME = "config.toml"
 PROJECT_CONFIG_FILENAME = "parsecraft.toml"
 ENV_PREFIX = f"{APP_NAME_UPPERCASE}_CONFIG_"
 
@@ -33,6 +39,31 @@ SECRET_KEYS: tuple[str, ...] = ("hf_token",)
 
 #: Keys resolved relative to the file that declares them.
 PATH_KEYS: tuple[str, ...] = ("cache_dir",)
+
+
+class ProviderEndpoint(BaseModel):
+    """One judge provider's endpoint: base URL and credential (pc-66v).
+
+    The section name is the provider token (``[providers.zen]``) or a
+    kompend-shaped alias (``[providers.typesafe]`` means ``typesafe-ai``,
+    ``[providers.ollama-cloud]`` means ``ollama``). ``api_key`` must reference
+    a secret (``api_key = "${TYPESAFE_API_KEY}"``), never a literal — the
+    config engine refuses literal secrets the same way it refuses literal
+    ``hf_token`` values.
+    """
+
+    model_config = SettingsConfigDict(extra="forbid")
+
+    base_url: str | None = None
+    api_key: str | None = None
+
+
+class JudgeSettings(BaseModel):
+    """The default decision model when no ``--judge`` spec is given (pc-66v)."""
+
+    model_config = SettingsConfigDict(extra="forbid")
+
+    model: str | None = None
 
 
 class ParsecraftConfig(ConfigSchema):
@@ -54,6 +85,8 @@ class ParsecraftConfig(ConfigSchema):
     cache_dir: str | None = None
     offline: bool = False
     min_free_bytes: int = 0
+    providers: dict[str, ProviderEndpoint] = {}
+    judge: JudgeSettings = JudgeSettings()
 
 
 def build_engine(config_file: Path | None = None) -> ConfigEngine[ParsecraftConfig]:
@@ -64,7 +97,7 @@ def build_engine(config_file: Path | None = None) -> ConfigEngine[ParsecraftConf
         path_keys=PATH_KEYS,
         secret_keys=SECRET_KEYS,
     )
-    global_path = engine.global_config_path()
+    global_path = global_config_path()
     if global_path.is_file():
         engine.read_file(ConfigLayer.GLOBAL, global_path)
     raw_project = config_file if config_file is not None else Path(PROJECT_CONFIG_FILENAME)
@@ -73,6 +106,11 @@ def build_engine(config_file: Path | None = None) -> ConfigEngine[ParsecraftConf
         engine.read_file(ConfigLayer.PROJECT, project_path)
     engine.read_env()
     return engine
+
+
+def global_config_path() -> Path:
+    """Platform-independent global config path (pc-66v exception, see above)."""
+    return Path.home() / GLOBAL_CONFIG_DIRNAME / APP_NAME / GLOBAL_CONFIG_FILENAME
 
 
 def resolved_entries(engine: ConfigEngine[ParsecraftConfig]) -> list[ConfigShowEntry]:
@@ -90,11 +128,16 @@ def resolved_entries(engine: ConfigEngine[ParsecraftConfig]) -> list[ConfigShowE
     return [
         ConfigShowEntry(
             key=entry.key,
-            value="***" if entry.key in SECRET_KEYS else typed.get(entry.key, entry.value),
+            value="***" if _is_secret_key(entry.key) else typed.get(entry.key, entry.value),
             source=entry.source,
         )
         for entry in entries
     ]
+
+
+def _is_secret_key(key: str) -> bool:
+    """Exact secrets plus every provider's ``api_key`` (section names vary)."""
+    return key in SECRET_KEYS or (key.startswith("providers.") and key.endswith(".api_key"))
 
 
 def check_lines(report: ConfigCheckReport) -> list[tuple[bool, str]]:

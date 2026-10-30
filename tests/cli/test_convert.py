@@ -27,10 +27,12 @@ from parsecraft.backends.protocol import (
     ModelAssetDescriptor,
     SourceDocument,
 )
+from parsecraft.cli import config as cli_config
 from parsecraft.cli.app import app
 from parsecraft.environment import EnvironmentInfo
 from parsecraft.ir import ChunkKind, PageResult, PageSignal, StructuredChunk
 from parsecraft.pipeline.analysis import NoAnalyzerError, UnsupportedSourceError, choose_analyzer, media_type_for
+from parsecraft.providers import _endpoints as endpoints
 from parsecraft.routing import Intent, MachineProfile, PageContext, RoutingConstraints, RoutingJudge, RoutingPreference
 from parsecraft.routing.classifier import (
     ClassifierSpec,
@@ -818,10 +820,6 @@ def test_convert_preference_quality_flips_the_lead_within_a_family(
     assert "ovis output" in quality.output  # largest declared size first
 
 
-def _load_reversing_judge(spec: JudgeSpec, machine: MachineProfile | None = None, preference: RoutingPreference = RoutingPreference.BALANCED) -> RoutingJudge:
-    return _ReversingJudge()
-
-
 def _load_ocr_leading_judge(spec: JudgeSpec, machine: MachineProfile | None = None, preference: RoutingPreference = RoutingPreference.BALANCED) -> RoutingJudge:
     return _OcrLeadingJudge()
 
@@ -840,6 +838,88 @@ def test_convert_backend_and_judge_are_mutually_exclusive(pdf_registry: Path) ->
     result = runner.invoke(app, ["convert", str(pdf_registry), "--backend", "pymupdf", "--judge", "cli-fake-judge/j"])
     assert result.exit_code == 2
     assert "mutually exclusive" in _text(result)
+
+
+@pytest.fixture(autouse=True)
+def _isolated_judge_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Convert resolves judge endpoints from files — never a real global config."""
+    monkeypatch.setattr(cli_config, "global_config_path", lambda: tmp_path / "global" / "config.toml")
+
+
+def test_convert_reads_the_default_judge_from_the_environment(pdf_registry: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """No flag: ``PARSECRAFT_JUDGE_MODEL`` selects the decision model."""
+    register_judge_provider("cli-env-judge", _load_reversing_judge)
+    monkeypatch.setenv(endpoints.JUDGE_MODEL_ENV, "cli-env-judge/j")
+    result = runner.invoke(app, ["convert", str(pdf_registry)])
+    assert result.exit_code == 0
+    assert "native content" in result.output  # the judge's reversed native lead
+
+
+def test_convert_reads_the_default_judge_from_the_config_file(pdf_registry: Path, tmp_path: Path) -> None:
+    """No flag and no env: the ``[judge]`` global section selects the model."""
+    register_judge_provider("cli-file-judge", _load_reversing_judge)
+    _write_global_config(tmp_path, '[judge]\nmodel = "cli-file-judge/j"\n')
+    result = runner.invoke(app, ["convert", str(pdf_registry)])
+    assert result.exit_code == 0
+    assert "native content" in result.output
+
+
+def test_convert_backend_conflicts_with_a_configured_default_judge(pdf_registry: Path, tmp_path: Path) -> None:
+    """A configured default is still a chosen lead: ``--backend`` conflicts with it."""
+    register_judge_provider("cli-file-judge", _load_reversing_judge)
+    _write_global_config(tmp_path, '[judge]\nmodel = "cli-file-judge/j"\n')
+    result = runner.invoke(app, ["convert", str(pdf_registry), "--backend", "pymupdf"])
+    assert result.exit_code == 2
+    assert "mutually exclusive" in _text(result)
+
+
+def _load_reversing_judge(spec: JudgeSpec, machine: MachineProfile | None = None, preference: RoutingPreference = RoutingPreference.BALANCED) -> RoutingJudge:
+    return _ReversingJudge()
+
+
+def test_convert_judge_endpoint_flags_override_everything(pdf_registry: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """CLI flags beat generic env beats the file section, per knob, at resolve time."""
+    seen: dict[str, str | None] = {}
+
+    def loader(
+        spec: JudgeSpec,
+        machine: MachineProfile | None = None,
+        preference: RoutingPreference = RoutingPreference.BALANCED,
+    ) -> RoutingJudge:
+        seen["base_url"], seen["api_key"] = endpoints.resolve_endpoint(
+            "cli-override-judge", default_base_url="https://default.invalid", legacy_api_key_env=None
+        )
+        return _ReversingJudge()
+
+    register_judge_provider("cli-override-judge", loader)
+    _write_global_config(
+        tmp_path,
+        '[providers.cli-override-judge]\nbase_url = "https://file.invalid"\napi_key = "${OVERRIDE_KEY}"\n',
+    )
+    monkeypatch.setenv("OVERRIDE_KEY", "file-key")
+    monkeypatch.setenv(endpoints.JUDGE_BASE_URL_ENV, "https://env.invalid")
+    monkeypatch.setenv(endpoints.JUDGE_API_KEY_ENV, "env-key")
+    result = runner.invoke(
+        app,
+        [
+            "convert",
+            str(pdf_registry),
+            "--judge",
+            "cli-override-judge/j",
+            "--judge-base-url",
+            "https://cli.invalid",
+            "--judge-api-key",
+            "cli-key",
+        ],
+    )
+    assert result.exit_code == 0
+    assert seen == {"base_url": "https://cli.invalid", "api_key": "cli-key"}
+
+
+def _write_global_config(tmp_path: Path, text: str) -> None:
+    path = tmp_path / "global" / "config.toml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
 
 
 def test_convert_total_pass_failure_is_not_an_empty_success(registry: BackendRegistry, tmp_path: Path) -> None:

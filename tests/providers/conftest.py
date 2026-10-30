@@ -2,9 +2,18 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
+from parsecraft.cli import config as cli_config
 from tests.fixtures.jev_sdk import StubSdk
+
+
+@pytest.fixture(autouse=True)
+def _isolated_global_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Provider loaders read the file endpoint config — never a real one."""
+    monkeypatch.setattr(cli_config, "global_config_path", lambda: tmp_path / "global" / "config.toml")
 
 
 @pytest.fixture

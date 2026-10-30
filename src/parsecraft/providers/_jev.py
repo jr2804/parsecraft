@@ -256,6 +256,7 @@ def load_endpoint_judge(
     provider: str,
     spec: JudgeSpec,
     api_key_env: str | None = None,
+    api_key: str | None = None,
     machine: MachineProfile | None = None,
     preference: RoutingPreference = RoutingPreference.BALANCED,
     base_url: str | None = None,
@@ -269,8 +270,12 @@ def load_endpoint_judge(
     through to the SDK untouched. ``api_key_env`` names the required credential,
     or is ``None`` for a local endpoint that needs none (the SDK still rejects
     an empty key, so :data:`LOCAL_API_KEY` is sent and the daemon ignores it).
+    Either lookup only runs when ``api_key`` is unset.
     ``timeout_s`` overrides the SDK's per-operation bound — only the local
     endpoint needs it (a cold model load is slower than any cloud round trip).
+    ``api_key`` is an already-resolved credential (config file, generic env, or
+    CLI flag); when it is ``None`` the legacy ``api_key_env`` lookup runs, so
+    unconfigured runs behave exactly as before.
 
     Order is deliberate: **spec before environment**. A malformed spec is a
     caller bug (CLI exit 2) and must outrank environment state (an unusable SDK
@@ -280,8 +285,10 @@ def load_endpoint_judge(
     runs before any loader, so this body only resolves environment state.
     """
     module = sdk_module(provider)
-    api_key = LOCAL_API_KEY if api_key_env is None else _required_api_key(provider, api_key_env)
-    endpoint = SdkEndpoint(module=module, api_key=api_key, model=spec.model, base_url=base_url, timeout_s=timeout_s)
+    resolved_key = api_key.strip() if api_key is not None and api_key.strip() else None
+    if resolved_key is None:
+        resolved_key = LOCAL_API_KEY if api_key_env is None else _required_api_key(provider, api_key_env)
+    endpoint = SdkEndpoint(module=module, api_key=resolved_key, model=spec.model, base_url=base_url, timeout_s=timeout_s)
     return JevJudge(endpoint=endpoint, machine=machine, preference=preference)
 
 

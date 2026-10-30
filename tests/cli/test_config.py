@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 from typing import cast
 
-import platformdirs
 import pytest
 from typer.testing import CliRunner, Result
 
@@ -20,7 +19,7 @@ runner = CliRunner()
 @pytest.fixture(autouse=True)
 def _isolated_global_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Keep the global config path inside ``tmp_path`` so tests never read a real one."""
-    monkeypatch.setattr(platformdirs, "user_config_dir", lambda _app: str(tmp_path / "global"))
+    monkeypatch.setattr(config, "global_config_path", lambda: tmp_path / "global" / "config.toml")
 
 
 def test_config_help_lists_check_and_show() -> None:
@@ -156,6 +155,45 @@ def test_config_show_malformed_file(tmp_path: Path) -> None:
     result = runner.invoke(app, ["config", "show", "--config-file", str(path)])
     assert result.exit_code == 1
     assert "cannot read config file" in _text(result)
+
+
+def test_global_config_path_ignores_platformdirs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The app global config lives at ``~/.config/parsecraft/`` on every platform (pc-66v)."""
+    monkeypatch.undo()  # drop the autouse isolation: exercise the real seam
+    assert config.global_config_path() == Path.home() / ".config" / "parsecraft" / "config.toml"
+
+
+def test_config_check_accepts_providers_and_judge_sections(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ZEN_KEY", "file-key")
+    path = _project_file(
+        tmp_path,
+        '[providers.zen]\nbase_url = "https://zen.invalid"\napi_key = "${ZEN_KEY}"\n[judge]\nmodel = "zen/jev-1.13"\n',
+    )
+    result = runner.invoke(app, ["config", "check", "--config-file", str(path)])
+    assert result.exit_code == 0
+    assert "Configuration is valid." in _text(result)
+
+
+def test_config_check_rejects_unknown_provider_keys(tmp_path: Path) -> None:
+    path = _project_file(tmp_path, '[providers.zen]\napi_key_env = "ZEN_KEY"\n')
+    result = runner.invoke(app, ["config", "check", "--config-file", str(path)])
+    assert result.exit_code == 1
+    assert "providers.zen" in _text(result)
+
+
+def test_config_check_rejects_unknown_judge_keys(tmp_path: Path) -> None:
+    path = _project_file(tmp_path, '[judge]\nmodels = "zen/jev-1.13"\n')
+    result = runner.invoke(app, ["config", "check", "--config-file", str(path)])
+    assert result.exit_code == 1
+    assert "judge" in _text(result)
+
+
+def test_config_show_redacts_provider_api_keys(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = _project_file(tmp_path, '[providers.typesafe]\napi_key = "${TS_KEY}"\n')
+    monkeypatch.setenv("TS_KEY", "s3cr3t")
+    result = runner.invoke(app, ["config", "show", "--config-file", str(path), "--json"])
+    assert result.exit_code == 0
+    assert _entry(result.output, "providers.typesafe.api_key")["value"] == "***"
 
 
 def _text(result: Result) -> str:
