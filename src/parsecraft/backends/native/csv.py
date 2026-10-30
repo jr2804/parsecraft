@@ -16,7 +16,6 @@ from __future__ import annotations
 import csv
 import io
 import sys
-from collections.abc import Sequence
 
 from parsecraft.backends.native._common import NATIVE_BACKEND_VERSION, NativeBackendBase
 from parsecraft.backends.protocol import (
@@ -39,12 +38,10 @@ BACKEND_NAME = "native-csv"
 SUPPORTED_FORMATS = ["text/csv", "text/tab-separated-values"]
 
 _TSV_MEDIA_TYPE = "text/tab-separated-values"
-#: Head lines the sniff reads: a header plus a few data rows establish
-#: consistency; the bound keeps sniffing cheap on wide files.
-_SNIFF_LINES = 5
 #: Delimiter candidates in preference order — the tie-break when two are
 #: equally consistent (RFC4180 comma first, then the common variants).
 _SNIFF_CANDIDATES = (",", ";", "\t", "|")
+_SNIFF_RECORDS = 5
 _DEFAULT_DELIMITER = ","
 
 #: The stdlib CSV field cap (131072) rejects real-world wide cells (a 200 KB
@@ -84,7 +81,7 @@ def extract_csv_pages(source: SourceDocument, data: bytes) -> list[PageResult]:
         delimiter = "\t"
         diagnostics: list[Diagnostic] = []
     else:
-        delimiter = _sniff_delimiter(_head_lines(text))
+        delimiter = _sniff_delimiter(text)
         diagnostics = []
         if delimiter is None:
             delimiter = _DEFAULT_DELIMITER
@@ -148,62 +145,86 @@ def _is_tsv(source: SourceDocument) -> bool:
     return source.uri.lower().endswith(".tsv")
 
 
-def _head_lines(text: str) -> list[str]:
-    """First non-blank physical lines for the sniff (bounded, deterministic).
+def _sniff_delimiter(text: str) -> str | None:
+    """Score candidate dialects; unquoted quote characters weaken a guess.
 
-    Blank lines are filtered deliberately: they carry no delimiter signal, so
-    the sniff sample and the parse text intentionally disagree here.
-    """
-    lines = [line for line in text.splitlines() if line.strip()]
-    return lines[:_SNIFF_LINES]
-
-
-def _sniff_delimiter(lines: Sequence[str]) -> str | None:
-    """Delimiter sniff: the candidate splitting the most head lines, then widest.
-
-    A ragged row must not veto detection (ragged files are in scope), so each
-    candidate scores ``(lines split, max width)`` and the best wins; iteration
-    order breaks ties, keeping comma's RFC4180 precedence. Returns ``None``
-    when no candidate splits anything (single-column input) — the caller falls
-    back to comma rather than raising on a file that merely ends in ``.csv``.
+    Each candidate uses its own logical records. Strict CSV syntax and fewer
+    literal quotes outside fields rank ahead of row consistency, which avoids
+    mistaking lines inside another candidate's quoted field for extra rows.
+    Dialect detection remains a heuristic; ties prefer the candidate order.
     """
     best: str | None = None
-    best_score = (0, 0)
+    best_score: tuple[int, ...] | None = None
     for candidate in _SNIFF_CANDIDATES:
-        widths = [_field_count(line, candidate) for line in lines]
+        try:
+            widths, stray_quotes = _probe_delimiter(text, candidate, strict=True)
+            strict = 1
+        except csv.Error:
+            try:
+                widths, stray_quotes = _probe_delimiter(text, candidate, strict=False)
+            except csv.Error:
+                # A competing delimiter can exceed the process field limit
+                # even when the real delimiter's fields are all within it.
+                continue
+            strict = 0
         multi = sum(1 for width in widths if width > 1)
         if multi == 0:
             continue
-        score = (multi, max(widths))
-        if score > best_score:
+        single = len(widths) - multi
+        score = (strict, -stray_quotes, multi - single, -single, multi, max(widths))
+        if best_score is None or score > best_score:
             best = candidate
             best_score = score
     return best
 
 
-def _field_count(line: str, delimiter: str) -> int:
-    """Field count of one physical line under ``delimiter`` (quote-aware).
+def _probe_delimiter(text: str, delimiter: str, *, strict: bool) -> tuple[list[int], int]:
+    """Read at most five nonblank logical records with one CSV dialect."""
+    stream = io.StringIO(text, newline="")
+    reader = csv.reader(stream, delimiter=delimiter, strict=strict)
+    widths: list[int] = []
+    stray_quotes = 0
+    start = 0
+    for row in reader:
+        end = stream.tell()
+        if row and (len(row) > 1 or any(cell.strip() for cell in row)):
+            widths.append(len(row))
+            stray_quotes += _stray_quotes(text, start, end, delimiter)
+            if len(widths) == _SNIFF_RECORDS:
+                break
+        start = end
+    return widths, stray_quotes
 
-    Strict probes: a line broken by a multiline cell raises, and scores 1
-    ("splits nothing") instead of propagating — one bad line never vetoes an
-    otherwise splitting candidate. The full parse stays lenient by design.
-    """
-    try:
-        return len(next(csv.reader([line], delimiter=delimiter, quotechar='"', doublequote=True, strict=True)))
-    except csv.Error:
-        return 1
+
+def _stray_quotes(text: str, start: int, end: int, delimiter: str) -> int:
+    """Count literal quotes outside quoted fields for this delimiter."""
+    quoted = False
+    count = 0
+    index = start
+    while (index := text.find('"', index, end)) != -1:
+        if quoted:
+            if index + 1 < end and text[index + 1] == '"':
+                index += 2
+                continue
+            quoted = False
+        elif index == start or text[index - 1] == delimiter:
+            quoted = True
+        else:
+            count += 1
+        index += 1
+    return count
 
 
 def _parse_rows(text: str, delimiter: str) -> tuple[tuple[str, ...], ...]:
     """Whole-text parse (quote-aware: embedded newlines survive), ragged kept.
 
-    Trailing all-blank rows are file-tail newlines, not data; interior blanks
-    are kept verbatim — no sanitization. Empty input yields no rows, and the
-    caller emits no chunk for an empty grid (see :func:`extract_csv_pages`).
+    Trailing empty physical lines are trimmed; explicit empty or whitespace
+    cells and interior blanks are kept verbatim. Empty input yields no rows;
+    the caller emits no chunk for an empty grid (see :func:`extract_csv_pages`).
     """
     parsed = tuple(tuple(row) for row in csv.reader(io.StringIO(text, newline=""), delimiter=delimiter, quotechar='"', doublequote=True))
     end = len(parsed)
-    while end > 0 and all(not cell.strip() for cell in parsed[end - 1]):
+    while end > 0 and not parsed[end - 1]:
         end -= 1
     return parsed[:end]
 

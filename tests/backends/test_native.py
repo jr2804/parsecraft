@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import os
 import subprocess
@@ -697,7 +698,8 @@ def test_csv_descriptor_claims_both_delimited_types() -> None:
     assert csv_module.BACKEND_NAME == "native-csv"
     assert csv_module.SUPPORTED_FORMATS == ["text/csv", "text/tab-separated-values"]
     descriptor = csv_module.factory.descriptor
-    assert descriptor.version == NATIVE_BACKEND_VERSION
+    # The parser changed after 0.1.0; cached documents must not retain old rows.
+    assert descriptor.version == NATIVE_BACKEND_VERSION == "0.1.1"
     assert descriptor.capabilities.supports_page_ranges is False
     assert descriptor.capabilities.supports_multi_page is False
     backend = csv_module.factory(_config("native-csv"))
@@ -813,10 +815,7 @@ def test_csv_sniff_fallback_prose_degrades_to_single_column_table() -> None:
 
 
 def test_csv_embedded_newline_survives_sniff_and_parse() -> None:
-    """A quoted newline breaks two physical head lines — the strict probes
-    score them 1 ("splits nothing") without vetoing comma, and the lenient
-    full parse restores the grid. No fallback, no diagnostic.
-    """
+    """A quoted newline remains within one cell, without a fallback diagnostic."""
     backend = csv_module.factory(_config("native-csv"))
     content = b'id,name,note\r\n1,alpha,first\r\n2,"beta, jr","line one\nline two"\r\n3,gamma,last\r\n'
     result = backend.convert(_csv_request(content, uri="sample.csv"))
@@ -832,6 +831,100 @@ def test_csv_embedded_newline_survives_sniff_and_parse() -> None:
     for row in table.rows:
         for cell in row:
             assert cell in table.content
+
+
+@pytest.mark.parametrize(
+    ("content", "delimiter", "expected"),
+    [
+        (
+            b'id,description\n1,"alpha\nx|y\nz|w\nfinish"\n2,end\n',
+            ",",
+            (("id", "description"), ("1", "alpha\nx|y\nz|w\nfinish"), ("2", "end")),
+        ),
+        (
+            b'id;description\n1;"alpha\nx,y\nz,w\nfinish"\n2;end\n',
+            ";",
+            (("id", "description"), ("1", "alpha\nx,y\nz,w\nfinish"), ("2", "end")),
+        ),
+        (
+            b'id,"description|alias"\n1,"alpha\nx|y\nz|w\nq|r\nfinish"\n2,end\n',
+            ",",
+            (("id", "description|alias"), ("1", "alpha\nx|y\nz|w\nq|r\nfinish"), ("2", "end")),
+        ),
+        (
+            b'id,name,note\n1,Alice,"red;""urgent"";blue"\n2,Bob,green\n3,Eve,black\n',
+            ",",
+            (("id", "name", "note"), ("1", "Alice", 'red;"urgent";blue'), ("2", "Bob", "green"), ("3", "Eve", "black")),
+        ),
+        (
+            b'id,notes\n1,"2025-01-01, 10:00; started\n2025-01-02, 10:00; retry\n2025-01-03, 10:00; failed\n2025-01-04, 10:00; stopped"\n',
+            ",",
+            (("id", "notes"), ("1", "2025-01-01, 10:00; started\n2025-01-02, 10:00; retry\n2025-01-03, 10:00; failed\n2025-01-04, 10:00; stopped")),
+        ),
+    ],
+)
+def test_csv_multiline_fields_do_not_vote_for_embedded_delimiters(content: bytes, delimiter: str, expected: tuple[tuple[str, ...], ...]) -> None:
+    backend = csv_module.factory(_config("native-csv"))
+    result = backend.convert(_csv_request(content, uri="sample.csv"))
+    (table,) = result.pages[0].blocks
+    assert table.metadata["delimiter"] == delimiter
+    assert table.rows == expected
+
+
+def test_csv_sniff_does_not_treat_literal_quotes_as_competing_fields() -> None:
+    content = b'h,foo;"x,y"z;extra;more\n1,bar;"a,b"z;extra;more\n'
+    backend = csv_module.factory(_config("native-csv"))
+    result = backend.convert(_csv_request(content, uri="sample.csv"))
+    (table,) = result.pages[0].blocks
+    assert table.metadata["delimiter"] == ","
+    assert table.rows == (("h", 'foo;"x', 'y"z;extra;more'), ("1", 'bar;"a', 'b"z;extra;more'))
+
+
+def test_csv_sniff_skips_candidate_exceeding_field_limit() -> None:
+    field = "x" * 70_000
+    content = f"left,right\n{field},{field}\n".encode()
+    previous_limit = csv.field_size_limit(131_072)
+    try:
+        backend = csv_module.factory(_config("native-csv"))
+        result = backend.convert(_csv_request(content, uri="sample.csv"))
+    finally:
+        csv.field_size_limit(previous_limit)
+    (table,) = result.pages[0].blocks
+    assert table.metadata["delimiter"] == ","
+    assert table.rows == (("left", "right"), (field, field))
+
+
+def test_csv_sniff_does_not_count_truncated_multiline_cell_as_rows() -> None:
+    multiline = "start\n" + ("log|" + "x" * 700 + "\n") * 100 + "finish"
+    text = f'id,note\n1,ok\n2,ok\n3,"{multiline}"\n4,done\n'
+    backend = csv_module.factory(_config("native-csv"))
+    result = backend.convert(_csv_request(text.encode(), uri="sample.csv"))
+    (table,) = result.pages[0].blocks
+    assert table.metadata["delimiter"] == ","
+    assert table.rows == (("id", "note"), ("1", "ok"), ("2", "ok"), ("3", multiline), ("4", "done"))
+
+
+def test_csv_detects_delimiter_from_explicit_empty_fields() -> None:
+    backend = csv_module.factory(_config("native-csv"))
+    result = backend.convert(_csv_request(b";;\n;;\n", uri="empty-fields.csv"))
+    (table,) = result.pages[0].blocks
+    assert table.metadata["delimiter"] == ";"
+    assert table.rows == (("", "", ""), ("", "", ""))
+
+
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [
+        (b"report, status\na;b\n1;2\n3;4\n", (("report, status",), ("a", "b"), ("1", "2"), ("3", "4"))),
+        (b'title\n"oops" ;bar\n1;2\n3;4\n', (("title",), ("oops ", "bar"), ("1", "2"), ("3", "4"))),
+    ],
+)
+def test_csv_sniff_uses_later_rows_after_ragged_or_malformed_header(content: bytes, expected: tuple[tuple[str, ...], ...]) -> None:
+    backend = csv_module.factory(_config("native-csv"))
+    result = backend.convert(_csv_request(content, uri="sample.csv"))
+    (table,) = result.pages[0].blocks
+    assert table.metadata["delimiter"] == ";"
+    assert table.rows == expected
 
 
 def test_csv_ragged_semicolon_still_detected() -> None:
@@ -863,7 +956,7 @@ def test_csv_ragged_tail_semicolon_keeps_columns() -> None:
 
 
 def test_csv_malformed_quote_probe_never_raises() -> None:
-    """An unterminated quote scores that probe 1 instead of propagating."""
+    """An unterminated quote degrades through the lenient parser."""
     backend = csv_module.factory(_config("native-csv"))
     result = backend.convert(_csv_request(b'a;b\n"oops\n1;2\n', uri="sample.csv"))
     (table,) = result.pages[0].blocks
@@ -928,8 +1021,24 @@ def test_csv_trailing_blank_rows_trimmed_interior_kept() -> None:
     backend = csv_module.factory(_config("native-csv"))
     result = backend.convert(_csv_request(b"a,b\n1,2\n\n3,4\n   \n\n", uri="sample.csv"))
     (table,) = result.pages[0].blocks
-    assert table.rows == (("a", "b"), ("1", "2"), (), ("3", "4"))
-    assert table.content == "| a | b |\n| --- | --- |\n| 1 | 2 |\n|  |  |\n| 3 | 4 |"
+    assert table.rows == (("a", "b"), ("1", "2"), (), ("3", "4"), ("   ",))
+    assert table.content == "| a | b |\n| --- | --- |\n| 1 | 2 |\n|  |  |\n| 3 | 4 |\n|     |  |"
+
+
+@pytest.mark.parametrize(
+    ("content", "last_row"),
+    [
+        (b"a,b\n,\n", ("", "")),
+        (b'a,b\n""\n', ("",)),
+        (b'a,b\n" "\n', (" ",)),
+        (b"a,b\n   \n", ("   ",)),
+    ],
+)
+def test_csv_preserves_explicit_empty_or_whitespace_cells_at_end(content: bytes, last_row: tuple[str, ...]) -> None:
+    backend = csv_module.factory(_config("native-csv"))
+    result = backend.convert(_csv_request(content, uri="sample.csv"))
+    (table,) = result.pages[0].blocks
+    assert table.rows == (("a", "b"), last_row)
 
 
 def test_csv_markdown_table_renders_empty_grid_empty() -> None:

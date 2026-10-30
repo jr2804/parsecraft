@@ -32,7 +32,9 @@ is now reserved for backends with no third-party runtime dep.
   `native-csv` emits `rows` from the parsed cell grid — header stays row 0
   and is never lifted into metadata (consumer contract: the consumer keys
   data rows by column name). `native-text` carries `rows=None` — its
-  extraction is plain text with no cheap grid structure.
+  extraction is plain text with no cheap grid structure. CSV delimiter sniffing
+  samples logical records (including multiline quoted cells); only empty
+  physical tail lines are trimmed, not explicit empty or whitespace cells.
 - `native-text` classifies only when a text-kind classifier resolves
   (pc-9p6.3): unconfigured runs emit bare `paragraph_chunks` (no verdict key,
   `confidence=None`, byte-identical to before); a resolved classifier stamps

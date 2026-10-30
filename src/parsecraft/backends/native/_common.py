@@ -37,7 +37,7 @@ from parsecraft.ir.models import (
     utcnow,
 )
 
-NATIVE_BACKEND_VERSION = "0.1.0"
+NATIVE_BACKEND_VERSION = "0.1.1"
 
 _BLOCK_SPLIT = re.compile(r"\n[ \t]*\n+")
 
