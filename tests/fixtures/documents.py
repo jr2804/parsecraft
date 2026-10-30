@@ -384,6 +384,27 @@ def xlsx_bytes() -> bytes:
     return buffer.getvalue()
 
 
+def csv_bytes() -> bytes:
+    """Deterministic ``.csv``: CRLF rows, one quoted comma.
+
+    The head lines are delimiter-consistent (comma), so the sniff settles
+    without fallback; the quoted ``beta, jr`` cell proves the comma split is
+    quote-aware. Embedded newlines live in inline test content instead: they
+    intentionally defeat the head-line sniff and pin the fallback path.
+    Byte-deterministic (plain ``str.encode``).
+    """
+    return b'id,name,note\r\n1,alpha,first\r\n2,"beta, jr",second\r\n3,gamma,last\r\n'
+
+
+def tsv_bytes() -> bytes:
+    r"""Deterministic ``.tsv``: tab rows, one quoted embedded tab.
+
+    The quoted ``gamma\\tdelta`` cell proves the tab split is quote-aware.
+    Byte-deterministic (plain ``str.encode``).
+    """
+    return b'id\tname\tscore\n1\talpha\t0.5\n2\tbeta\t0.75\n3\t"gamma\tdelta"\t1.0\n'
+
+
 def _code_page_content() -> bytes:
     """Content stream: prose in Helvetica, code in Courier at explicit offsets."""
     prose = _PDF_FONT_SIZE

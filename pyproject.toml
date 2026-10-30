@@ -88,6 +88,7 @@ vllm = ["vllm>=0.11 ; sys_platform != 'win32'"]  # Linux/WSL2 accelerator
 native-text = "parsecraft.backends.native.text:factory"
 native-markdown = "parsecraft.backends.native.markdown:factory"
 native-html = "parsecraft.backends.native.html:factory"
+native-csv = "parsecraft.backends.native.csv:factory"
 pymupdf = "parsecraft.backends.pymupdf:factory"
 # The spreadsheet sibling: pymupdf cannot read .xlsx (string cells dropped).
 openpyxl = "parsecraft.backends.openpyxl.openpyxl:factory"
