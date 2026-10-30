@@ -15,6 +15,7 @@ with routing expectations; do not encode routing rules inside tests.
 
 from __future__ import annotations
 
+import re
 import tomllib
 from enum import StrEnum
 from pathlib import Path
@@ -27,6 +28,13 @@ MANIFEST_PATH = Path(__file__).with_name("sources.toml")
 
 _DOWNLOADS_DIR = "tests/downloads"
 _SHA256_PATTERN = r"^[0-9a-f]{64}$"
+
+# ``raw.githubusercontent.com/<owner>/<repo>/<ref>/...`` serves whatever ``<ref>``
+# resolves to *now*. A pinned artifact fetched through a branch ref drifts the
+# moment upstream commits, and the corpus tier reports it as content drift —
+# blaming the hash for a moving URL. Only a full commit id is immutable.
+_GITHUB_RAW_URL = re.compile(r"^https://raw\.githubusercontent\.com/[^/]+/[^/]+/(?P<ref>[^/]+)/")
+_COMMIT_ID = re.compile(r"^[0-9a-f]{40}$")
 
 
 class Difficulty(StrEnum):
@@ -93,7 +101,22 @@ class DocumentSource(BaseModel):
         if self.mutable and self.sha256 is not None:
             msg = f"{self.id!r} is mutable; do not pin sha256 (upstream content changes)"
             raise ValueError(msg)
+        if self.sha256 is not None:
+            self._reject_moving_ref_for_a_pinned_artifact()
         return self
+
+    def _reject_moving_ref_for_a_pinned_artifact(self) -> None:
+        """Refuse a hash-pinned artifact fetched through a branch ref.
+
+        The pin promises byte stability; a branch ref cannot keep that promise.
+        Either pin the commit id or mark the source ``mutable``.
+        """
+        match = _GITHUB_RAW_URL.match(self.url)
+        if match is None or _COMMIT_ID.match(match.group("ref")):
+            return
+        ref = match.group("ref")
+        msg = f"{self.id!r} is sha256-pinned but its url resolves ref {ref!r}; pin the full commit id in both url and download_step, or mark it mutable"
+        raise ValueError(msg)
 
 
 class SourcesManifest(BaseModel):

@@ -24,6 +24,8 @@ from pydantic import ValidationError
 
 from tests.fixtures.documents import FORMATS
 from tests.fixtures.sources import (
+    _COMMIT_ID,
+    _GITHUB_RAW_URL,
     Difficulty,
     DocumentSource,
     Feature,
@@ -196,6 +198,64 @@ def test_bad_sha256_is_rejected() -> None:
             difficulty=Difficulty.SIMPLE,
             sha256="not-a-hash",
         )
+
+
+def test_a_pinned_artifact_may_not_be_fetched_through_a_branch_ref() -> None:
+    """A sha256 pin promises byte stability; a branch ref cannot keep that promise."""
+    with pytest.raises(ValidationError, match="pin the full commit id"):
+        DocumentSource(
+            id="moving-ref",
+            format="txt",
+            media_type="text/plain",
+            url="https://raw.githubusercontent.com/owner/repo/master/spec.txt",
+            license="MIT",
+            license_url="https://example.com/license",
+            why="documents the rejection path for a pinned artifact behind a moving ref",
+            filename="a.txt",
+            download_step=f"curl -o {_DOWNLOADS_DIR_HINT}/a.txt https://example.com/a.txt",
+            difficulty=Difficulty.SIMPLE,
+            sha256="a" * 64,
+        )
+
+
+def test_a_pinned_artifact_fetched_through_a_commit_id_is_accepted() -> None:
+    sha = "a" * 64
+    commit = "0" * 40
+    url = f"https://raw.githubusercontent.com/owner/repo/{commit}/spec.txt"
+    source = DocumentSource(
+        id="commit-ref",
+        format="txt",
+        media_type="text/plain",
+        url=url,
+        license="MIT",
+        license_url="https://example.com/license",
+        why="documents that an immutable ref is what a pinned artifact requires",
+        filename="a.txt",
+        download_step=f"curl -o {_DOWNLOADS_DIR_HINT}/a.txt {url}",
+        difficulty=Difficulty.SIMPLE,
+        sha256=sha,
+    )
+    assert source.sha256 == sha
+
+
+def test_every_pinned_source_is_fetched_through_an_immutable_url() -> None:
+    """Regression pin: commonmark-spec was pinned while pointing at ``master``,
+    so the 2026-10-10 upstream commit made the corpus tier report drift for a
+    document nobody meant to change.
+    """
+    branch_refs = sorted(source.id for source in _MANIFEST.sources if _moving_ref(source) is not None)
+    assert branch_refs == []
+
+
+def _moving_ref(source: DocumentSource) -> str | None:
+    """Return the branch ref a pinned artifact is fetched through, else ``None``."""
+    if source.sha256 is None:
+        return None
+    match = _GITHUB_RAW_URL.match(source.url)
+    if match is None:
+        return None
+    ref = match.group("ref")
+    return None if _COMMIT_ID.match(ref) else ref
 
 
 def test_download_step_must_target_the_cache_dir() -> None:

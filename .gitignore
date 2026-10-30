@@ -49,6 +49,11 @@ uv.lock
 /tmp
 /temp
 
+# Real corpus documents staged by the corpus tier or by hand (ADR-0001 §8 —
+# never committed, and never linted: they are third-party artifacts, so the
+# CommonMark spec would otherwise fail the Markdown gate for its own content).
+/tests/downloads/
+
 # Copier answers (regenerated on update)
 .copier-answers.yml
 
