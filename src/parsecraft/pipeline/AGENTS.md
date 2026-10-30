@@ -58,6 +58,14 @@ a `DocumentResult` with `TraceEntry` records — no silent drops.
   `constraints_from_environment`); `execute` never builds its own.
 - Heavy imports happen only inside `registry.create` — the instantiation
   boundary; tests isolate the registry by stubbing entry-point discovery.
+- Conversion-cache identity (pc-9p6.4): `_cache_key` hashes source bytes +
+  registry fingerprint + canonical constraints + judge id + two classifier
+  segments. The segments are verbatim spec strings (``"none"`` when absent),
+  keyed by configuration rather than resolved identity; a plan digest cannot
+  replace the text segment because classification runs inside
+  ``extract_text_pages``, downstream of ``plan_route``. The CLI threads
+  `--classifier` and the env/file judge spec into `execute`; the backend and
+  the key resolve through the same source by construction.
 
 ## Verification
 

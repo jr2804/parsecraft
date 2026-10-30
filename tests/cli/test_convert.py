@@ -41,7 +41,7 @@ from parsecraft.routing.classifier import (
     register_classifier_provider,
 )
 from parsecraft.routing.judge import DeterministicJudge, JudgeSpec
-from parsecraft.routing.judge_providers import register_judge_provider
+from parsecraft.routing.judge_providers import JudgeError, register_judge_provider
 from parsecraft.routing.planner import _apply_preference
 from tests.fixtures.documents import minimal_pdf
 
@@ -1016,6 +1016,26 @@ def test_no_judge_spec_resolves_no_provider(registry: BackendRegistry, tmp_path:
     result = runner.invoke(app, ["convert", str(_source_file(tmp_path))])
     assert result.exit_code == 0
     assert resolved == []
+
+
+def test_text_classifier_spec_mirrors_the_backend_source(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The key segment is what `resolve_text_classifier(None)` would consume."""
+    monkeypatch.setattr(convert_module, "select_judge_spec", lambda cli: "  stub-x/model  " if cli is None else cli)
+    assert convert_module._text_classifier_spec() == "stub-x/model"
+    monkeypatch.setattr(convert_module, "select_judge_spec", lambda cli: None)
+    assert convert_module._text_classifier_spec() is None
+
+
+def test_text_classifier_spec_unreadable_config_keys_unusable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An unreadable config must not share the unconfigured key."""
+
+    def _boom(cli: str | None) -> str | None:
+        raise JudgeError("config store offline")
+
+    monkeypatch.setattr(convert_module, "select_judge_spec", _boom)
+    spec = convert_module._text_classifier_spec()
+    assert spec is not None
+    assert spec.startswith("unusable:")
 
 
 @pytest.fixture
