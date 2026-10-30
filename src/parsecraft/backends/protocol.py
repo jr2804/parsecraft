@@ -12,7 +12,7 @@ from collections.abc import Callable
 from enum import StrEnum
 from typing import Protocol, runtime_checkable
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from parsecraft.ir.models import (
     Diagnostic,
@@ -159,7 +159,16 @@ class ConversionRequest(BaseModel):
 
     ``cancellation`` is polled for a ``True`` result; timeouts and budgets are
     hard expectations a backend must honor or return a structured failure.
+
+    ``extra="forbid"`` is load-bearing, not hygiene: the executor builds this
+    object from ``**RequestOptions().model_dump()`` (pc-c54), so a knob that
+    exists on ``RequestOptions`` but not here would otherwise be silently
+    dropped by pydantic's default and the caller would never learn. Forbidding
+    extras turns that silent loss into an error at the only construction site
+    that can hit it.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     source: SourceDocument
     page_range: PageRange | None = None

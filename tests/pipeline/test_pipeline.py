@@ -1354,6 +1354,19 @@ def test_empty_request_options_match_a_bare_request() -> None:
     )
 
 
+def test_convert_request_rejects_a_knob_it_does_not_declare() -> None:
+    """A ``RequestOptions`` field without a twin must surface, not vanish (pc-c54).
+
+    The executor splats ``**RequestOptions().model_dump()`` into the request, so
+    pydantic's default ``extra="ignore"`` would silently drop such a field — the
+    exact bug class this bead closed. ``extra="forbid"`` is what makes the loss
+    loud; this test is what keeps it forbidden.
+    """
+    stray: dict[str, object] = {"source": make_source(), "a_knob_this_request_does_not_declare": 1}
+    with pytest.raises(ValidationError):
+        ConversionRequest.model_validate(stray)
+
+
 def make_analysis(pages: int, *, blank_pages: tuple[int, ...] = ()) -> AnalysisResult:
     signals = [make_signal(page, text_chars=5 if page in blank_pages else 500, blank=page in blank_pages) for page in range(1, pages + 1)]
     return AnalysisResult(source_hash="0" * 64, page_count=pages, signals=signals, diagnostics=[])
