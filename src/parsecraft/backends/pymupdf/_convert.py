@@ -1,4 +1,4 @@
-"""PyMuPDF-based PDF text extraction (``pdf`` extra, AGPL — ADR-0003).
+"""PyMuPDF-based PDF text extraction (``pymupdf`` extra, AGPL — ADR-0003).
 
 Loaded only by :func:`parsecraft.backends.pymupdf._extract_pdf` via
 ``import_module`` at conversion time; never imported at module import.
@@ -11,7 +11,11 @@ monospace, where they start horizontally, and how far apart they sit
 
 from __future__ import annotations
 
-import pymupdf  # base dep since the pymupdf extra rename (2026-10-14); optional only for the AGPL path
+# Optional: the ``pymupdf`` extra (AGPL, ADR-0003). This module is reached only
+# through ``import_module``, so a light install never imports it; ty still
+# resolves the module statically, so the marker is required in every env that
+# does not install the extra. It is NOT an unused marker — do not delete it.
+import pymupdf  # ty: ignore[unresolved-import]
 
 from parsecraft.backends.pymupdf.code_layout import PageText, page_text
 
