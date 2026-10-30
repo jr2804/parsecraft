@@ -240,13 +240,13 @@ def classify_text_kind(text: str, *, classifier: str | TextKindClassifier | None
 
 
 def resolve_text_classifier(spec: str | TextKindClassifier | None) -> TextKindClassifier | None:
-    """Turn a config/CLI text-classifier spec into an instance.
+    """Turn a config text-classifier spec into an instance.
 
-    ``None`` resolves the configured decision model (``--judge`` beats
-    ``PARSECRAFT_JUDGE_MODEL`` beats ``[judge] model``) and returns ``None``
-    when nothing is configured — absence is today's behaviour (plain). A
-    classifier instance passes through; a string is parsed and dispatched to
-    its provider (runtime registry first, then the lazy module path).
+    ``None`` resolves the configured text-classifier model (``[text_classifier]``
+    section only — there is no CLI flag) and returns ``None`` when nothing is
+    configured — absence is today's behaviour (plain). A classifier instance
+    passes through; a string is parsed and dispatched to its provider
+    (runtime registry first, then the lazy module path).
     """
     if spec is None:
         configured = _configured_spec()
@@ -291,7 +291,12 @@ def parse_text_classifier_spec(spec: str) -> TextClassifierSpec:
 
 
 def _configured_spec() -> str | None:
-    """The configured decision-model spec, or ``None`` when nothing configures one.
+    """The configured text-classifier spec, or ``None`` when nothing configures one.
+
+    Reads ``[text_classifier] model`` ONLY (pc-9p6.5): a routing judge's
+    existence must never switch on document shaping, so the old fallback to
+    the routing ``[judge]`` configuration is gone — absence now means plain
+    by construction, not by accident.
 
     The provider-endpoint graph (``providers._endpoints`` pulls ``cli.config``)
     is reached here through a call-time :func:`import_module` seam — a
@@ -301,13 +306,13 @@ def _configured_spec() -> str | None:
     must not tax every PDF run).
     """
     module = import_module("parsecraft.providers._endpoints")
-    select = getattr(module, "select_judge_spec", None)
+    select = getattr(module, "select_text_classifier_spec", None)
     if not callable(select):
-        raise TextClassifierProviderUnavailableError("judge", "config", "providers._endpoints does not export select_judge_spec")
+        raise TextClassifierProviderUnavailableError("text_classifier", "config", "providers._endpoints does not export select_text_classifier_spec")
     try:
-        return cast(Callable[[str | None], str | None], select)(None)
+        return cast(Callable[[], str | None], select)()
     except JudgeError as exc:
-        raise TextClassifierProviderUnavailableError("judge", "config", f"cannot read judge configuration: {exc}") from exc
+        raise TextClassifierProviderUnavailableError("text_classifier", "config", f"cannot read text-classifier configuration: {exc}") from exc
 
 
 def _lazy_loader(provider: str) -> TextClassifierLoader:

@@ -34,7 +34,7 @@ from parsecraft.pipeline.analysis import (
     choose_analyzer,
     media_type_for,
 )
-from parsecraft.providers._endpoints import override_endpoint, select_judge_spec
+from parsecraft.providers._endpoints import override_endpoint, select_judge_spec, select_text_classifier_spec
 from parsecraft.routing import (
     JudgeViolationError,
     MachineProfile,
@@ -317,24 +317,25 @@ def _resolve_judge(
 
 
 def _text_classifier_spec() -> str | None:
-    """Spec string the plain-text backend will consume (env/file only), if any.
+    """Spec string the plain-text backend will consume (pc-9p6.5).
 
     Mirrors what ``resolve_text_classifier(None)`` resolves through
-    (``select_judge_spec(None)``) so the cache key and the extract agree by
-    construction: the backend sees environment/file configuration, never the
-    CLI ``--judge`` flag. An unreadable configuration keys as
-    ``unusable:<reason>`` — distinct from ``None``, because the fallback still
-    stamps an INFO diagnostic the unconfigured path lacks. The reason string
-    is not guaranteed stable across versions, so a reworded message can cause
-    a spurious cache miss; that is the safe direction (a miss re-converts,
-    a wrong hit would serve stale output).
+    (``select_text_classifier_spec``) so the cache key and the extract agree
+    by construction: the backend sees the dedicated ``[text_classifier]``
+    section — never the routing ``[judge]`` configuration. There is no CLI
+    flag by design (pc-2): the flag value could not reach the extract, which
+    only reads configuration, so a flag would key cache entries on a choice
+    the extract never sees. An unreadable configuration keys as
+    ``unusable:<reason>`` — distinct from ``None``, because the fallback
+    still stamps an INFO diagnostic the unconfigured path lacks. The reason
+    string is not guaranteed stable across versions, so a reworded message
+    can cause a spurious cache miss; that is the safe direction (a miss
+    re-converts, a wrong hit would serve stale output).
     """
-    # pc-9p6.5 will narrow this: an ambient [judge] model must not activate
-    # classification (measured reshaping, see that bead). Keyed now because
-    # the extract consults it now — key and extract must agree even while the
-    # default is wrong.
+    # pc-9p6.5 satisfied: the value now comes from the dedicated section,
+    # not from the routing judge config — the ambient-default hazard is gone.
     try:
-        spec = select_judge_spec(None)
+        spec = select_text_classifier_spec()
     except JudgeError as exc:
         return f"unusable:{exc}"
     return spec.strip() if spec else None

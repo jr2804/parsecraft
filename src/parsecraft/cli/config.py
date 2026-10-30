@@ -66,6 +66,20 @@ class JudgeSettings(BaseModel):
     model: str | None = None
 
 
+class TextClassifierSettings(BaseModel):
+    """The text-kind classifier model, independent of routing (pc-9p6.5).
+
+    A dedicated activation surface: neither ``[judge] model`` nor the routing
+    judge object may switch on document shaping, so classification engages
+    only through this section (no CLI flag — the extract only reads
+    configuration).
+    """
+
+    model_config = SettingsConfigDict(extra="forbid")
+
+    model: str | None = None
+
+
 class ParsecraftConfig(ConfigSchema):
     """Settings recognized by the ParseCraft CLI and its components.
 
@@ -87,6 +101,7 @@ class ParsecraftConfig(ConfigSchema):
     min_free_bytes: int = 0
     providers: dict[str, ProviderEndpoint] = {}
     judge: JudgeSettings = JudgeSettings()
+    text_classifier: TextClassifierSettings = TextClassifierSettings()
 
 
 def build_engine(config_file: Path | None = None) -> ConfigEngine[ParsecraftConfig]:

@@ -180,7 +180,8 @@ rule table decides; no provider is resolved and no network is used".
   per run. `parsecraft judges` prints credential state only — no
   extra column, because the `auto` meta-extra was removed by ADR-0009.
 - `--classifier` folds OCR-need evidence into the analysis instead of re-ranking;
-  it combines with `--judge`.
+  it combines with `--judge`. Ambiguous `.txt` shaping comes from the
+  `[text_classifier] model` config value (never the routing judge config).
 - `--preference` reaches both the planner's built-in judge and a resolved
   System One judge: `speed`/`balanced` take the smallest declared VRAM first,
   `quality` the largest — declared VRAM is a resource proxy, not a quality score.

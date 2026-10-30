@@ -16,6 +16,13 @@ bare ``jev`` answers ``400 Unknown model``).
 
 from __future__ import annotations
 
+from parsecraft.adapters.classification import (
+    DecisionModelTextClassifier,
+    TextClassifierProviderUnavailableError,
+    TextClassifierSpec,
+    TextKindClassifier,
+)
+from parsecraft.adapters.classification._systemone import SystemOneDecisionModel
 from parsecraft.providers import JudgeProviderProfile
 from parsecraft.providers._endpoints import resolve_endpoint
 from parsecraft.providers._jev import load_endpoint_judge
@@ -52,3 +59,30 @@ def load_judge(
         api_key=api_key,
         base_url=base_url,
     )
+
+
+def load_text_classifier(spec: TextClassifierSpec) -> TextKindClassifier:
+    """Provider entry point for the text-kind classifier registry (pc-9p6.5).
+
+    Same endpoint machinery as :func:`load_judge` — credentials and base URLs
+    come from the shared ``[providers.<name>]`` section via
+    :func:`resolve_endpoint` — but a DEDICATED activation: only an explicit
+    spec (``[text_classifier] model``) reaches here.
+    A missing credential raises the typed unavailable error at resolution,
+    exactly as ``load_judge`` does: an empty key would only fail at the
+    network, which is worse than reporting "no credential" up front.
+    """
+    base_url, api_key = resolve_endpoint(
+        PROFILE.name,
+        default_base_url=PROFILE.base_url,
+        legacy_api_key_env=PROFILE.api_key_env,
+    )
+    if api_key is None or not api_key.strip():
+        # resolve_endpoint already folded the legacy TYPESAFE_API_KEY lookup,
+        # so None here means no source names a credential at all.
+        raise TextClassifierProviderUnavailableError(
+            PROFILE.name,
+            __name__,
+            f"{PROFILE.api_key_env} is not set — export the credential before resolving a text classifier",
+        )
+    return DecisionModelTextClassifier(SystemOneDecisionModel(spec, api_key=api_key, base_url=base_url))

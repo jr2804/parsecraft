@@ -29,8 +29,9 @@ else the plain paragraph path).
   so chunk identity is identical with or without a classifier.
 - Determinism: same bytes with the same model answer yield the same verdict;
   ties and unparsable answers resolve to PLAIN.
-- Provider token is never hardcoded: `None` resolves the configured decision
-  model (`--judge` beats `PARSECRAFT_JUDGE_MODEL` beats `[judge] model`).
+- Provider token is never hardcoded: `None` resolves the configured
+  text-classifier (`[text_classifier] model` is the only activation surface;
+  the routing judge config never activates it, pc-9p6.5).
 
 ## Verification
 

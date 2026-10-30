@@ -18,6 +18,12 @@ from typing import cast
 
 import pytest
 
+from parsecraft.adapters.classification import (
+    DecisionModelTextClassifier,
+    TextClassifierProviderUnavailableError,
+    TextClassifierSpec,
+    TextKind,
+)
 from parsecraft.backends.protocol import BackendCapabilities, BackendDescriptor
 from parsecraft.providers import _jev
 from parsecraft.providers import typesafe_ai as provider
@@ -398,6 +404,45 @@ def ts_key(monkeypatch: pytest.MonkeyPatch) -> str:
     """
     monkeypatch.setenv(_TYPESAFE_KEY_ENV, _API_KEY)
     return _API_KEY
+
+
+# ── load_text_classifier ───────────────────────────────────────────────────
+
+
+def test_load_text_classifier_needs_a_credential(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Resolution fails rather than deferring: no empty key reaches the network.
+
+    Matches ``load_judge`` (``_required_api_key``): ``resolve_endpoint`` already
+    folded the legacy env lookup, so ``None`` here means no source names a
+    credential at all.
+    """
+    monkeypatch.delenv(_TYPESAFE_KEY_ENV, raising=False)
+    with pytest.raises(TextClassifierProviderUnavailableError, match="TYPESAFE_API_KEY") as excinfo:
+        provider.load_text_classifier(TextClassifierSpec(provider="typesafe-ai", model=_MODEL))
+    assert excinfo.value.provider == "typesafe-ai"
+
+
+def test_load_text_classifier_binds_endpoint_without_calling(monkeypatch: pytest.MonkeyPatch, jev_sdk: StubSdk) -> None:
+    """Construction is network-free; the spec, key, and base URL bind at the SDK."""
+    monkeypatch.setenv(_TYPESAFE_KEY_ENV, _API_KEY)
+    classifier = provider.load_text_classifier(TextClassifierSpec(provider="typesafe-ai", model=_MODEL))
+    assert isinstance(classifier, DecisionModelTextClassifier)
+    jev_sdk.response = StubResponse(choices={"text-kind": StubAnswer(choice="markdown-like", probabilities={"markdown-like": 1.0})})
+    assert classifier.classify_text("# Title\n\nbody") == (TextKind.MARKDOWN_LIKE, 1.0)
+    assert jev_sdk.client_kwargs == [{"api_key": _API_KEY, "model": _MODEL, "base_url": None}]
+
+
+def test_load_text_classifier_uses_the_file_endpoint(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, jev_sdk: StubSdk) -> None:
+    """The shared ``[providers.<name>]`` section credentials the classifier too."""
+    config_file = tmp_path / "global" / "config.toml"
+    config_file.parent.mkdir(parents=True, exist_ok=True)
+    config_file.write_text('[providers.typesafe]\nbase_url = "https://file.invalid"\napi_key = "${TS_FILE_KEY}"\n', encoding="utf-8")
+    monkeypatch.setenv("TS_FILE_KEY", "file-key")
+    monkeypatch.delenv(_TYPESAFE_KEY_ENV, raising=False)
+    classifier = provider.load_text_classifier(TextClassifierSpec(provider="typesafe-ai", model=_MODEL))
+    jev_sdk.response = StubResponse(choices={"text-kind": StubAnswer(choice="plain", probabilities={"plain": 1.0})})
+    assert classifier.classify_text("just words") == (TextKind.PLAIN, 1.0)
+    assert jev_sdk.client_kwargs == [{"api_key": "file-key", "model": _MODEL, "base_url": "https://file.invalid"}]
 
 
 # ── Live: the real TypeSafe cloud (opt-in, needs the extra AND a key) ─────────

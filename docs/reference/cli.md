@@ -192,6 +192,27 @@ providers reach the network — and is **not** gated by `PARSECRAFT_OFFLINE`,
 which excludes model-asset *backends* from candidacy rather than the judge
 seam. With no `--judge`/`--classifier` spec, no provider is resolved at all.
 
+#### Text-kind classification (`[text_classifier]`)
+
+| Spec | Endpoint | Credential | Notes |
+| --- | --- | --- | --- |
+| `typesafe-ai/<model>` | TypeSafe cloud, System One models | `TYPESAFE_API_KEY` (or the shared `[providers.typesafe]` section) | verdict stamped as `detected_kind` on `.txt` chunks |
+
+What the text-kind classifier does, concretely: it runs during **extract**, on
+ambiguous `.txt` sources only, and chooses the structure parser — a verdict
+of `markdown-like` routes the text through the markdown pipeline (heading
+and list chunks stamped with `detected_kind`), anything else keeps the
+plain-paragraph path byte-identical to the unconfigured output. A tie or an
+unparsable answer resolves to `plain` with confidence `0.0`.
+
+There is deliberately no `--text-classifier` flag and no env var: the extract
+only reads configuration, so a flag value could never reach it and would key
+cache entries on a choice the extract never sees. The flag can come back when
+the executor forwards request-scoped knobs to the backend (tracked in
+`pc-c54`); until then the section is the whole surface. The dedicated
+`[text_classifier] model` config-file value is the only activation surface —
+routing judge configuration never switches on text-kind classification.
+
 `--preference` is a ranking axis, never a permission: it reorders the
 candidates the hard constraints already admitted (smallest declared VRAM first
 for `speed`/`balanced`, largest first for `quality`) and cannot move a
@@ -252,7 +273,9 @@ Each knob resolves per knob, highest precedence first:
 The default model is selected the same way: an explicit `--judge` spec beats
 `PARSECRAFT_JUDGE_MODEL`, which beats the `[judge] model` config-file value —
 so a host default resolves with no flag at all. A configured default is still
-a chosen lead: `--backend` cannot be combined with it either.
+a chosen lead: `--backend` cannot be combined with it either. The text-kind
+default is section-only: `[text_classifier] model`, with no flag, no env var,
+and no `[judge]` fallback.
 
 The config-file sections use kompend-shaped provider names: `[providers.zen]`
 is the `zen` provider, `[providers.typesafe]` is `typesafe-ai`, and
@@ -269,6 +292,9 @@ api_key = "${TYPESAFE_API_KEY}"
 
 [judge]
 model = "typesafe-ai/jev-latest"
+
+[text_classifier]
+model = "typesafe-ai/jev-preview"
 ```
 
 No provider-specific env vars or flags exist — only the two generic env vars
@@ -428,6 +454,7 @@ Recognized settings:
 | `providers.<name>.base_url` | string | provider default | Judge endpoint override; kompend-shaped names (`typesafe` = `typesafe-ai`, `ollama-cloud` = `ollama`) |
 | `providers.<name>.api_key` | string | credential default | Secret; write `${VAR_NAME}`, never a literal. Redacted by `show` |
 | `judge.model` | string | unset | Default decision-model spec; `--judge` and `PARSECRAFT_JUDGE_MODEL` beat it |
+| `text_classifier.model` | string | unset | Default text-kind spec (the only activation surface); never reads `[judge]` |
 
 #### `parsecraft config check`
 
