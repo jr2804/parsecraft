@@ -64,7 +64,8 @@ a `DocumentResult` with `TraceEntry` records — no silent drops.
   facts, never caller knobs; an empty `RequestOptions` builds byte-identical
   requests to the old two-argument call. `region_ids` is carried with zero
   backend consumers (deleting the declared field is a separate decision).
-  Request bounds are NOT part of the conversion-cache key (separate decision).
+  Request bounds ARE part of the conversion-cache key (pc-9p6.7) — see the
+  conversion-cache identity bullet below.
 - Heavy imports happen only inside `registry.create` — the instantiation
   boundary; tests isolate the registry by stubbing entry-point discovery.
 - Conversion-cache identity (pc-9p6.4): `_cache_key` hashes source bytes +
@@ -74,7 +75,14 @@ a `DocumentResult` with `TraceEntry` records — no silent drops.
   replace the text segment because classification runs inside
   ``extract_text_pages``, downstream of ``plan_route``. The CLI threads
   `--classifier` and the env/file judge spec into `execute`; the backend and
-  the key resolve through the same source by construction.
+  the key resolve through the same source by construction. Request bounds join
+  the material as ONE canonicalised segment (`_bounds_segment`, pc-9p6.7):
+  `max_output_chars` and `max_context_tokens` change the bytes, `region_ids`
+  is keyed by intent so a future consumer inherits no stale hit, `timeout_s`
+  is OUT (a deadline changes how long we wait, not what a success contains),
+  `cancellation` is OUT (a control channel — a fully cancelled run stores
+  nothing). Only non-default bounds enter the material, so `RequestOptions()`
+  yields today's exact digest bit-for-bit.
 
 ## Verification
 
