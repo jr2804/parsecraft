@@ -715,8 +715,8 @@ def test_csv_descriptor_claims_both_delimited_types() -> None:
     assert csv_module.BACKEND_NAME == "native-csv"
     assert csv_module.SUPPORTED_FORMATS == ["text/csv", "text/tab-separated-values"]
     descriptor = csv_module.factory.descriptor
-    # The parser changed after 0.1.0; cached documents must not retain old rows.
-    assert descriptor.version == NATIVE_BACKEND_VERSION == "0.1.1"
+    # Parser and projection changes must invalidate earlier cached documents.
+    assert descriptor.version == NATIVE_BACKEND_VERSION == "0.1.2"
     assert descriptor.capabilities.supports_page_ranges is False
     assert descriptor.capabilities.supports_multi_page is False
     backend = csv_module.factory(_config("native-csv"))

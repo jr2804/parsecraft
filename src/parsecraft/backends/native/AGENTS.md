@@ -35,10 +35,13 @@ is now reserved for backends with no third-party runtime dep.
   extraction is plain text with no cheap grid structure. CSV delimiter sniffing
   samples logical records (including multiline quoted cells); only empty
   physical tail lines are trimmed, not explicit empty or whitespace cells.
+  CSV Markdown escapes structural pipes, line breaks and literal HTML; `rows`
+  remains authoritative because other Markdown inline formatting can render.
 - `native-text` classifies only when a text-kind classifier resolves
   (pc-9p6.3): unconfigured runs emit bare `paragraph_chunks` (no verdict key,
   `confidence=None`, byte-identical to before); a resolved classifier stamps
-  `detected_kind` plus real confidence via `parse_ambiguous_text`.
+  `detected_kind` plus real confidence via `parse_ambiguous_text`; data-like
+  verdicts use the CSV parser, and Markdown-like verdicts the Markdown adapter.
   Resolution or parse failures fall back to the bare path with an INFO
   `text-kind` diagnostic — ingestion is never blocked. Only a malformed spec
   (fixable by the operator) keeps a WARNING; an unavailable provider is our
