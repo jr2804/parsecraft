@@ -23,6 +23,7 @@ from parsecraft.adapters.classification import (
     TextClassifierSpecError,
     TextKind,
     TextKindClassifier,
+    _configured_spec,
     classify_text_kind,
     parse_ambiguous_text,
     parse_text_classifier_spec,
@@ -31,6 +32,7 @@ from parsecraft.adapters.classification import (
 )
 from parsecraft.adapters.classification._systemone import SystemOneDecisionModel
 from parsecraft.adapters.markdown import parse_markdown
+from parsecraft.cli import config as cli_config
 from parsecraft.routing.judge_providers import JudgeError
 
 
@@ -148,11 +150,11 @@ class _FakeClient:
 
 
 class _EndpointsModule(types.ModuleType):
-    """A fake providers._endpoints exposing select_judge_spec."""
+    """A fake providers._endpoints exposing select_text_classifier_spec."""
 
-    def __init__(self, func: Callable[[str | None], str | None]) -> None:
+    def __init__(self, func: Callable[[], str | None]) -> None:
         super().__init__("parsecraft.providers._endpoints")
-        self.select_judge_spec = func
+        self.select_text_classifier_spec = func
 
 
 # ── TextKind ───────────────────────────────────────────────────────────────
@@ -242,7 +244,7 @@ def test_resolve_configured_broken_provider_is_unavailable(monkeypatch: pytest.M
 
 def test_resolve_configured_error_becomes_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
 
-    def _boom(cli_spec: str | None) -> str | None:
+    def _boom() -> str | None:
         raise JudgeError("broken config file")
 
     monkeypatch.setitem(sys.modules, "parsecraft.providers._endpoints", _EndpointsModule(_boom))
@@ -254,6 +256,22 @@ def test_resolve_configured_missing_export_is_unavailable(monkeypatch: pytest.Mo
     monkeypatch.setitem(sys.modules, "parsecraft.providers._endpoints", types.ModuleType("parsecraft.providers._endpoints"))
     with pytest.raises(TextClassifierProviderUnavailableError):
         resolve_text_classifier(None)
+
+
+def test_configured_spec_reads_only_the_text_classifier_section(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """pc-9p6.5 acceptance 5: a routing ``[judge]`` model alone resolves nothing."""
+    config_file = tmp_path / "global" / "config.toml"
+    config_file.parent.mkdir(parents=True, exist_ok=True)
+    config_file.write_text('[judge]\nmodel = "typesafe-ai/jev-latest"\n', encoding="utf-8")
+    monkeypatch.setattr(cli_config, "global_config_path", lambda: config_file)
+    monkeypatch.delenv("PARSECRAFT_JUDGE_MODEL", raising=False)
+    assert _configured_spec() is None
+    assert resolve_text_classifier(None) is None
+    config_file.write_text(
+        '[judge]\nmodel = "typesafe-ai/jev-latest"\n[text_classifier]\nmodel = "stub-provider/stub-model"\n',
+        encoding="utf-8",
+    )
+    assert _configured_spec() == "stub-provider/stub-model"
 
 
 def test_resolve_registry_beats_the_lazy_path() -> None:

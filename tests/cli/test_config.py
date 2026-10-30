@@ -188,6 +188,21 @@ def test_config_check_rejects_unknown_judge_keys(tmp_path: Path) -> None:
     assert "judge" in _text(result)
 
 
+def test_config_check_accepts_text_classifier_section(tmp_path: Path) -> None:
+    """pc-9p6.5: the dedicated activation surface validates like [judge]."""
+    path = _project_file(tmp_path, '[text_classifier]\nmodel = "typesafe-ai/jev-preview"\n')
+    result = runner.invoke(app, ["config", "check", "--config-file", str(path)])
+    assert result.exit_code == 0
+    assert "Configuration is valid." in _text(result)
+
+
+def test_config_check_rejects_unknown_text_classifier_keys(tmp_path: Path) -> None:
+    path = _project_file(tmp_path, '[text_classifier]\nmodels = "typesafe-ai/jev-preview"\n')
+    result = runner.invoke(app, ["config", "check", "--config-file", str(path)])
+    assert result.exit_code == 1
+    assert "text_classifier" in _text(result)
+
+
 def test_config_show_redacts_provider_api_keys(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     path = _project_file(tmp_path, '[providers.typesafe]\napi_key = "${TS_KEY}"\n')
     monkeypatch.setenv("TS_KEY", "s3cr3t")

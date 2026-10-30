@@ -181,9 +181,9 @@ def test_text_extract_unconfigured_matches_paragraph_chunks() -> None:
     assert page == PageResult(page_number=1, blocks=paragraph_chunks("native-text", 1, "alpha\n\nbeta"))
 
 
-def test_text_extract_configured_markdown_like_stamps_verdict(monkeypatch: pytest.MonkeyPatch) -> None:
-    register_text_classifier_provider("stub-text-kind-9p63", lambda spec: _StubTextClassifier((TextKind.MARKDOWN_LIKE, 0.9)))
-    monkeypatch.setenv("PARSECRAFT_JUDGE_MODEL", "stub-text-kind-9p63/any-model")
+def test_text_extract_configured_markdown_like_stamps_verdict(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    register_text_classifier_provider("stub-text-kind-9p65", lambda spec: _StubTextClassifier((TextKind.MARKDOWN_LIKE, 0.9)))
+    _write_text_classifier_config(tmp_path, "stub-text-kind-9p65/any-model")
     pages = text_module.extract_text_pages(_source(b"# Hi\n", uri="mem://wired"), b"# Hi\n")
     assert [block.kind for block in pages[0].blocks] == [ChunkKind.HEADING]
     assert [block.metadata.get("detected_kind") for block in pages[0].blocks] == ["markdown-like"]
@@ -192,20 +192,20 @@ def test_text_extract_configured_markdown_like_stamps_verdict(monkeypatch: pytes
     assert pages[0].diagnostics[0].level is DiagnosticLevel.INFO
 
 
-def test_text_extract_configured_plain_stamps_plain(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_text_extract_configured_plain_stamps_plain(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     register_text_classifier_provider("stub-text-kind-plain", lambda spec: _StubTextClassifier((TextKind.PLAIN, 1.0)))
-    monkeypatch.setenv("PARSECRAFT_JUDGE_MODEL", "stub-text-kind-plain/model")
+    _write_text_classifier_config(tmp_path, "stub-text-kind-plain/model")
     pages = text_module.extract_text_pages(_source(b"just words"), b"just words")
     assert [block.kind for block in pages[0].blocks] == [ChunkKind.PARAGRAPH]
     assert [block.metadata.get("detected_kind") for block in pages[0].blocks] == ["plain"]
     assert [block.confidence for block in pages[0].blocks] == [1.0]
 
 
-def test_text_extract_unavailable_provider_falls_back_quietly(monkeypatch: pytest.MonkeyPatch) -> None:
-    # No text-classifier loader exists for routing providers yet (pc-9p6.3
+def test_text_extract_unavailable_provider_falls_back_quietly(tmp_path: Path) -> None:
+    # No text-classifier loader exists for routing providers (pc-9p6.3
     # finding): an operator's working routing config is not their mistake,
     # so the fallback stays at INFO, not WARNING.
-    monkeypatch.setenv("PARSECRAFT_JUDGE_MODEL", "no-such-provider-9p63/model")
+    _write_text_classifier_config(tmp_path, "no-such-provider-9p65/model")
     pages = text_module.extract_text_pages(_source(b"hello"), b"hello")
     assert pages[0].blocks == paragraph_chunks("native-text", 1, "hello")
     (diagnostic,) = pages[0].diagnostics
@@ -214,8 +214,8 @@ def test_text_extract_unavailable_provider_falls_back_quietly(monkeypatch: pytes
     assert "unusable" in diagnostic.message
 
 
-def test_text_extract_malformed_spec_stays_warning(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("PARSECRAFT_JUDGE_MODEL", "a:")
+def test_text_extract_malformed_spec_stays_warning(tmp_path: Path) -> None:
+    _write_text_classifier_config(tmp_path, "a:")
     pages = text_module.extract_text_pages(_source(b"hello"), b"hello")
     assert pages[0].blocks == paragraph_chunks("native-text", 1, "hello")
     (diagnostic,) = pages[0].diagnostics
@@ -224,9 +224,19 @@ def test_text_extract_malformed_spec_stays_warning(monkeypatch: pytest.MonkeyPat
     assert "unusable" in diagnostic.message
 
 
-def test_text_extract_parse_failure_falls_back_quietly(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_text_extract_ignores_a_routing_judge_config(tmp_path: Path) -> None:
+    """pc-9p6.5 acceptance 1: a routing ``[judge]`` model must not switch on classification."""
+    config_file = tmp_path / "global" / "config.toml"
+    config_file.parent.mkdir(parents=True, exist_ok=True)
+    config_file.write_text('[judge]\nmodel = "typesafe-ai/jev-latest"\n', encoding="utf-8")
+    page = text_module.extract_text_pages(_source(b"alpha\n\nbeta"), b"alpha\n\nbeta")[0]
+    assert page == PageResult(page_number=1, blocks=paragraph_chunks("native-text", 1, "alpha\n\nbeta"))
+    assert page.diagnostics == []
+
+
+def test_text_extract_parse_failure_falls_back_quietly(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     register_text_classifier_provider("stub-text-kind-boom", lambda spec: _StubTextClassifier((TextKind.MARKDOWN_LIKE, 1.0)))
-    monkeypatch.setenv("PARSECRAFT_JUDGE_MODEL", "stub-text-kind-boom/model")
+    _write_text_classifier_config(tmp_path, "stub-text-kind-boom/model")
 
     def _boom(*args: Any, **kwargs: Any) -> Any:
         raise RuntimeError("parse exploded")
@@ -237,6 +247,13 @@ def test_text_extract_parse_failure_falls_back_quietly(monkeypatch: pytest.Monke
     (diagnostic,) = pages[0].diagnostics
     assert diagnostic.level is DiagnosticLevel.INFO
     assert "parse failed" in diagnostic.message
+
+
+def _write_text_classifier_config(tmp_path: Path, model: str) -> None:
+    """Point the isolated global config at a ``[text_classifier]`` model."""
+    config_file = tmp_path / "global" / "config.toml"
+    config_file.parent.mkdir(parents=True, exist_ok=True)
+    config_file.write_text(f'[text_classifier]\nmodel = "{model}"\n', encoding="utf-8")
 
 
 def test_text_kind_classification_import_pulls_no_cli() -> None:

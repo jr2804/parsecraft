@@ -1020,19 +1020,19 @@ def test_no_judge_spec_resolves_no_provider(registry: BackendRegistry, tmp_path:
 
 def test_text_classifier_spec_mirrors_the_backend_source(monkeypatch: pytest.MonkeyPatch) -> None:
     """The key segment is what `resolve_text_classifier(None)` would consume."""
-    monkeypatch.setattr(convert_module, "select_judge_spec", lambda cli: "  stub-x/model  " if cli is None else cli)
+    monkeypatch.setattr(convert_module, "select_text_classifier_spec", lambda: "  stub-x/model  ")
     assert convert_module._text_classifier_spec() == "stub-x/model"
-    monkeypatch.setattr(convert_module, "select_judge_spec", lambda cli: None)
+    monkeypatch.setattr(convert_module, "select_text_classifier_spec", lambda: None)
     assert convert_module._text_classifier_spec() is None
 
 
 def test_text_classifier_spec_unreadable_config_keys_unusable(monkeypatch: pytest.MonkeyPatch) -> None:
     """An unreadable config must not share the unconfigured key."""
 
-    def _boom(cli: str | None) -> str | None:
+    def _boom() -> str | None:
         raise JudgeError("config store offline")
 
-    monkeypatch.setattr(convert_module, "select_judge_spec", _boom)
+    monkeypatch.setattr(convert_module, "select_text_classifier_spec", _boom)
     spec = convert_module._text_classifier_spec()
     assert spec is not None
     assert spec.startswith("unusable:")

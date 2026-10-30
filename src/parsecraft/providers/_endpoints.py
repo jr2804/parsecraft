@@ -33,7 +33,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 
-from parsecraft.cli.config import JudgeSettings, ProviderEndpoint, build_engine
+from parsecraft.cli.config import JudgeSettings, ProviderEndpoint, TextClassifierSettings, build_engine
 from parsecraft.config import ConfigError
 from parsecraft.routing.judge_providers import JudgeProviderUnavailableError
 
@@ -79,6 +79,20 @@ def select_judge_spec(cli_spec: str | None) -> str | None:
     return from_file or None
 
 
+def select_text_classifier_spec() -> str | None:
+    """Pick the text-classifier spec: ``[text_classifier] model`` only (pc-9p6.5).
+
+    Deliberately narrower than :func:`select_judge_spec`: no generic env var,
+    no ``[judge]`` fallback, and no CLI flag (pc-2) — the extract only reads
+    configuration, so a flag value could never reach it and would key cache
+    entries on a choice the extract never sees. A routing judge's existence
+    must never switch on document shaping (kompend-1: "opt-in means opt-in
+    by me"), so the dedicated section is the only activation signal.
+    """
+    from_file = (_text_classifier_section().model or "").strip()
+    return from_file or None
+
+
 def resolve_endpoint(
     provider: str,
     *,
@@ -115,6 +129,14 @@ def _judge_section() -> JudgeSettings:
         return build_engine(None).load().judge
     except ConfigError as exc:
         raise JudgeProviderUnavailableError("judge", "config", f"cannot read judge configuration: {exc}") from exc
+
+
+def _text_classifier_section() -> TextClassifierSettings:
+    """The file's ``[text_classifier]`` section (defaults when absent, pc-9p6.5)."""
+    try:
+        return build_engine(None).load().text_classifier
+    except ConfigError as exc:
+        raise JudgeProviderUnavailableError("text_classifier", "config", f"cannot read text-classifier configuration: {exc}") from exc
 
 
 def _provider_section(provider: str) -> ProviderEndpoint:
