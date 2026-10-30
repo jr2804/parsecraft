@@ -363,11 +363,14 @@ def test_end_marker_without_key_is_not_frontmatter() -> None:
 
 def test_consumer_minimal_cr_case_parses() -> None:
     # Two CRs are a genuine blank line (≡ LF ``a\\n\\nb``): two paragraphs,
-    # not a crash — the pin is equivalence with the LF shape.
+    # not a crash — the pin is equivalence with the LF shape, plus exact
+    # bounds (pc-9p6.12 review: the old ``+1`` sentinel leaked one past
+    # the end for this length-4 text; the table now ends exactly at ``len``).
     result = parse_markdown("a\r\rb", "mem://cr1", produced_at=PRODUCED)
     expected = parse_markdown("a\n\nb", "mem://cr1b", produced_at=PRODUCED)
     assert [block.kind for block in _blocks(result)] == [ChunkKind.PARAGRAPH, ChunkKind.PARAGRAPH]
     assert [block.content for block in _blocks(result)] == [block.content for block in _blocks(expected)]
+    assert [(block.source_span.start, block.source_span.end) for block in _blocks(result)] == [(0, 2), (3, 4)]
 
 
 def test_pdf_shaped_cr_body_parses() -> None:
@@ -423,6 +426,31 @@ def test_endings_parity_across_lf_crlf_cr_and_mixed() -> None:
     ]
     shapes = [[(block.kind, block.content) for block in _blocks(parse_markdown(v, "mem://crp", produced_at=PRODUCED))] for v in variants]
     assert all(shape == shapes[0] for shape in shapes[1:])
+
+
+@pytest.mark.parametrize(
+    ("text", "expected_last_span"),
+    [
+        ("# T\n\npara", (5, 9)),
+        ("# T\r\rpara", (5, 9)),
+        ("# T\r\n\r\npara", (7, 11)),
+        ("# T\r\n\rpara", (6, 10)),
+        ("# Té\n\npara ✓", (6, 12)),
+        ("---\nkey: value\n---", (0, 18)),
+    ],
+    ids=["lf", "cr", "crlf", "mixed", "unicode", "frontmatter"],
+)
+def test_unterminated_document_spans_are_exactly_bounded(text: str, expected_last_span: tuple[int, int]) -> None:
+    """No trailing newline: the final span ends exactly at ``len(text)``.
+
+    The unicode case pins ``str``-character (not UTF-8-byte) offsets;
+    the frontmatter case pins the fence path (``fence_end == len``).
+    """
+    blocks = _blocks(parse_markdown(text, "mem://cre", produced_at=PRODUCED))
+    span = blocks[-1].source_span
+    assert span is not None
+    assert (span.start, span.end) == expected_last_span
+    assert expected_last_span[1] == len(text)
 
 
 def _blocks(result: Any) -> list[Any]:

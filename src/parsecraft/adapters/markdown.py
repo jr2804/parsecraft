@@ -312,12 +312,14 @@ def _project(text: str) -> tuple[list[StructuredChunk], list[Diagnostic]]:
     # coordinates — the caller's string itself is never rewritten, so
     # ``source_span`` still slices the original characters
     # character-for-character, CRLF included (offsets index Python ``str``
-    # positions, not UTF-8 byte offsets).
+    # positions, not UTF-8 byte offsets). The final entry is exactly
+    # ``len(text)`` — never one past it — so a token running to EOF pins
+    # an exactly-bounded span (pc-9p6.12 review: the old ``+1`` sentinel
+    # leaked a one-past-the-end bound into every unterminated document).
     offsets = [0]
     for match in _LINE_BREAK.finditer(text):
         offsets.append(match.end())
-    tail = text[offsets[-1] :]
-    offsets.append(offsets[-1] + len(tail) + 1)
+    offsets.append(len(text))
     frontmatter, rest, skipped_lines = _split_frontmatter(text)
     builder = _ChunkBuilder(
         text,
