@@ -81,10 +81,6 @@ def test_cpu_backends_and_licensed_pdfs_are_present() -> None:
     assert {"native-text", "native-markdown", "native-html", "pymupdf"} <= backends
 
 
-def _report() -> BenchmarkReport:
-    return BenchmarkReport.model_validate(json.loads(_JSON_PATH.read_text(encoding="utf-8")))
-
-
 def test_refresh_pins_csv_measurement_and_json_skip() -> None:
     # Guards the 2026-10-31 refresh: the CSV row must be a real conversion
     # (never a reverted "unsupported" artifact) and the JSON skip recorded.
@@ -100,6 +96,10 @@ def test_refresh_pins_csv_measurement_and_json_skip() -> None:
         assert row.failures == []
         assert row.chunk_counts.get("table", 0) >= 1
     assert any(skip.document.endswith("wikidata-q42.json") for skip in report.skips)
+
+
+def _report() -> BenchmarkReport:
+    return BenchmarkReport.model_validate(json.loads(_JSON_PATH.read_text(encoding="utf-8")))
 
 
 def test_ocr_artifacts_validate_sort_and_cover_all_models() -> None:
