@@ -160,6 +160,10 @@ jobs:
       uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac  # v2
       with:
         install: true
+        # Never restore the tool cache: a cache built on a previous runner
+        # image leaves pypi:-venv shebangs pointing at dead interpreters
+        # (2026-10-29 ubuntu-26.04 outage). Cold install every run instead.
+        cache: false
 
     - name: Install dependencies
       run: mise dev
@@ -239,6 +243,8 @@ jobs:
       uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac  # v2
       with:
         install: false
+        # See the quality job: never restore the tool cache.
+        cache: false
 
     - name: Install dependencies
       run: mise dev
@@ -278,6 +284,8 @@ jobs:
       uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac  # v2
       with:
         install: true
+        # See the quality job: never restore the tool cache.
+        cache: false
 
     - name: Install dependencies
       run: mise dev
