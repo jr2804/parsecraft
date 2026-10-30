@@ -1271,6 +1271,20 @@ def test_cache_miss_on_changed_text_classifier(monkeypatch: pytest.MonkeyPatch, 
     assert len(native) == 2  # same plan, changed spec ⇒ miss, never stale reuse
 
 
+def test_cache_hit_on_blank_classifier_specs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """None, empty, and whitespace-only classifier specs all key as absent."""
+    registry = make_registry(monkeypatch)
+    native = add_stub(registry, make_descriptor("native-a"))
+    store = ConversionCache(root=tmp_path / "conversions")
+    source = make_source()
+    constraints = make_constraints()
+
+    execute(make_analysis(1), registry, constraints, source, produced_at=PRODUCED, cache=store)
+    assert len(native) == 1
+    execute(make_analysis(1), registry, constraints, source, produced_at=PRODUCED, cache=store, ocr_classifier="", text_classifier="   ")
+    assert len(native) == 1  # hit: blanks must never become meaningful
+
+
 def test_no_pages_returned_is_a_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     """An empty page set is never an accepted shape, whatever the range."""
     registry = make_registry(monkeypatch)
