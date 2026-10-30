@@ -78,6 +78,8 @@ def execute(
     *,
     produced_at: datetime | None = None,
     cache: CacheProtocol | None = None,
+    ocr_classifier: str | None = None,
+    text_classifier: str | None = None,
 ) -> PipelineResult:
     """Plan the route, dispatch contiguous groups, and aggregate the document.
 
@@ -93,13 +95,13 @@ def execute(
 
     ``cache`` (default ``None`` = exactly the previous behaviour) is keyed on
     source bytes + registry fingerprint + canonical constraints + effective
-    judge identity: a hit returns the stored ``DocumentResult`` without any
-    dispatch (its ``groups`` record the planned groups with no attempts —
-    nothing was executed); a miss executes and stores. All filesystem policy
-    lives behind the injected protocol.
+    judge identity + the two classifier spec strings: a hit returns the stored
+    ``DocumentResult`` without any dispatch (its ``groups`` record the planned
+    groups with no attempts — nothing was executed); a miss executes and
+    stores. All filesystem policy lives behind the injected protocol.
     """
     plan = plan_route(analysis, registry.list_backends(), constraints, judge)
-    key = _cache_key(source, registry, constraints, judge) if cache is not None else None
+    key = _cache_key(source, registry, constraints, judge, ocr_classifier, text_classifier) if cache is not None else None
     if cache is not None and key is not None:
         cached = cache.get(key)
         if cached is not None and pipeline_failure(cached) is None:
@@ -182,8 +184,21 @@ def _cache_key(
     registry: BackendRegistry,
     constraints: RoutingConstraints,
     judge: RoutingJudge | None,
+    ocr_classifier: str | None = None,
+    text_classifier: str | None = None,
 ) -> str:
-    """sha256 over source bytes, registry fingerprint, constraints, judge id."""
+    """sha256 over source bytes, registry fingerprint, constraints, judge id, classifier specs.
+
+    The two classifier segments are verbatim spec strings (``"none"`` when absent),
+    keyed by configuration rather than resolved identity: a resolved instance does
+    not retain its spec, and an explicit text spec can name a model the routing
+    judge never uses (so the judge's own identity is the wrong value there). A plan
+    digest cannot replace the text segment — classification runs inside
+    ``extract_text_pages``, downstream of ``plan_route`` (same plan, different
+    chunks). Cf. ``JudgeCacheIdentity``: "a cache keyed on the class alone would
+    serve one ranking's artifact for the other's query" — the classifier bug is
+    the same sentence with a different noun.
+    """
     # ponytail: a content-less source keys on its uri instead of hashing the
     # file (execute must stay I/O-free); upgrade path is hashing the bytes at
     # the read_source boundary, where the file is already open.
@@ -192,10 +207,22 @@ def _cache_key(
     effective_judge = judge if judge is not None else DeterministicJudge()
     judge_id = judge_cache_identity(effective_judge)
     material = json.dumps(
-        [source_hash, registry.fingerprint(), _canonical_constraints(constraints), judge_id],
+        [
+            source_hash,
+            registry.fingerprint(),
+            _canonical_constraints(constraints),
+            judge_id,
+            _classifier_segment(ocr_classifier),
+            _classifier_segment(text_classifier),
+        ],
         separators=(",", ":"),
     )
     return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+def _classifier_segment(spec: str | None) -> str:
+    """One key element per classifier: the stripped spec, ``"none"`` when absent."""
+    return spec.strip() if spec and spec.strip() else "none"
 
 
 def _canonical_constraints(constraints: RoutingConstraints) -> str:

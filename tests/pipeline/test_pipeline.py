@@ -56,8 +56,9 @@ from parsecraft.pipeline import (
     media_type_for,
     pipeline_failure,
 )
-from parsecraft.pipeline.executor import ALL_PASSES_FAILED_CODE, _exception_failure
-from parsecraft.routing import DeterministicJudge, Intent, RoutingConstraints, RoutingError, RoutingPreference
+from parsecraft.pipeline.analysis import apply_classifier
+from parsecraft.pipeline.executor import ALL_PASSES_FAILED_CODE, _cache_key, _exception_failure
+from parsecraft.routing import DeterministicJudge, Intent, OcrFacts, RoutingConstraints, RoutingError, RoutingPreference
 
 PRODUCED = datetime(2026, 9, 27, tzinfo=UTC)
 _VERSION = "9.9.9"
@@ -1215,6 +1216,59 @@ def test_cache_miss_on_changed_backend_options(monkeypatch: pytest.MonkeyPatch, 
     assert len(calls) == 1
     execute(make_analysis(1), registry, make_constraints(backend_options={"native-a": {"effort": "high"}}), source, produced_at=PRODUCED, cache=store)
     assert len(calls) == 2  # changed option ⇒ miss, never stale reuse
+
+
+def test_cache_key_classifier_segments_are_independent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The two classifier segments key configuration, not identity; blanks mean none."""
+    registry = make_registry(monkeypatch)
+    constraints = make_constraints()
+    source = make_source()
+    base = _cache_key(source, registry, constraints, None)
+    assert base == _cache_key(source, registry, constraints, None, None, None)
+    assert base == _cache_key(source, registry, constraints, None, "", "  ")
+    ocr_only = _cache_key(source, registry, constraints, None, "ocr-stub", None)
+    text_only = _cache_key(source, registry, constraints, None, None, "stub-x/model")
+    assert ocr_only != base
+    assert text_only != base
+    assert ocr_only != text_only
+    assert _cache_key(source, registry, constraints, None, "ocr-stub", None) == ocr_only  # stable
+
+
+def test_cache_miss_on_changed_ocr_classifier(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A classifier-folded plan must not serve the unclassifiered run's document."""
+    registry = make_registry(monkeypatch)
+    add_stub(registry, make_descriptor("native-a"))
+    ocr = add_stub(registry, make_descriptor("ocr-stub", group="ocr-stub"))
+    store = ConversionCache(root=tmp_path / "conversions")
+    source = make_source()
+    constraints = make_constraints()
+
+    r1 = execute(make_analysis(1), registry, constraints, source, produced_at=PRODUCED, cache=store)
+    assert r1.plan.pages[0].chosen == "native-a"
+    assert len(ocr) == 0
+    folded = apply_classifier(
+        make_analysis(1),
+        OcrFacts(source="probe", pdf_type=None, confidence=None, pages_needing_ocr=frozenset({1}), pages_with_tables=frozenset()),
+    )
+    r2 = execute(folded, registry, constraints, source, produced_at=PRODUCED, cache=store, ocr_classifier="ocr-stub")
+    assert r2.plan.pages[0].chosen == "ocr-stub"
+    assert len(ocr) == 1  # miss: the OCR pass actually ran, not a stale native document
+    assert r2.document.pages[0].blocks[0].id.startswith("ocr-stub-")
+
+
+def test_cache_miss_on_changed_text_classifier(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Same plan, different text-classifier spec: the key must still differ."""
+    registry = make_registry(monkeypatch)
+    native = add_stub(registry, make_descriptor("native-a"))
+    store = ConversionCache(root=tmp_path / "conversions")
+    source = make_source()
+    constraints = make_constraints()
+
+    r1 = execute(make_analysis(1), registry, constraints, source, produced_at=PRODUCED, cache=store)
+    assert len(native) == 1
+    r2 = execute(make_analysis(1), registry, constraints, source, produced_at=PRODUCED, cache=store, text_classifier="stub-x/model")
+    assert r2.plan.pages[0].chosen == r1.plan.pages[0].chosen  # the plan cannot see text-kind
+    assert len(native) == 2  # same plan, changed spec ⇒ miss, never stale reuse
 
 
 def test_no_pages_returned_is_a_failure(monkeypatch: pytest.MonkeyPatch) -> None:

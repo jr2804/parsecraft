@@ -159,7 +159,16 @@ def convert_source(
     )
     try:
         cache = ConversionCache() if use_cache else None
-        pipeline = execute(analysis, registry, constraints, source, resolved_judge, cache=cache)
+        pipeline = execute(
+            analysis,
+            registry,
+            constraints,
+            source,
+            resolved_judge,
+            cache=cache,
+            ocr_classifier=classifier,
+            text_classifier=_text_classifier_spec(),
+        )
     except JudgeViolationError as exc:
         raise ConvertError(f"judge returned an invalid order: {exc}", exit_code=1) from exc
     except AssetError as exc:
@@ -305,6 +314,30 @@ def _resolve_judge(
         raise ProviderResolutionError(flag="--judge", spec=selected, body=str(exc), exit_code=_USAGE_EXIT_CODE) from exc
     except JudgeError as exc:
         raise ProviderResolutionError(flag="--judge", spec=selected, body=str(exc), prefix="judge unavailable") from exc
+
+
+def _text_classifier_spec() -> str | None:
+    """Spec string the plain-text backend will consume (env/file only), if any.
+
+    Mirrors what ``resolve_text_classifier(None)`` resolves through
+    (``select_judge_spec(None)``) so the cache key and the extract agree by
+    construction: the backend sees environment/file configuration, never the
+    CLI ``--judge`` flag. An unreadable configuration keys as
+    ``unusable:<reason>`` — distinct from ``None``, because the fallback still
+    stamps an INFO diagnostic the unconfigured path lacks. The reason string
+    is not guaranteed stable across versions, so a reworded message can cause
+    a spurious cache miss; that is the safe direction (a miss re-converts,
+    a wrong hit would serve stale output).
+    """
+    # pc-9p6.5 will narrow this: an ambient [judge] model must not activate
+    # classification (measured reshaping, see that bead). Keyed now because
+    # the extract consults it now — key and extract must agree even while the
+    # default is wrong.
+    try:
+        spec = select_judge_spec(None)
+    except JudgeError as exc:
+        return f"unusable:{exc}"
+    return spec.strip() if spec else None
 
 
 def read_source(path: Path, media_type: str) -> SourceDocument:
