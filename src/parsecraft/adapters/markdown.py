@@ -309,8 +309,10 @@ def _project(text: str) -> tuple[list[StructuredChunk], list[Diagnostic]]:
     # tokenising, so an offset table built on ``split("\\n")`` undercounts
     # every lone-CR line and token maps outrun the table (IndexError in
     # ``_span``). ``finditer`` end positions keep offsets in ORIGINAL
-    # coordinates — no text is rewritten, so ``source_span`` still slices
-    # the caller's string byte-for-byte, CRLF included.
+    # coordinates — the caller's string itself is never rewritten, so
+    # ``source_span`` still slices the original characters
+    # character-for-character, CRLF included (offsets index Python ``str``
+    # positions, not UTF-8 byte offsets).
     offsets = [0]
     for match in _LINE_BREAK.finditer(text):
         offsets.append(match.end())
@@ -366,10 +368,14 @@ def _split_frontmatter(text: str) -> tuple[str | None, str, int]:
     tolerance not repair). A consumer can ignore a chunk carrying
     ``{"frontmatter": "true"}`` metadata but cannot recover YAML that was
     silently deleted — unknown kind plus explicit metadata is reversible,
-    deletion is not. Line endings are never rewritten: the detector splits
-    on the same ``\r\n?|\n`` breaks the tokenizer counts, so a stray ``\r``
-    cannot survive in a detector line by construction — the old explicit
-    CRLF→LF scrub and fence-``\r`` trim are subsumed by the split itself.
+    deletion is not. Two things stay straight here: the detector returns
+    LF-joined slices — ``raw`` content and ``rest`` for the tokenizer,
+    byte-identical to what the old code produced — while the caller's
+    original ``text`` is never modified and the offset table indexes into
+    those original character coordinates. The detector splits on the same
+    ``\r\n?|\n`` breaks the tokenizer counts, so a stray ``\r`` cannot
+    survive in a detector line by construction — the old explicit CRLF→LF
+    scrub and fence-``\r`` trim are subsumed by the split itself.
     A leading BOM is stripped so `content.startswith("---")` holds; that
     strip is reversible per pc-oir design item 6.
     """
