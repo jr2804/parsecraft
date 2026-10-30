@@ -443,6 +443,17 @@ def test_data_like_routes_to_the_real_csv_table() -> None:
     assert any(diagnostic.code == TEXT_KIND_CODE and "parser: csv" in diagnostic.message for diagnostic in result.pages[0].diagnostics)
 
 
+@pytest.mark.parametrize(
+    ("text", "rows"),
+    [("a,b\n,,\n", (("a", "b"), ("", "", ""))), (",,\n", (("", "", ""),))],
+)
+def test_data_like_preserves_explicit_empty_csv_rows(text: str, rows: tuple[tuple[str, ...], ...]) -> None:
+    result = parse_ambiguous_text(text, "mem://x", classifier=_StubClassifier((TextKind.DATA_LIKE, 1.0)))
+    (chunk,) = result.pages[0].blocks
+    assert chunk.kind.name == "TABLE"
+    assert chunk.rows == rows
+
+
 def test_data_like_sniffs_the_delimiter() -> None:
     """The csv backend's own sniff decides — semicolons stay one row, not one column."""
     result = parse_ambiguous_text("a;b\n1;2\n", "mem://x", classifier=_StubClassifier((TextKind.DATA_LIKE, 1.0)))
