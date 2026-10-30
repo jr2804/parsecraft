@@ -4,7 +4,7 @@
 
 Per-file text-kind classification for ambiguous text blobs: one decision-model
 call per file selects the structure parser (markdown-like → `parse_markdown`,
-else the plain paragraph path).
+data-like → the native-csv parser, else the plain paragraph path).
 
 ## Ownership
 
@@ -23,7 +23,10 @@ else the plain paragraph path).
 - The verdict lands on chunk `detected_kind` metadata, the first-class
   `confidence` field (never a same-named metadata key), and a `text-kind`
   page diagnostic; `DATA_LIKE` → the native-csv parser (TABLE IR, sniffed
-  delimiter, csv diagnostics preserved; csv-path failure falls back to plain)
+  delimiter, csv diagnostics preserved; csv-path failure falls back to plain
+  with its own `text-kind` INFO diagnostic naming the failure type only)
+- The csv backend module is imported call-time: its import raises
+  `field_size_limit`, which a text-only process must not pay for unasked.
   (verdict preserved for it).
 - `metadata.format` always stays the source type (`text/plain` on both
   branches) — the verdict must never re-key identical bytes.

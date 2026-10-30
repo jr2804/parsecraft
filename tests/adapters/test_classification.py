@@ -471,7 +471,7 @@ def test_data_like_csv_failure_falls_back_to_plain(monkeypatch: pytest.MonkeyPat
     def _boom(source: object, data: bytes) -> list[object]:
         raise RuntimeError("csv down")
 
-    monkeypatch.setattr("parsecraft.adapters.classification.extract_csv_pages", _boom)
+    monkeypatch.setattr("parsecraft.backends.native.csv.extract_csv_pages", _boom)
     result = parse_ambiguous_text("a,b\n1,2\n", "mem://x", classifier=_StubClassifier((TextKind.DATA_LIKE, 0.8)))
 
     assert all(block.kind.name == "PARAGRAPH" for block in result.pages[0].blocks)
@@ -479,6 +479,7 @@ def test_data_like_csv_failure_falls_back_to_plain(monkeypatch: pytest.MonkeyPat
         assert chunk.metadata[DETECTED_KIND_KEY] == TextKind.DATA_LIKE.value
         assert chunk.confidence == 0.8
     assert any(diagnostic.code == TEXT_KIND_CODE and "parser: plain" in diagnostic.message for diagnostic in result.pages[0].diagnostics)
+    assert any(diagnostic.code == TEXT_KIND_CODE and "csv parse failed (RuntimeError)" in diagnostic.message for diagnostic in result.pages[0].diagnostics)
 
 
 def test_data_like_keeps_source_identity() -> None:

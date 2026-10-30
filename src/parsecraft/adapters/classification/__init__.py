@@ -35,7 +35,6 @@ from pydantic import BaseModel, Field, ValidationError
 from parsecraft.adapters.errors import AdapterError
 from parsecraft.adapters.markdown import parse_markdown
 from parsecraft.backends.native._common import paragraph_chunks
-from parsecraft.backends.native.csv import extract_csv_pages
 from parsecraft.backends.protocol import SourceDocument
 from parsecraft.ir.models import (
     Diagnostic,
@@ -214,10 +213,21 @@ def parse_ambiguous_text(
         try:
             result = _csv_document(text, source_uri, title=title, package_version=package_version, produced_at=produced_at)
             parser = _CSV_PARSER
-        except Exception:
+        except Exception as exc:
             # Conservative fallback: the csv path never blocks ingestion — a
             # failure here parses plain, exactly like a classifier failure.
+            # The failure gets its own diagnostic (type name only, never
+            # content) so the degraded result is never silent: the executor
+            # caches successful-with-warning documents, and this one carries
+            # its explanation with it.
             result = _plain_document(text, source_uri, title=title, package_version=package_version, produced_at=produced_at)
+            result.pages[0].diagnostics.append(
+                Diagnostic(
+                    level=DiagnosticLevel.INFO,
+                    code=TEXT_KIND_CODE,
+                    message=f"csv parse failed ({type(exc).__name__}); plain fallback, no TABLE emitted",
+                )
+            )
             parser = _PLAIN_PARSER
     else:
         result = _plain_document(text, source_uri, title=title, package_version=package_version, produced_at=produced_at)
@@ -379,9 +389,13 @@ def _csv_document(
     this blob is not ``.csv``, so the delimiter is sniffed, never forced.
     Chunk shape, ids (``native-csv-1-b0``), and csv diagnostics are the csv
     backend's own; document identity (source envelope) is this module's.
+    The csv module is imported call-time (not at this module's import):
+    importing it runs the csv backend's ``field_size_limit`` raise, which a
+    text-only process must not pay for until a DATA_LIKE verdict needs it.
     """
     from_source = SourceDocument(uri=source_uri, media_type="text/plain")
-    pages = extract_csv_pages(from_source, text.encode("utf-8"))
+    csv_module = import_module("parsecraft.backends.native.csv")
+    pages = csv_module.extract_csv_pages(from_source, text.encode("utf-8"))
     metadata = _envelope(text, source_uri, len(pages), title=title, package_version=package_version, produced_at=produced_at)
     return DocumentResult(metadata=metadata, pages=pages)
 
