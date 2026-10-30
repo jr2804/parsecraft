@@ -135,9 +135,12 @@ rationale. Cut first; split the subtree only as a last resort.
 ## Verification
 
 ```bash
-mise all          # test + lint + format + format-check (composite task)
+mise all          # format-check + lint-check + test + typecheck + spell + docs + smoke + actionlint
 mise test         # pytest with coverage gate (100%)
-mise lint         # ruff + ty + codespell
+mise lint-check   # ruff only, never rewrites — the lint arm of `mise all`
+mise lint         # ruff --fix — the explicit fixer
+mise typecheck    # ty
+mise spell        # codespell
 mise actionlint   # GitHub Actions workflows — semantics (strategy/matrix keys), not YAML syntax
 mise format       # ruff format + isort + pyreorder
 mise format-md    # rumdl over docs/, .agents/, ./ (Markdown only)
@@ -148,7 +151,10 @@ Land only on a green **repo-wide** `mise all`: per-file checks and `mise test`
 alone are not evidence (they do not run lint/typecheck/format-check, and both
 2026-10-09 red main tips came in that way). The formatters rewrite files, so
 `format-check` — not the formatters — is what proves a committed tree is
-canonical.
+canonical. The same split applies to lint: `lint-check` gates, `lint` fixes.
+**No task inside `mise all` may write to the tree it validates** — a fixer in
+the gate silently makes the validated tree not the caller's tree, and the gate
+then greens a tree nobody wrote.
 
 Pre-commit hooks (`.pre-commit-config.yaml`) run a subset of the above on every
 commit. Run `pre-commit run --all-files` to check the whole tree.

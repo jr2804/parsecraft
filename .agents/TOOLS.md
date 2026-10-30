@@ -11,8 +11,9 @@ when-to-use note. This is a live inventory, not a historical log.
 | `mise dev` | Install dependencies (`uv sync --dev`) |
 | `mise test` | Run pytest with coverage |
 | `mise lint` | ruff + ty + codespell |
+| `mise lint-check` / `mise lint` | Lint gate (never rewrites) / explicit lint fixer (`--fix`) |
 | `mise format` / `mise run format-check` | Rewriter / canonical-tree gate (rewriters never run inside `mise all`) |
-| `mise all` | Full gate: format-check + test + lint in one pass |
+| `mise all` | Full gate: format-check + lint-check + test + typecheck + spell + docs + smoke + actionlint |
 | `mise run format-md` | Lint/reformat Markdown with rumdl (not part of `mise all`) |
 | `mise run add-mcp-servers <agent>` | Install MCP servers from `.config/mise/data/dev-features.csv` |
 | `mise run add-skills` | Install skills from `.config/mise/data/skills.csv` |
@@ -36,7 +37,7 @@ when-to-use note. This is a live inventory, not a historical log.
 
 | Tool | When to use |
 | ---- | ----------- |
-| ruff / ty / codespell | `mise lint` — style, types, spelling |
+| ruff / ty / codespell | `mise lint-check` (gate) / `mise lint` (fixer) / `mise typecheck` / `mise spell` |
 | rumdl | Markdown lint/format (`format-md`, `format-check`) |
 | pyreorder | Canonical module/statement ordering (`format`, `format-check`) |
 
