@@ -280,7 +280,7 @@ and no `[judge]` fallback. A per-request backend deadline resolves by the same
 flag-beats-config rule: an explicit `--timeout-s` wins, otherwise the
 `timeout_s` config key applies, otherwise requests stay unbounded.
 
-The config-file sections use kompend-shaped provider names: `[providers.zen]`
+The config-file sections accept provider aliases: `[providers.zen]`
 is the `zen` provider, `[providers.typesafe]` is `typesafe-ai`, and
 `[providers.ollama-cloud]` is the local `ollama` daemon pointed elsewhere.
 An exact provider token (`[providers.typesafe-ai]`) always works too.
@@ -456,7 +456,7 @@ Recognized settings:
 | `offline` | bool | `false` | Asset-manager offline mode |
 | `min_free_bytes` | int | `0` | Asset-manager free-space floor |
 | `timeout_s` | float | unset | Per-request backend deadline in seconds; an explicit `--timeout-s` flag beats it |
-| `providers.<name>.base_url` | string | provider default | Judge endpoint override; kompend-shaped names (`typesafe` = `typesafe-ai`, `ollama-cloud` = `ollama`) |
+| `providers.<name>.base_url` | string | provider default | Judge endpoint override; provider aliases include `typesafe` = `typesafe-ai` and `ollama-cloud` = `ollama` |
 | `providers.<name>.api_key` | string | credential default | Secret; write `${VAR_NAME}`, never a literal. Redacted by `show` |
 | `judge.model` | string | unset | Default decision-model spec; `--judge` and `PARSECRAFT_JUDGE_MODEL` beat it |
 | `text_classifier.model` | string | unset | Default text-kind spec (the only activation surface); never reads `[judge]` |

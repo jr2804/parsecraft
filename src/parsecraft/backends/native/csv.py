@@ -2,7 +2,7 @@
 
 One ``TABLE`` chunk per file: the parsed cell grid as ``rows`` with the
 header as row 0 (never lifted into metadata — the consumer keys data rows by
-column name, pc-oir.1/kompend-1), Markdown content rendered from the same
+column name, pc-oir.1), Markdown content rendered from the same
 grid. ``.tsv`` forces tab; ``.csv`` sniffs the delimiter by RFC4180
 consistency over the first lines, then parses with stdlib ``csv`` so quoted
 fields, embedded newlines, and CRLF survive. A file that merely ends in

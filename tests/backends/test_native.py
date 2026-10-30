@@ -744,7 +744,7 @@ def test_csv_basic_table_rows_and_content_agree() -> None:
 
 
 def test_csv_header_is_row_zero_never_metadata() -> None:
-    """Consumer contract (kompend-1): ``rows`` carries the header as row 0.
+    """Consumer contract: ``rows`` carries the header as row 0.
 
     Lifting the header into metadata would silently turn the consumer's column
     names into the first data row — no error, wrong table. There is no caption
