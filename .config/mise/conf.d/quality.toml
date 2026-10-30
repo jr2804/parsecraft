@@ -30,13 +30,13 @@ description = "Docling vs native-pdf measurement (on-demand, NOT part of the gat
 run = "uv run --extra docling --extra pymupdf scripts/bench_docling.py .tmp/docling-bench/*.pdf"
 
 [tasks.all]
-description = "Run all quality checks (format-check gates the tree; nothing rewrites it)"
+description = "Run all quality checks (format-check and lint-check gate the tree; nothing rewrites it)"
 depends = [
   "format-check",
     "smoke",
   "test",
   "typecheck",
-  "lint",
+  "lint-check",
   "spell",
   "actionlint",
   "docs",

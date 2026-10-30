@@ -1,6 +1,18 @@
 [tasks.lint]
-description = "Run linter (ruff)"
+description = "Fix lint findings (ruff --fix) — the explicit fixer; NOT part of `mise all`"
+# pc-9p6.2: a gate task must never rewrite the tree it gates. This task is the
+# explicit fixer only, exactly like `mise format` (pc-flz): run it on purpose,
+# then re-run the gate. `mise all` uses `lint-check`, which cannot write.
 run = 'ruff check src/ tests/ --fix --no-cache'
+
+[tasks.lint-check]
+description = "Verify the tree is lint-canonical (ruff) - never rewrites"
+# The ONLY lint task in `mise all` (pc-9p6.2). Same rule set as `lint`, without
+# `--fix`: findings fail the gate with ruff's own message instead of being
+# silently repaired into a false green. Before this split, `mise all` ran
+# `format-check` first and `lint --fix` second, so a lint finding was rewritten
+# away mid-gate and the tree the gate validated was not the tree the caller had.
+run = 'ruff check src/ tests/ --no-cache'
 
 [tasks.typecheck]
 description = "Run type checker (ty) against the PROJECT venv, never a stray one"
