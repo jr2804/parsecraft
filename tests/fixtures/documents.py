@@ -334,6 +334,26 @@ def docx_bytes() -> bytes:
     return buffer.getvalue()
 
 
+def docx_headings_bytes() -> bytes:
+    """A ``.docx`` exercising heading levels: title + H1/H2/H3 + H9 + body.
+
+    Built by python-docx like :func:`docx_bytes` (same non-determinism:
+    wall-clock ZIP/core-property stamps — tests assert on extracted
+    content, never on bytes). The H9 heading exists so the backend's
+    clamp (``min(level, 6)``) has a real above-range input.
+    """
+    document = import_module(_DOCX_MODULE).Document()
+    document.add_heading("Doc Title", level=0)
+    document.add_heading("Top Level One", level=1)
+    document.add_paragraph("Body under the first top-level heading.")
+    document.add_heading("Second Level A", level=2)
+    document.add_heading("Third Level i", level=3)
+    document.add_heading("Deep Section", level=9)
+    buffer = io.BytesIO()
+    document.save(buffer)
+    return buffer.getvalue()
+
+
 def pptx_bytes() -> bytes:
     """A real ``.pptx``: two slides, each a title plus a body text box.
 
