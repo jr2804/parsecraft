@@ -28,15 +28,14 @@ an honest skip, never silently dropped.
 
 Backends (2026-10-31 run): `native-text`, `native-markdown`, `native-html`,
 `native-csv` (CPU), plus `liteparse`, `pdf-inspector`, and `trafilatura`
-where eligible — these were the backends registered in the measured
-environment. Measured component versions: `trafilatura` 2.3.1,
+where eligible. Measured component versions: `trafilatura` 2.3.1,
 `liteparse` 2.17.0, `pdf-inspector` 1.25.2, `openpyxl` 3.1.5. Not installed
-and therefore not measured: `pymupdf`, `docling`, `marker-pdf`, `mineru`,
-and all OCR extras. Every registered backend eligible for a document's
-media type is measured once per document. PyMuPDF was not installed in this
-environment, so its three PDF rows record typed `dependency_missing`
-instead of crashing; the 2026-09-27 snapshot below measured it while
-installed.
+and therefore not measured: `pymupdf`, `docling`, `marker-pdf`, and `mineru`;
+OCR was disabled. The runner tries each registered backend eligible under
+this run's routing constraints and the document's media type. PyMuPDF's
+registered backend had no installed implementation, so its three PDF rows
+record typed `dependency_missing`; the 2026-09-27 snapshot below measured
+it while installed.
 
 Environment (2026-10-31 run): Windows laptop, CPython 3.14.2, CPU only;
 the light set installed (pypdf and huggingface-hub are core; `liteparse`,
@@ -45,16 +44,19 @@ No GPU work is included in this snapshot — see [Gaps](#honest-gaps).
 
 ## Reproduce
 
+From an isolated checkout of `a546d73`, with the pinned corpus staged in
+`tests/downloads/` (including the manually supplied PDFs):
+
 ```bash
-parsecraft benchmark path/to/tests/downloads/* --no-ocr -o <scratch-dir>/
+uv sync --no-progress --reinstall-package parsecraft
+uv pip install 'trafilatura==2.3.1'
+uv run --no-sync python -c "from importlib.metadata import version; assert version('parsecraft') == '2026.10.13.post53.dev0+a546d73'"
+uv run --no-sync parsecraft benchmark 'tests/downloads/*' --no-ocr -o benchmark-trial/
 ```
 
-Before measuring, refresh editable metadata against the measured commit
-(`uv sync --no-progress --reinstall-package parsecraft`) and assert
-`importlib.metadata.version("parsecraft")` names it — a stale install
-label falsifies the report's provenance (this bit the 2026-10-31 trial:
-the first invocation silently ran a different venv). Stage trial outputs in
-scratch and review them before copying anything into `docs/benchmarks/`.
+The metadata assertion prevents a stale editable-install label from
+misrepresenting the measured checkout. Review the scratch outputs before
+copying them into `docs/benchmarks/`; elapsed and memory values vary by run.
 
 The report writers are deterministic: stable key and row ordering, fixed
 rounding, LF newlines, no wall-clock fields. Re-running on the same inputs
@@ -202,7 +204,7 @@ the full-corpus runs only cost machine time.
 | Full-corpus `ocr-qianfan` | 2026-09-28 | Cost/time: ≈ 145 s/page measured → ≈ 20 h for NIST SP 800-53r5 alone. Weights are staged and sha-verified (20 GB cache), so the run is offline-ready | same command (qianfan is one of the measured backends) |
 | Full-corpus OCR, all four models (re-affirmed) | 2026-10-31 | Cost/time only — unchanged from 2026-09-28; no GPU env in the 2026-10-31 run | same OCR command above |
 | Full-corpus docling (re-affirmed) | 2026-10-31 | Runtime budget — unchanged from 2026-09-28; not an automated check | same docling command above |
-| PyMuPDF extraction on the 2026-10-31 corpus | 2026-10-31 | Scope/env: PyMuPDF deliberately absent from the measured env to record the honest `dependency_missing` path; historical numbers stay in the 2026-09-27 snapshot | `uv pip install "parsecraft[pymupdf]"` then the [run recipe](#reproduce) |
+| PyMuPDF extraction on the 2026-10-31 corpus | 2026-10-31 | Scope/env: PyMuPDF was absent from the measured env; historical numbers stay in the 2026-09-27 snapshot | In an isolated checkout, `uv sync --extra web --extra pymupdf --reinstall-package parsecraft`, then run the benchmark command from the [recipe](#reproduce) |
 | GPU VRAM measurement | 2026-10-31 | Out of scope: peak bytes are `tracemalloc` host-Python allocations; no GPU env in this run | — |
 | Full-corpus docling | 2026-09-28 | Runtime budget: docling is ≈ 8–15 s/page warm on this laptop → ≈ 1.8 h for NIST SP 800-53r5 alone, and the incident shape (>1 h on 113 pp) says hours. Not an automated check | [Full-corpus docling](#full-corpus-docling-command) |
 | Quantised variants (int8 / 4-bit) | 2026-09-28 | Out of scope by design: quantisation is a backend-installation choice, not a harness dimension | — |
