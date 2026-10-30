@@ -115,9 +115,9 @@ prints one `downloading <model> (<size>) into <dir>` line to **stderr** before
 the fetch starts — informational only, no prompt and no flag. Supported suffixes come from the public
 `parsecraft.pipeline.MEDIA_TYPES` map: the text family (`.txt`, `.text`, `.md`,
 `.markdown`, `.html`, `.htm`, `.rst`, `.tex`, `.log`, `.ini`, `.cfg`, `.toml`,
-`.sh`, `.py`, `.c`, `.cc`, `.cpp`, `.h`, `.hpp`, `.m`), the office family
+`.sh`, `.py`, `.c`, `.cc`, `.cpp`, `.h`, `.hpp`, `.m`), the delimited family (`.csv`, `.tsv`), the office family
 (`.docx`, `.pptx`, `.xlsx`, `.odt`, `.rtf`, `.epub`), plus `.pdf`, `.jpg`,
-`.jpeg`, `.png`, `.tif`, and `.tiff`. `.csv`, `.json`, and `.xml` are
+`.jpeg`, `.png`, `.tif`, and `.tiff`. `.json` and `.xml` are
 deliberately unsupported (no backend claims those media types).
 
 That map is what the CLI *accepts*, not what a given install can *convert*: every
