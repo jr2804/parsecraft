@@ -75,10 +75,12 @@ def test_formula_paragraph() -> None:
 
 def test_bullet_and_ordered_lists() -> None:
     result = parse_markdown("- a\n- b\n\n1. one\n2. two", "mem://l", produced_at=PRODUCED)
-    assert kinds(result) == [ChunkKind.LIST, ChunkKind.LIST]
-    assert contents(result) == ["a\nb", "one\ntwo"]
-    assert result.pages[0].blocks[0].metadata == {"list_type": "bullet"}
-    assert result.pages[0].blocks[1].metadata == {"list_type": "ordered"}
+    assert kinds(result) == [ChunkKind.LIST] * 4
+    assert contents(result) == ["a", "b", "one", "two"]
+    assert result.pages[0].blocks[0].metadata == {"list_type": "bullet", "item_index": "0"}
+    assert result.pages[0].blocks[1].metadata == {"list_type": "bullet", "item_index": "1"}
+    assert result.pages[0].blocks[2].metadata == {"list_type": "ordered", "item_index": "0"}
+    assert result.pages[0].blocks[3].metadata == {"list_type": "ordered", "item_index": "1"}
 
 
 def test_table_with_header_and_body() -> None:

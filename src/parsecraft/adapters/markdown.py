@@ -9,6 +9,7 @@ identical ``DocumentResult``.
 from __future__ import annotations
 
 import hashlib
+import re
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
@@ -28,14 +29,33 @@ from parsecraft.ir.models import (
 
 _TEXTUAL_INLINE_TYPES = {"text", "code_inline", "html_inline"}
 
+#: YAML-fence marker for frontmatter detection (exact line, surrounding
+#: whitespace tolerated). Opens the block; closes it unless YAML's ``...``
+#: end marker does (see ``_FRONTMATTER_END``).
+_FRONTMATTER_FENCE = "---"
+
+#: YAML's end-of-document marker — accepted as a closing fence. Legal YAML
+#: and present in real files; without it the closer would be missed.
+_FRONTMATTER_END = "..."
+
+#: One top-level ``key:`` line — the minimum evidence the fenced block is data
+#: rather than a thematic break. Starts at column zero (no leading space:
+#: indented lines are nested YAML or prose and must not trigger detection),
+#: carries a colon; ``re``-level detection only, never YAML parsing. A
+#: non-blank value always counts; a blank value counts only when the next
+#: line continues the block mapping (see ``_continues_block_mapping``),
+#: because bare ``Some Title:`` prose also ends in a colon.
+_FRONTMATTER_KEY = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.\-]*[ \t]*:")
+
 
 class _ChunkBuilder:
     """Turns a flat markdown-it token stream into ordered ``StructuredChunk``s."""
 
-    def __init__(self, text: str, offsets: list[int]) -> None:
+    def __init__(self, text: str, offsets: list[int], *, start_order: int = 0, line_base: int = 0) -> None:
         self._text = text
         self._offsets = offsets
-        self._order = 0
+        self._order = start_order
+        self._line_base = line_base
         self._chunks: list[StructuredChunk] = []
         self.diagnostics: list[Diagnostic] = []
 
@@ -59,7 +79,11 @@ class _ChunkBuilder:
     def _span(self, token: Token) -> SourceSpan | None:
         if token.map is None:
             return None
-        start_line, end_line = token.map
+        # ``line_base`` shifts token maps (relative to the fenced-off rest)
+        # back onto the original document, so spans stay exact character
+        # offsets into the caller's text.
+        start_line = token.map[0] + self._line_base
+        end_line = token.map[1] + self._line_base
         start = self._offsets[start_line]
         end = self._offsets[end_line] if end_line < len(self._offsets) else len(self._text)
         return SourceSpan(start=start, end=max(end, start))
@@ -151,7 +175,19 @@ class _ChunkBuilder:
 
     def _handle_list(self, tokens: list[Token], index: int, list_type: str) -> int:
         close = self._matching_close(tokens, index)
-        self._add(ChunkKind.LIST, self._container_content(tokens, index, close), tokens[index], {"list_type": list_type})
+        # One chunk PER LIST ITEM: merging siblings into a single blob loses
+        # item boundaries a consumer cannot recover (pc-3vo). Continuation
+        # lines stay with their item; nested lists stay attached (flattened
+        # into the parent item's content, as before) rather than re-nested —
+        # sibling separation is the data-loss fix, and keeping nesting shape
+        # byte-identical avoids surprising existing consumers of nested lists.
+        for item_index, (item_open, item_close) in enumerate(_item_ranges(tokens, index, close)):
+            self._add(
+                ChunkKind.LIST,
+                self._container_content(tokens, item_open, item_close),
+                tokens[item_open],
+                {"list_type": list_type, "item_index": str(item_index)},
+            )
         return close - index + 1
 
     def _handle_blockquote_open(self, tokens: list[Token], index: int) -> int:
@@ -264,9 +300,119 @@ def _project(text: str) -> tuple[list[StructuredChunk], list[Diagnostic]]:
     offsets = [0]
     for line in text.split("\n"):
         offsets.append(offsets[-1] + len(line) + 1)
-    builder = _ChunkBuilder(text, offsets)
-    blocks = builder.build(MarkdownIt("commonmark").enable("table").parse(text))
+    frontmatter, rest, skipped_lines = _split_frontmatter(text)
+    builder = _ChunkBuilder(
+        text,
+        offsets,
+        start_order=1 if frontmatter is not None else 0,
+        line_base=skipped_lines,
+    )
+    blocks = builder.build(MarkdownIt("commonmark").enable("table").parse(rest))
+    if frontmatter is not None:
+        # Source span of the fence block: `offsets[skipped_lines]` is where
+        # the first post-fence line starts, so step back over the linebreak
+        # terminating the closing fence (CRLF-aware — spans are source
+        # offsets, like every other chunk). No rest means the fence ends
+        # at EOF with no terminator to step over.
+        if rest:
+            close_end = offsets[skipped_lines]
+            fence_end = close_end - (2 if text[close_end - 2 : close_end] == "\r\n" else 1)
+        else:
+            fence_end = len(text)
+        head = StructuredChunk(
+            id="md-0000-unknown",
+            kind=ChunkKind.UNKNOWN,
+            content=frontmatter,
+            page_number=1,
+            reading_order=0,
+            source_span=SourceSpan(start=0, end=fence_end),
+            metadata={"frontmatter": "true"},
+        )
+        blocks.insert(0, head)
     return blocks, builder.diagnostics
+
+
+def _split_frontmatter(text: str) -> tuple[str | None, str, int]:
+    r"""Split a leading YAML-style frontmatter fence off ``text``.
+
+    Returns ``(raw, rest, skipped_lines)``: the verbatim fenced block, the
+    remaining text, and how many leading lines were fenced off. Returns
+    ``(None, text, 0)`` when the shape is absent. Detection only, never YAML
+    parsing: the first line must be ``---`` (a leading BOM is tolerated for
+    the check only — the chunk keeps the original bytes), a later line must
+    close with ``---`` or YAML's ``...`` end marker, and at least one line
+    between must look like a top-level ``key:`` entry. Anything else —
+    including a genuine leading thematic break — tokenises normally.
+
+    The block is kept VERBATIM as one ``UNKNOWN`` chunk (see ``_project``)
+    rather than stripped or parsed, and that is deliberate: stripping content
+    is a content decision outside a parser's remit (pc-oir design item 6,
+    tolerance not repair). A consumer can ignore a chunk carrying
+    ``{"frontmatter": "true"}`` metadata but cannot recover YAML that was
+    silently deleted — unknown kind plus explicit metadata is reversible,
+    deletion is not. Line endings are normalized CRLF→LF like every other
+    chunk (markdown-it normalizes token content; the fence block must not be
+    the lone chunk with mixed endings — otherwise a YAML consumer gets
+    `value\\r` traps), a stray `\\r` clinging to the closing fence is
+    trimmed, and a leading BOM is stripped so `content.startswith("---")`
+    holds. All three normalizations are reversible per pc-oir design item 6.
+    """
+    lines = text.split("\n")
+    # BOM (`\ufeff`) is not whitespace to `str.strip()`: without the explicit
+    # `lstrip` a BOM-prefixed document would silently skip frontmatter. The
+    # check tolerates it; the chunk below keeps the original bytes verbatim.
+    if not lines or lines[0].lstrip("\ufeff").strip() != _FRONTMATTER_FENCE:
+        return None, text, 0
+    for end in range(1, len(lines)):
+        if lines[end].strip() in (_FRONTMATTER_FENCE, _FRONTMATTER_END):
+            if _has_frontmatter_key(lines, end):
+                raw = "\n".join(lines[: end + 1]).replace("\r\n", "\n").rstrip("\r").removeprefix("\ufeff")
+                return raw, "\n".join(lines[end + 1 :]), end + 1
+            return None, text, 0
+    return None, text, 0
+
+
+def _has_frontmatter_key(lines: list[str], end: int) -> bool:
+    """Whether lines ``[1, end)`` hold at least one top-level ``key:`` entry."""
+    for i in range(1, end):
+        match = _FRONTMATTER_KEY.match(lines[i])
+        if match is None:
+            continue
+        if lines[i][match.end() :].strip():
+            return True  # `key: value` — a non-blank value always counts.
+        # `key:` with a blank value counts only when the next line continues
+        # the block mapping — the `tags:` + `- item` shape real frontmatter
+        # uses. `i + 1` stays in range: `i < end < len(lines)` by construction.
+        if _continues_block_mapping(lines[i + 1]):
+            return True
+    return False
+
+
+def _continues_block_mapping(next_line: str) -> bool:
+    """Whether ``next_line`` continues a blank-valued key's block mapping."""
+    stripped = next_line.strip()
+    return bool(stripped) and (next_line[0] in " \t" or stripped == "-" or stripped.startswith("- "))
+
+
+def _item_ranges(tokens: list[Token], index: int, close: int) -> list[tuple[int, int]]:
+    """Top-level ``list_item_open → list_item_close`` ranges of one list.
+
+    Depth-tracked: only an item opener seen at depth zero starts a segment,
+    so a nested list's items stay inside their parent item's range. markdown-it
+    always emits balanced item pairs, so every close at depth zero has a
+    preceding open and ``start`` is always assigned before use.
+    """
+    segments: list[tuple[int, int]] = []
+    start = -1
+    depth = 0
+    for probe in range(index + 1, close):
+        token = tokens[probe]
+        if token.type == "list_item_open" and depth == 0:
+            start = probe
+        depth += token.nesting
+        if token.type == "list_item_close" and depth == 0:
+            segments.append((start, probe))
+    return segments
 
 
 def _inline_text(inline: Token | None) -> tuple[str, list[Token]]:

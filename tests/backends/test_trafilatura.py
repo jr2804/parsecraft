@@ -139,15 +139,18 @@ def test_convert_projects_markdown_into_typed_blocks(trafilatura_stub: dict[str,
         ChunkKind.HEADING,
         ChunkKind.CODE,
         ChunkKind.LIST,
+        ChunkKind.LIST,
         ChunkKind.TABLE,
     ]
-    heading, _, section, code, list_block, table = page.blocks
+    heading, _, section, code, first_item, second_item, table = page.blocks
     assert heading.content == "The Real Title"
     assert heading.metadata == {"heading_level": "1"}
     assert section.metadata == {"heading_level": "2"}
     assert code.content == "unsigned long mulMode;"
-    assert list_block.metadata == {"list_type": "bullet"}
-    assert list_block.content == "alpha\nbeta"
+    assert first_item.metadata == {"list_type": "bullet", "item_index": "0"}
+    assert first_item.content == "alpha"
+    assert second_item.metadata == {"list_type": "bullet", "item_index": "1"}
+    assert second_item.content == "beta"
     assert table.rows == (("k", "v"), ("1", "2"))
     # never one undifferentiated paragraph: this is the design's whole point
     assert len(page.blocks) > 1

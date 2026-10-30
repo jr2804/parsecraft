@@ -120,3 +120,39 @@ def load_sources(path: Path = MANIFEST_PATH) -> SourcesManifest:
     """Load and validate the public-document manifest."""
     raw = tomllib.loads(path.read_text(encoding="utf-8"))
     return SourcesManifest.model_validate(raw)
+
+
+# ── Synthetic regression fixtures (generated, never committed blobs) ─────────
+
+
+def synthetic_pipe_heavy_markdown(*, items: int = 30) -> str:
+    """Deterministic Markdown reproducing the docling-marko trigger shape.
+
+    The proven trigger (kompend-1, narrowed 2026-10-30 — retracting the
+    earlier 93-byte "last block, no trailing blank line" shape, which
+    measured docling import time, not parse): an outer list item, a NESTED
+    item one level deeper, and a following continuation at the nested indent
+    containing any ``|``. Nesting opens marko's ``Table.match`` recursion via
+    the patched ``break_paragraph`` (docling 2.142.1/marko 2.2.4, reproduced
+    on 2.145.0/2.2.5); the pipe merely feeds it. The LAST item below carries
+    exactly that shape; earlier items carry mid-line pipes for bulk
+    literal-preservation coverage. Docling is DECLINED for text types at
+    runtime (typed refusal in ``backends/docling/_impl.py`` naming the native
+    redirect — still explicitly reachable via ``--backend`` override, hence
+    the guard). Generated, never a committed blob (ADR-0001 §8 — the
+    generator is the artifact).
+
+    Pipes must survive parsing literally: there is no delimiter row anywhere,
+    so CommonMark builds no table and a correct parser keeps every ``|`` in
+    the chunk text.
+    """
+    lines = ["# Pipe-heavy regression pins", ""]
+    for n in range(1, items):
+        lines.append(f"- Step {n}: weight the level with |x{n}| applied")
+        lines.append(f"  continued with absolute value |y{n} - z{n}| on this line")
+        lines.append(f"  and a second measure |a{n}| + |b{n}| combined")
+        lines.append("")
+    lines.append(f"- Step {items}: Constant-delay indicator: mean over frames start+2..stop of")
+    lines.append("  - nested calibration window")
+    lines.append("  |delay[i] - delay[i-2]| ms where < 10 ms.")
+    return "\n".join(lines) + "\n"
