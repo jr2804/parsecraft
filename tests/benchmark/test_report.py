@@ -86,11 +86,7 @@ def test_refresh_pins_csv_measurement_and_json_skip() -> None:
     # (never a reverted "unsupported" artifact) and the JSON skip recorded.
     # A factual test of these committed artifacts, not a general requirement.
     report = _report()
-    csv_rows = [
-        row
-        for row in report.results
-        if row.backend == "native-csv" and row.document.endswith("exoplanets.csv")
-    ]
+    csv_rows = [row for row in report.results if row.backend == "native-csv" and row.document.endswith("exoplanets.csv")]
     assert csv_rows, "the committed report must measure exoplanets.csv via native-csv"
     for row in csv_rows:
         assert row.failures == []
