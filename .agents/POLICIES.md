@@ -51,7 +51,11 @@ Universal defaults. Project-specific standards live in child AGENTS.md.
   `importlib.import_module(...)` typed with a local `Protocol`, never a
   function-local import (examples/casualties: memories #1474/#1477,
   `backends/registry.py`, `tests/backends/test_marker.py`; gate:
-  `test_offline_import.py`).
+  `test_offline_import.py`). `remove_type_checking` ALSO deletes an
+  `if TYPE_CHECKING:` guard and hoists what it contained, so a
+  `TYPE_CHECKING`-only import cannot express a one-directional layering edge
+  either — either the edge is safe to make static (make it static) or it must
+  go through `import_module` with no import statement for the sorter to move.
 - No new code-quality tooling by default — opt in per project.
 
 ## Completion checklist
