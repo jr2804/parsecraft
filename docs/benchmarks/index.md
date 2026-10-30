@@ -28,10 +28,15 @@ an honest skip, never silently dropped.
 
 Backends (2026-10-31 run): `native-text`, `native-markdown`, `native-html`,
 `native-csv` (CPU), plus `liteparse`, `pdf-inspector`, and `trafilatura`
-where eligible. Every backend eligible for a document's media type is
-measured once per document. PyMuPDF was not installed in this environment,
-so its three PDF rows record typed `dependency_missing` instead of crashing;
-the 2026-09-27 snapshot below measured it while installed.
+where eligible — these were the backends registered in the measured
+environment. Measured component versions: `trafilatura` 2.3.1,
+`liteparse` 2.17.0, `pdf-inspector` 1.25.2, `openpyxl` 3.1.5. Not installed
+and therefore not measured: `pymupdf`, `docling`, `marker-pdf`, `mineru`,
+and all OCR extras. Every registered backend eligible for a document's
+media type is measured once per document. PyMuPDF was not installed in this
+environment, so its three PDF rows record typed `dependency_missing`
+instead of crashing; the 2026-09-27 snapshot below measured it while
+installed.
 
 Environment (2026-10-31 run): Windows laptop, CPython 3.14.2, CPU only;
 the light set installed (pypdf and huggingface-hub are core; `liteparse`,
@@ -41,7 +46,7 @@ No GPU work is included in this snapshot — see [Gaps](#honest-gaps).
 ## Reproduce
 
 ```bash
-parsecraft benchmark path/to/tests/downloads/* --no-ocr -o docs/benchmarks/
+parsecraft benchmark path/to/tests/downloads/* --no-ocr -o <scratch-dir>/
 ```
 
 Before measuring, refresh editable metadata against the measured commit
@@ -58,15 +63,16 @@ peak bytes) are run data and will vary. Benchmarking goes straight to the
 backend's `convert` and never reads the conversion cache, which would report
 ~0 s and falsify the measurement.
 
-`pymupdf` extraction needs the AGPL `pdf` extra; without it the report
-records a typed `dependency_missing` row instead of crashing.
+`pymupdf` extraction needs the `pymupdf` extra (AGPL); without it the
+report records a typed `dependency_missing` row instead of crashing.
 
 ## Results (2026-10-31, `a546d73`)
 
 The full harness output is committed alongside this page:
 [`benchmark.md`](benchmark.md) and [`benchmark.json`](benchmark.json)
 (package `2026.10.13.post53.dev0+a546d73`, 17 rows over 9 documents,
-8 backends, zero runtime failures).
+8 backends: 14 successful conversions + 3 typed `dependency_missing`
+rows, no other failures).
 
 Headlines (CPU, 2026-10-31; values as committed):
 
@@ -89,19 +95,18 @@ PyMuPDF contributes three `dependency_missing` rows — listed, not measured.
 
 \* Single-page formats: "pages/s" is one page over elapsed time — read the
 elapsed figure instead.
-† Coverage above 1.0 is an unbounded ratio, not over-accuracy — see
+† Coverage above 1.0 needs the ratio reading — see
 [How to read coverage](#how-to-read-text_coverage).
 
 ### How to read `text_coverage`
 
 `text_coverage` is the ratio of emitted chunk characters to the analyzer's
 source character count — an unbounded emitted/source ratio, not an accuracy
-score. Values above 1.0 mean the backend emitted more characters than the
-analyzer counted: `exoplanets.csv` at 1.212 emits table markup around 7.5 KiB
-of CSV; the NIST row via `pdf-inspector` at 1.010 is the same kind of
-projection expansion. Magnitude ordering across backends is comparable (one
-definition); whether a >1 row is over-emission or estimator artifact is
-unadjudicated here — the ratio is disclosed, not explained away.
+score. Two rows exceed 1.0 in this run: `exoplanets.csv` at 1.212 and the
+NIST row via `pdf-inspector` at 1.010. Segmentation and projection markup
+are possible influences; fidelity is unjudged here — the ratio is disclosed,
+not explained away. Magnitude ordering across backends is comparable (one
+definition).
 
 ### Measurement notes
 
@@ -110,8 +115,9 @@ unadjudicated here — the ratio is disclosed, not explained away.
   total RSS and not native/GPU allocations — and elapsed times include the
   tracing overhead. Compare backends within one run, not against
   wall-clock expectations.
-- `selected` is recorded before load success/failure; every row in this run
-  loaded, so no `selected: true` + failure combination appears.
+- Three rows carry typed `dependency_missing` failures (PyMuPDF not
+  installed); every other row loaded, so no `selected: true` + failure
+  combination appears.
 
 Skips in this run: `wikidata-q42.json` only (unsupported source suffix).
 No historical PyMuPDF number is presented as a new-run result anywhere on
@@ -144,9 +150,8 @@ Headlines (CPU pass, 2026-09-27; values as committed in
 | wikipedia-calculus.html | native-html | 2.460 s | 0.4* | 0.106 |
 
 \* Single-page formats: "pages/s" is one page over elapsed time — read the
-elapsed figure instead. Coverage may exceed 1.0 (liteparse emits slightly
-more characters than the analyzer counted — different segmentation, not a
-bug).
+elapsed figure instead. Coverage may exceed 1.0 (different segmentation is
+one possible influence; fidelity is unjudged).
 
 ## GPU OCR legs (bounded fixtures)
 
@@ -206,8 +211,8 @@ the full-corpus runs only cost machine time.
 
 All four OCR extras share one `transformers>=5.17,<6` window, so the full run is
 a single pass in a single environment. The command prints JSON on stdout and
-never overwrites the committed CPU report; the AGPL `pdf` extra is required for
-PDF rasterisation.
+never overwrites the committed CPU report; PDF rasterisation uses base
+pypdfium2, so no extra is needed.
 
 ```bash
 parsecraft benchmark itu-t-p863.pdf etsi-ts-103558.pdf nist-sp-800-53r5.pdf \
@@ -297,8 +302,8 @@ expectations.
   [How to read coverage](#how-to-read-text_coverage)).
 - **HTML coverage is a structure proxy.** `native-html` emits headings,
   paragraphs, lists, tables, code, and quotes; raw inline markup dominates
-  the analyzer's character count, so 0.11–0.27 coverage is expected for
-  markup-heavy pages, not data loss.
+  the analyzer's character count, so 0.11–0.27 coverage is typical for
+  markup-heavy pages; whether anything is lost is unjudged.
 - `itu-t-p863.pdf` showed `selected: -` in the 2026-09-27 report: its page signals routed some pages
   to OCR intents while no OCR backend was installed in this environment, so
   auto-mode planning correctly declined (`selected` is null) — the direct

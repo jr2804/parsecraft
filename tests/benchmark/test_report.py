@@ -85,6 +85,23 @@ def _report() -> BenchmarkReport:
     return BenchmarkReport.model_validate(json.loads(_JSON_PATH.read_text(encoding="utf-8")))
 
 
+def test_refresh_pins_csv_measurement_and_json_skip() -> None:
+    # Guards the 2026-10-31 refresh: the CSV row must be a real conversion
+    # (never a reverted "unsupported" artifact) and the JSON skip recorded.
+    # A factual test of these committed artifacts, not a general requirement.
+    report = _report()
+    csv_rows = [
+        row
+        for row in report.results
+        if row.backend == "native-csv" and row.document.endswith("exoplanets.csv")
+    ]
+    assert csv_rows, "the committed report must measure exoplanets.csv via native-csv"
+    for row in csv_rows:
+        assert row.failures == []
+        assert row.chunk_counts.get("table", 0) >= 1
+    assert any(skip.document.endswith("wikidata-q42.json") for skip in report.skips)
+
+
 def test_ocr_artifacts_validate_sort_and_cover_all_models() -> None:
     reports = [BenchmarkReport.model_validate_json(path.read_text(encoding="utf-8")) for path in (_OCR_PASS_A, _OCR_PASS_B)]
     backends: set[str] = set()
