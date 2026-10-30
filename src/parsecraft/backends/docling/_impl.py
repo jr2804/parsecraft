@@ -2,7 +2,8 @@
 
 Loaded only from the light factory at instantiation (``importlib``-based,
 never an inline import). Conversion-verified against docling 2.130.0 on
-2026-09-28 for PDF, HTML, Markdown, and plain text.
+2026-09-28 for PDF and HTML (Markdown/plain-text withdrawn 2026-10-30:
+marko table-matcher CPU spin — see ``_DECLINED_MEDIA_TYPES``).
 
 Design notes:
 - ``analyze()`` stays cheap: PDFs are probed with ``pypdfium2`` (a docling
@@ -73,6 +74,15 @@ _LABEL_KINDS: dict[str, ChunkKind] = {
 }
 
 _PDF_MEDIA_TYPE = "application/pdf"
+
+#: Text types this backend declines at ``convert()``: both reach docling's
+#: marko table matcher, which spins without timeout on pipe-heavy content
+#: (2026-10-30), so they route to the dependency-free native family instead.
+#: The value names the redirect target for the failure detail.
+_DECLINED_MEDIA_TYPES: dict[str, str] = {
+    "text/markdown": "native-markdown",
+    "text/plain": "native-text",
+}
 _CONVERTER: DocumentConverter | None = None
 
 
@@ -89,6 +99,23 @@ class DoclingBackend:
         """Bound-checked conversion into typed IR (never raises)."""
         started = monotonic()
         reference = BackendRef(name=self.name, version=DOCLING_BACKEND_VERSION)
+        redirect = _DECLINED_MEDIA_TYPES.get(request.source.media_type or "")
+        if redirect is not None:
+            return _result(
+                reference,
+                [],
+                [
+                    _failure(
+                        request,
+                        started,
+                        FailureCode.BACKEND_ERROR,
+                        f"docling declines {request.source.media_type} sources "
+                        "(marko table-matcher CPU spin on pipe-heavy content, 2026-10-30); "
+                        f"convert with {redirect} instead",
+                    )
+                ],
+                started,
+            )
         if request.cancellation is not None and request.cancellation():
             return _result(reference, [], [_failure(request, started, FailureCode.CANCELLED, "cancelled before conversion")], started)
         data = source_bytes(request.source)

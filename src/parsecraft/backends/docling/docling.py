@@ -3,11 +3,17 @@
 Discovery imports this module, never ``docling`` itself; the heavy impl loads
 through :func:`importlib.import_module` at instantiation.
 
-``supported_formats`` lists only inputs **conversion-verified** against docling:
-PDF, HTML, Markdown, and plain text (docling 2.130.0, 2026-09-28), plus DOCX
+``supported_formats`` lists only inputs **conversion-verified** against
+docling: PDF and HTML (docling 2.130.0, 2026-09-28), plus DOCX
 (verified 2026-10-17 on a real ITU-T P.863 implementer's guide, a 9-page
 Word-generated report: 10 433 chars and 11 headings through this backend's own
-CLI path). The library also registers pptx/xlsx/odt/ods/odp/rtf/xls and image
+CLI path). Markdown and plain text were verified the same way, but that claim
+is WITHDRAWN as of 2026-10-30: a 9 KiB pipe-heavy Markdown file spins docling's
+marko table matcher with no timeout (CPU spin over an hour, isolated repro via
+plain ``DocumentConverter``); the same marko path serves plain text, so both
+types route to the dependency-free native family instead (``native-markdown`` /
+``native-text``). The library also registers pptx/xlsx/odt/ods/odp/rtf/xls and
+image
 formats, but those stay deliberately undeclared until they are verified the same
 way - the same contract LiteParse follows.
 
@@ -36,14 +42,15 @@ DOCLING_BACKEND_VERSION = "0.1.0"
 
 _DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
-#: Conversion-verified MIME inputs (PDF/HTML/Markdown/text: docling 2.130.0,
-#: 2026-09-28; DOCX: verified 2026-10-17 through this backend's CLI on a real
-#: Word-generated report - see the module docstring).
+#: Conversion-verified MIME inputs (PDF/HTML: docling 2.130.0, 2026-09-28;
+#: DOCX: verified 2026-10-17 through this backend's CLI on a real
+#: Word-generated report - see the module docstring). Markdown and plain text
+#: are deliberately ABSENT (withdrawn 2026-10-30): both reach docling's marko
+#: table matcher, which spins without timeout on pipe-heavy content, so they
+#: route to ``native-markdown`` / ``native-text`` instead.
 DOCLING_FORMATS: tuple[str, ...] = (
     "application/pdf",
     "text/html",
-    "text/markdown",
-    "text/plain",
     _DOCX,
 )
 

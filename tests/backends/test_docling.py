@@ -169,11 +169,11 @@ def test_descriptor_declares_only_verified_formats_and_stays_cpu_only() -> None:
     assert descriptor.version == docling_module.DOCLING_BACKEND_VERSION
     assert descriptor is docling_module.factory.descriptor
     capabilities = descriptor.capabilities
+    # Markdown/plain-text withdrawn 2026-10-30 (marko table-matcher CPU spin):
+    # they route to native-markdown/native-text instead.
     assert capabilities.supported_formats == [
         "application/pdf",
         "text/html",
-        "text/markdown",
-        "text/plain",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ]
     assert capabilities.optional_dependency_group == "docling"
@@ -237,6 +237,28 @@ def test_analyze_reads_text_formats_directly(docling_stub: _State) -> None:
     assert analysis.signals[0].text_chars == len("# heading\n\nbody")
     blank = SourceDocument(uri="file:///empty.txt", media_type="text/plain", content=b"   ")
     assert _backend().analyze(blank).signals[0].blank is True
+
+
+def test_convert_declines_markdown_with_the_native_redirect(docling_stub: _State) -> None:
+    source = SourceDocument(uri="file:///doc.md", media_type="text/markdown", content=b"# heading\n\nbody")
+    result = _convert(_backend(), source)
+    assert result.pages == []
+    assert docling_stub.convert_calls == []  # heavy converter never touched
+    failure = result.failures[0]
+    assert failure.code is FailureCode.BACKEND_ERROR
+    assert "text/markdown" in failure.detail
+    assert "native-markdown" in failure.detail
+
+
+def test_convert_declines_plain_text_with_the_native_redirect(docling_stub: _State) -> None:
+    source = SourceDocument(uri="file:///doc.txt", media_type="text/plain", content=b"body")
+    result = _convert(_backend(), source)
+    assert result.pages == []
+    assert docling_stub.convert_calls == []
+    failure = result.failures[0]
+    assert failure.code is FailureCode.BACKEND_ERROR
+    assert "text/plain" in failure.detail
+    assert "native-text" in failure.detail
 
 
 def test_converter_is_created_once_per_process(docling_stub: _State) -> None:
