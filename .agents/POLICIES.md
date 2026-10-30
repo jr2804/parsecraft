@@ -187,6 +187,18 @@ Three rules that follow, all binding:
    monkeypatched parse function is not evidence the path works — it is evidence
    the code after it works.
 
+**A flag that cannot reach what it claims is worse than no flag.** Verify a new
+CLI flag end to end — flag → parse → execute → the object the backend receives —
+before shipping it. `--text-classifier` shipped, parsed, was documented, and
+changed nothing but the cache key because the executor dropped it before building
+the `ConversionRequest` (pc-9p6.5, pc-c54); the proof was two runs whose output
+files hashed identically with and without the flag.
+
+**Never `git add -A` or `git add .` here.** Stage explicit paths. Worker
+worktrees and the main checkout both carry `.tmp-*` scratch files by convention
+(commit messages, bead bodies, probe scripts), and a blanket add commits them —
+it happened once and had to be amended out of history.
+
 ## Response format
 
 Concise and specific. No filler, intros, or restated requirements.
