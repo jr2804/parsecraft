@@ -44,10 +44,17 @@ plus a bound-checked `convert()` that maps docling items to typed IR chunks.
   only matters for a format that would need it, which is why nothing here
   depends on it today.
 - `supported_formats` lists only inputs **conversion-verified** against the
-  real library (PDF/HTML/Markdown/plain text: 2026-09-28, docling 2.130.0; DOCX:
-  2026-10-17, a Word-generated report read through this backend's CLI). The
-  library's other registered inputs (pptx, xlsx, odt, ods, odp, rtf, xls, images)
-  stay undeclared until a conversion proves them — mirror LiteParse's contract.
+  real library (PDF/HTML: 2026-09-28, docling 2.130.0; DOCX:
+  2026-10-17, a Word-generated report read through this backend's CLI).
+  Markdown and plain text were verified the same way but are withdrawn
+  (2026-10-30): both reach docling's marko table matcher, which spins without
+  timeout on pipe-heavy content, so they route to ``native-markdown`` /
+  ``native-text`` instead — enforced twice: the tuple no longer lists them
+  (eligibility-level routing away) and ``convert()`` refuses them with a typed
+  ``BACKEND_ERROR`` naming the redirect target (defense-in-depth for direct
+  registry use). The library's other registered inputs (pptx, xlsx, odt, ods,
+  odp, rtf, xls, images) stay undeclared until a conversion proves them —
+  mirror LiteParse's contract.
 - `analyze()` is cheap and model-free: PDF page count and text length come
   from `pypdfium2` (a base dependency, ADR-0008), text formats are measured
   directly. It never loads layout models and never downloads.
