@@ -743,11 +743,11 @@ def test_the_text_family_is_pinned_by_count() -> None:
     """The host-facing text family has a deliberate size — hosts build file filters.
 
     Adding or removing a text suffix changes this number on purpose; the count
-    is here so an accidental rename or deletion fails loudly. (20 = 16 plain +
-    2 markdown + 2 html.)
+    is here so an accidental rename or deletion fails loudly. (22 = 16 plain +
+    2 markdown + 2 html + 1 csv + 1 tsv.)
     """
     text_family = [suffix for suffix, media_type in MEDIA_TYPES.items() if media_type.startswith("text/")]
-    assert len(text_family) == 20
+    assert len(text_family) == 22
     assert len([suffix for suffix, media_type in MEDIA_TYPES.items() if media_type == "text/plain"]) == 16
 
 
@@ -816,9 +816,11 @@ def test_choose_analyzer_uses_the_base_install_analyzer_per_real_format() -> Non
     extras = {"docling", "liteparse", "mineru", "pandoc", "ocr", "web", "marker"}
     expectations = {
         "application/pdf": "pymupdf",
+        "text/csv": "native-csv",
         "text/html": "native-html",
         "text/markdown": "native-markdown",
         "text/plain": "native-text",
+        "text/tab-separated-values": "native-csv",
     }
     for media_type, expected in expectations.items():
         chosen = choose_analyzer(registry, media_type, installed_extras=extras)

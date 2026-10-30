@@ -11,6 +11,7 @@ Four entry-point backends, each a light `factory` (descriptor + `__call__`):
 | `native-text` | `text.py` | `text/plain` |
 | `native-markdown` | `markdown.py` | `text/markdown` |
 | `native-html` | `html.py` | `text/html` |
+| `native-csv` | `csv.py` | `text/csv`, `text/tab-separated-values` |
 
 The PDF backend is the separate ``pymupdf`` package (``backends/pymupdf/``) — it
 moved out of ``native/`` because it is the only built-in that needs a third-party
@@ -25,11 +26,13 @@ is now reserved for backends with no third-party runtime dep.
 
 ## Local Contracts
 
-- **Structured table rows** (pc-4u7.40): `native-html` emits `rows` from its
+- **Structured table rows** (pc-4u7.40, pc-oir.1): `native-html` emits `rows` from its
   `_row`/`_cell` buffers (same cells as the Markdown `content`, separator
   excluded). `native-markdown` inherits rows through the markdown adapter;
-  `native-text` carries `rows=None` — its extraction is plain text with no
-  cheap grid structure.
+  `native-csv` emits `rows` from the parsed cell grid — header stays row 0
+  and is never lifted into metadata (consumer contract: the consumer keys
+  data rows by column name). `native-text` carries `rows=None` — its
+  extraction is plain text with no cheap grid structure.
 - Entry modules stay light: optional/heavy deps (none here — see
   `backends/pymupdf/AGENTS.md` for the pymupdf import boundaries). No inline
   imports (`pyreorder` hoists them).

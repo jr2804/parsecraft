@@ -40,6 +40,7 @@ and the extension is the suffix the host layer joins onto it.
 | `native-text` — base install | `.txt` (`text/plain`) — plus every other suffix the MIME table maps to `text/plain` (`.py`, `.rst`, `.toml`, `.log`, `.tex`, …) | in-package — MIT | Zero dependencies, fully offline, deterministic | Paragraphs only; no headings, tables, or layout |
 | `native-markdown` — base install | `.md`, `.markdown` (`text/markdown`) | [`markdown-it-py`](https://github.com/executablebooks/markdown-it-py) — MIT | CommonMark token structure: headings, lists, tables, code, quotes | CommonMark only; no non-CommonMark dialects |
 | `native-html` — base install | `.html`, `.htm` (`text/html`) | in-package (stdlib `html.parser`) — MIT | Zero dependencies; headings, lists, tables, code, quotes | Simplistic parser; scripts and styles skipped; not a full HTML5 engine |
+| `native-csv` — base install | `.csv` (`text/csv`), `.tsv` (`text/tab-separated-values`) | in-package (stdlib `csv`) — MIT | Zero dependencies; one typed `TABLE` chunk per file carrying the parsed cell grid as `rows` (header stays row 0, never lifted into metadata), Markdown rendered from the same grid; `.tsv` forces tab, `.csv` sniffs the delimiter by RFC4180 consistency; quoted fields, embedded newlines, CRLF and BOMs (incl. UTF-16) survive; undetectable input falls back to comma, empty input emits no chunk — both as INFO diagnostics, never an error | Single-column grid when the sniff finds no delimiter; ragged rows kept verbatim |
 | `pymupdf` — `pypdf` (core, analysis) + `parsecraft[pymupdf]` (extraction) | `.pdf` (`application/pdf`), `.docx` (`application/vnd.openxmlformats-officedocument.wordprocessingml.document`), `.pptx` (`application/vnd.openxmlformats-officedocument.presentationml.presentation`) | [`pypdf`](https://pypi.org/project/pypdf/) — BSD-3-Clause; [`pymupdf`](https://pypi.org/project/PyMuPDF/) — **AGPL-3.0-or-commercial** | Fast native text and layout extraction for PDF and office alike: monospace runs become fenced `code` chunks with recovered relative indentation and joined wrapped lines, and DOCX/PPTX need no second dependency. Analysis of every declared format works without the AGPL extra | Extraction of every declared format requires the AGPL `pymupdf` extra; scanned PDFs still need OCR; `.xlsx` is deliberately **not** declared — pymupdf keeps only numeric cells and drops strings; the `openpyxl` backend carries spreadsheets |
 | `openpyxl` — base install | `.xlsx` (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`) | [`openpyxl`](https://openpyxl.readthedocs.io/) — MIT (`et_xmlfile`, MIT) | The spreadsheet backend, and a **base install**: one typed `TABLE` chunk per worksheet carrying the real cell grid as `rows`, the sheet name in `metadata["sheet"]`, trailing blanks trimmed; no extra, no copyleft, no weights, no GPU, no second dependency | A workbook is one logical page, so `supports_page_ranges`/`supports_multi_page` are off; `.xls`/`.xlsm` are not declared; cells are read as stored (`data_only`), so a formula yields its cached value |
 | `pandoc` — base install, engine-gated | `.docx` (`application/vnd.openxmlformats-officedocument.wordprocessingml.document`), `.pptx` (`application/vnd.openxmlformats-officedocument.presentationml.presentation`), `.xlsx` (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, read-only), `.odt` (`application/vnd.oasis.opendocument.text`), `.rtf` (`application/rtf`), `.epub` (`application/epub+zip`) | [pandoc.org](https://pandoc.org/) — **GPL-2.0-or-later** binary, MIT wrapper | Broad office and e-book coverage through one wrapper | Needs the external **Pandoc binary**; `.ods`/`.odp` are unsupported by pandoc 3.11; copyleft gate |
@@ -67,7 +68,7 @@ The native backends are registered through
 `native-` began as "no third-party runtime dependency". That is no longer what
 the word communicates, and it stopped being true the moment `native-pdf`
 spent its life carrying PyMuPDF: the family now holds exactly
-`native-text`, `native-markdown`, and `native-html`, all three of which are
+`native-text`, `native-markdown`, `native-html`, and `native-csv`, all four of which are
 **first-party** — the parsing rules are parsecraft's own code (in-package, or
 stdlib `html.parser`), with no upstream parser delegated to. A reader sees
 the word and reasonably asks which native platform, or which native code.
@@ -81,8 +82,8 @@ A more precise name for the category is **builtin**:
 | `first-party-` | our own code, our licence | accurate but long for a CLI token |
 | `internal-` | private implementation detail | implies not-for-use, which is wrong |
 
-`builtin-text`, `builtin-markdown`, `builtin-html` state the property that the
-remaining three actually share, and match the "base install" promise the docs
+`builtin-text`, `builtin-markdown`, `builtin-html`, `builtin-csv` state the property that the
+remaining four actually share, and match the "base install" promise the docs
 already make elsewhere. `ocr-tesseract` is **base install** but not builtin
 (it drives an OS binary), which is the distinction the word should carry.
 
@@ -108,6 +109,7 @@ counted, filtered or projected without re-parsing text.
 | `native-text` | — | — | — |
 | `native-markdown` | typed | — | — |
 | `native-html` | typed | — | — |
+| `native-csv` | typed | — | — |
 | `pymupdf` | — | — | — |
 | `openpyxl` | typed (per sheet) | — | — |
 | `pandoc` | text | text | text |
@@ -135,7 +137,9 @@ not become a `TABLE` chunk (see the trafilatura quirks below).
 the recognized OTSL/markdown table (a test pins the cell grid against the
 flattened content). `docling` is the other typed-table case: rows are built
 from the vendor's own cell grid and a test pins cell agreement with the
-Markdown content.
+Markdown content. `native-csv` is the third: rows are the parsed cell grid
+itself — header as row 0, ragged rows kept — and tests pin the grid against
+the Markdown rendered from it.
 
 `pandoc` and `marker` pass their structure through as Markdown, so tables,
 figures and equations all survive **as text** in that projection — visible in
@@ -313,7 +317,7 @@ it never excludes a language-agnostic backend (see
 
 | Backend | Declared languages |
 | ------- | ------------------ |
-| `native-text`, `native-markdown`, `native-html`, `pymupdf` | agnostic (no claim) |
+| `native-text`, `native-markdown`, `native-html`, `native-csv`, `pymupdf` | agnostic (no claim) |
 | `liteparse` | agnostic (no claim) |
 | `ocr-tele` | `zh`, `en` |
 | `ocr-ovis`, `ocr-unlimited`, `ocr-qianfan` | agnostic (multilingual) |
@@ -388,6 +392,7 @@ check one.
 | Multi-page dense tables | `ocr-unlimited` | Long-horizon multi-page handling |
 | Formulas and equations | `ocr-ovis` | Formula-aware extraction |
 | Broad office formats (docx, pptx) | `pandoc` | Convert to a readable format first |
+| Delimited data (`.csv`, `.tsv`) | `native-csv` | One typed `TABLE` chunk per file — header stays row 0 in `rows`, Markdown rendered from the same grid; zero dependencies, no copyleft, no GPU |
 | Spreadsheet (`.xlsx`) | `openpyxl` | Typed per-sheet tables — the grid a consumer can count and filter; no copyleft, no GPU |
 | Layout-heavy, reading order matters | `docling` | Layout, tables, and reading order |
 | Layout-heavy PDF, VLM reading order | `mineru` | VLM layout/tables/equations; text PDFs run weight-free at flash effort |

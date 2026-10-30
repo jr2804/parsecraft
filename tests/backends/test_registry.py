@@ -452,9 +452,11 @@ def test_suffixes_projection_never_leaks_unclaimed_suffixes() -> None:
     text_only = _register(registry, "text-only", ("text/plain",))
     assert registry.suffixes_for(text_only, installed_only=False) == {s for s, m in MEDIA_TYPES.items() if m == "text/plain"}
     assert ".pdf" not in registry.suffixes_for(text_only, installed_only=False)
-    # A declared format with no MEDIA_TYPES entry contributes nothing (e.g. csv).
-    csv_only = _register(registry, "csv-only", ("text/csv",))
-    assert registry.suffixes_for(csv_only, installed_only=False) == set()
+    # A declared format with no MEDIA_TYPES entry contributes nothing. The
+    # example is synthetic on purpose: a format no MEDIA_TYPES entry will
+    # ever claim (csv was the old example until native-csv claimed it).
+    synthetic_only = _register(registry, "synthetic-only", ("application/x-parsecraft-not-a-real-format",))
+    assert registry.suffixes_for(synthetic_only, installed_only=False) == set()
 
 
 def test_suffixes_installed_only_hides_backends_whose_extra_is_absent(monkeypatch: pytest.MonkeyPatch) -> None:

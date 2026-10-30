@@ -29,12 +29,13 @@ from parsecraft.routing.rules import FEATURE_TABLE_CODE, is_ocr
 
 #: Suffix → MIME for every source class this package can consume. Values
 #: must be claimed by at least one registered backend (invariant-tested);
-#: suffixes with no claiming backend (csv/json/xml) stay unsupported on purpose.
+#: suffixes with no claiming backend (json/xml) stay unsupported on purpose.
 MEDIA_TYPES: dict[str, str] = {
     ".c": "text/plain",
     ".cc": "text/plain",
     ".cfg": "text/plain",
     ".cpp": "text/plain",
+    ".csv": "text/csv",
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ".epub": "application/epub+zip",
     ".h": "text/plain",
@@ -61,6 +62,7 @@ MEDIA_TYPES: dict[str, str] = {
     ".tif": "image/tiff",
     ".tiff": "image/tiff",
     ".toml": "text/plain",
+    ".tsv": "text/tab-separated-values",
     ".txt": "text/plain",
     ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 }

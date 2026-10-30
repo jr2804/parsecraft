@@ -1,8 +1,9 @@
-"""Offline tests for the native backend family (text/markdown/html)."""
+"""Offline tests for the native backend family (text/markdown/html/csv)."""
 
 from __future__ import annotations
 
 import hashlib
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -11,6 +12,7 @@ from typing import Any
 import pytest
 
 from parsecraft.backends import pymupdf as pymupdf_module
+from parsecraft.backends.native import csv as csv_module
 from parsecraft.backends.native import html as html_module
 from parsecraft.backends.native import markdown as markdown_module
 from parsecraft.backends.native import text as text_module
@@ -31,8 +33,8 @@ from parsecraft.backends.protocol import (
     SourceDocument,
 )
 from parsecraft.backends.registry import BackendRegistry
-from parsecraft.ir.models import ChunkKind, FailureCode, PageRange, PageResult
-from tests.fixtures.documents import document_bytes
+from parsecraft.ir.models import ChunkKind, DiagnosticLevel, FailureCode, PageRange, PageResult
+from tests.fixtures.documents import csv_bytes, document_bytes, tsv_bytes
 
 # ── NativeBackendBase flow (via a stub backend) ────────────────────────────
 
@@ -480,10 +482,10 @@ def _pages(texts: list[str]) -> list[PageResult]:
 
 
 def test_all_native_factories_register_and_create() -> None:
-    """The native family now ships three backends here; pymupdf is a sibling package."""
+    """The native family now ships four backends here; pymupdf is a sibling package."""
     registry = BackendRegistry()
-    expected = {"native-html", "native-markdown", "native-text", "pymupdf"}
-    for module in (text_module, markdown_module, html_module, pymupdf_module):
+    expected = {"native-csv", "native-html", "native-markdown", "native-text", "pymupdf"}
+    for module in (text_module, markdown_module, html_module, csv_module, pymupdf_module):
         registry.register(module.factory.descriptor.name, module.factory)
     descriptors = {d.name: d for d in registry.list_backends()}
     assert expected <= set(descriptors)
@@ -494,10 +496,15 @@ def test_all_native_factories_register_and_create() -> None:
 
 
 def test_native_family_imports_stay_offline_clean() -> None:
+    # The subprocess must import THIS checkout: the ambient interpreter
+    # resolves parsecraft to the shared checkout, which lacks new modules.
+    src_dir = Path(__file__).resolve().parents[2] / "src"
+    env = {**os.environ, "PYTHONPATH": str(src_dir)}
     script = """
 import sys
 
 import parsecraft.adapters
+import parsecraft.backends.native.csv
 import parsecraft.backends.native.html
 import parsecraft.backends.native.markdown
 import parsecraft.backends.native.text
@@ -525,6 +532,7 @@ print("NATIVE_IMPORTS_OK")
         capture_output=True,
         text=True,
         check=False,
+        env=env,
     )
     assert proc.returncode == 0, proc.stderr
     assert "NATIVE_IMPORTS_OK" in proc.stdout
@@ -550,6 +558,276 @@ def test_html_non_table_chunks_carry_no_rows() -> None:
     result = backend.convert(_request(b"<h1>Head</h1><p>Body.</p>"))
     for block in result.pages[0].blocks:
         assert block.rows is None
+
+
+def test_csv_descriptor_claims_both_delimited_types() -> None:
+    assert csv_module.BACKEND_NAME == "native-csv"
+    assert csv_module.SUPPORTED_FORMATS == ["text/csv", "text/tab-separated-values"]
+    descriptor = csv_module.factory.descriptor
+    assert descriptor.version == NATIVE_BACKEND_VERSION
+    assert descriptor.capabilities.supports_page_ranges is False
+    assert descriptor.capabilities.supports_multi_page is False
+    backend = csv_module.factory(_config("native-csv"))
+    assert backend.name == "native-csv"
+
+
+def test_csv_basic_table_rows_and_content_agree() -> None:
+    backend = csv_module.factory(_config("native-csv"))
+    result = backend.convert(_csv_request(csv_bytes(), uri="sample.csv"))
+    (table,) = result.pages[0].blocks
+    assert table.kind is ChunkKind.TABLE
+    assert table.rows == (
+        ("id", "name", "note"),
+        ("1", "alpha", "first"),
+        ("2", "beta, jr", "second"),
+        ("3", "gamma", "last"),
+    )
+    assert table.content == ("| id | name | note |\n| --- | --- | --- |\n| 1 | alpha | first |\n| 2 | beta, jr | second |\n| 3 | gamma | last |")
+    # agreement: every grid cell reaches the projection from the same source
+    for row in table.rows:
+        for cell in row:
+            assert cell in table.content
+    assert table.metadata == {"backend": "native-csv", "delimiter": ","}
+    assert result.pages[0].diagnostics == []
+
+
+def test_csv_header_is_row_zero_never_metadata() -> None:
+    """Consumer contract (kompend-1): ``rows`` carries the header as row 0.
+
+    Lifting the header into metadata would silently turn the consumer's column
+    names into the first data row — no error, wrong table. There is no caption
+    key either: a CSV has no caption to report.
+    """
+    backend = csv_module.factory(_config("native-csv"))
+    result = backend.convert(_csv_request(csv_bytes(), uri="sample.csv"))
+    (table,) = result.pages[0].blocks
+    assert table.rows is not None
+    assert table.rows[0] == ("id", "name", "note")
+    assert set(table.metadata) == {"backend", "delimiter"}
+    assert "caption" not in table.metadata
+
+
+def test_csv_tsv_forces_tab_by_suffix() -> None:
+    backend = csv_module.factory(_config("native-csv"))
+    result = backend.convert(_csv_request(tsv_bytes(), uri="sample.tsv"))
+    (table,) = result.pages[0].blocks
+    assert table.kind is ChunkKind.TABLE
+    assert table.rows == (
+        ("id", "name", "score"),
+        ("1", "alpha", "0.5"),
+        ("2", "beta", "0.75"),
+        ("3", "gamma\tdelta", "1.0"),
+    )
+    assert table.metadata == {"backend": "native-csv", "delimiter": "\t"}
+    assert result.pages[0].diagnostics == []
+
+
+def test_csv_tsv_media_type_beats_suffix() -> None:
+    backend = csv_module.factory(_config("native-csv"))
+    source = SourceDocument(uri="sample.csv", media_type="text/tab-separated-values", content=b"a\tb\n1\t2\n")
+    (table,) = backend.convert(ConversionRequest(source=source)).pages[0].blocks
+    assert table.rows == (("a", "b"), ("1", "2"))
+    assert table.metadata["delimiter"] == "\t"
+    source = SourceDocument(uri="sample.tsv", media_type="text/csv", content=b"a,b\n1,2\n")
+    result = backend.convert(ConversionRequest(source=source))
+    (table,) = result.pages[0].blocks
+    assert table.rows == (("a", "b"), ("1", "2"))
+    assert table.metadata["delimiter"] == ","
+    assert result.pages[0].diagnostics == []
+
+
+def test_csv_semicolon_sniff() -> None:
+    backend = csv_module.factory(_config("native-csv"))
+    result = backend.convert(_csv_request(b"a;b\n1;2\n3;4\n", uri="sample.csv"))
+    (table,) = result.pages[0].blocks
+    assert table.rows == (("a", "b"), ("1", "2"), ("3", "4"))
+    assert table.metadata["delimiter"] == ";"
+    assert result.pages[0].diagnostics == []
+
+
+def test_csv_pipe_sniff_with_ragged_tail() -> None:
+    backend = csv_module.factory(_config("native-csv"))
+    content = b"a|b\n1|2\n3|4\n5|6\n7|8\n9|10|11\n"
+    result = backend.convert(_csv_request(content, uri="sample.csv"))
+    (table,) = result.pages[0].blocks
+    assert table.metadata["delimiter"] == "|"
+    assert table.rows == (("a", "b"), ("1", "2"), ("3", "4"), ("5", "6"), ("7", "8"), ("9", "10", "11"))
+    # ragged rows are kept; the projection pads display-only to max width
+    assert table.content == ("| a | b |  |\n| --- | --- | --- |\n| 1 | 2 |  |\n| 3 | 4 |  |\n| 5 | 6 |  |\n| 7 | 8 |  |\n| 9 | 10 | 11 |")
+    assert result.pages[0].diagnostics == []
+
+
+def test_csv_sniff_tie_prefers_comma() -> None:
+    backend = csv_module.factory(_config("native-csv"))
+    result = backend.convert(_csv_request(b"a,b;c\n1,2;3\n", uri="sample.csv"))
+    (table,) = result.pages[0].blocks
+    assert table.metadata["delimiter"] == ","
+    assert table.rows == (("a", "b;c"), ("1", "2;3"))
+    assert result.pages[0].diagnostics == []
+
+
+def test_csv_sniff_fallback_prose_degrades_to_single_column_table() -> None:
+    """A file that merely ends in ``.csv`` ingests as a table, never raises."""
+    backend = csv_module.factory(_config("native-csv"))
+    result = backend.convert(_csv_request(b"Just some notes\nabout things\nno structure here\n", uri="notes.csv"))
+    (table,) = result.pages[0].blocks
+    assert table.kind is ChunkKind.TABLE
+    assert table.rows == (("Just some notes",), ("about things",), ("no structure here",))
+    assert table.metadata["delimiter"] == ","
+    (diagnostic,) = result.pages[0].diagnostics
+    assert diagnostic.level is DiagnosticLevel.INFO
+    assert diagnostic.code == "csv-sniff-fallback"
+
+
+def test_csv_embedded_newline_survives_sniff_and_parse() -> None:
+    """A quoted newline breaks two physical head lines — the strict probes
+    score them 1 ("splits nothing") without vetoing comma, and the lenient
+    full parse restores the grid. No fallback, no diagnostic.
+    """
+    backend = csv_module.factory(_config("native-csv"))
+    content = b'id,name,note\r\n1,alpha,first\r\n2,"beta, jr","line one\nline two"\r\n3,gamma,last\r\n'
+    result = backend.convert(_csv_request(content, uri="sample.csv"))
+    (table,) = result.pages[0].blocks
+    assert table.metadata["delimiter"] == ","
+    assert result.pages[0].diagnostics == []
+    assert table.rows == (
+        ("id", "name", "note"),
+        ("1", "alpha", "first"),
+        ("2", "beta, jr", "line one\nline two"),
+        ("3", "gamma", "last"),
+    )
+    for row in table.rows:
+        for cell in row:
+            assert cell in table.content
+
+
+def test_csv_ragged_semicolon_still_detected() -> None:
+    """One ragged row must not collapse a ``;`` file to a single column."""
+    backend = csv_module.factory(_config("native-csv"))
+    result = backend.convert(_csv_request(b"a;b;c\n1;2\n", uri="sample.csv"))
+    (table,) = result.pages[0].blocks
+    assert table.metadata["delimiter"] == ";"
+    assert table.rows == (("a", "b", "c"), ("1", "2"))
+    assert result.pages[0].diagnostics == []
+
+
+def test_csv_ragged_pipe_still_detected() -> None:
+    backend = csv_module.factory(_config("native-csv"))
+    result = backend.convert(_csv_request(b"a|b|c\n1|2\n", uri="sample.csv"))
+    (table,) = result.pages[0].blocks
+    assert table.metadata["delimiter"] == "|"
+    assert table.rows == (("a", "b", "c"), ("1", "2"))
+    assert result.pages[0].diagnostics == []
+
+
+def test_csv_ragged_tail_semicolon_keeps_columns() -> None:
+    backend = csv_module.factory(_config("native-csv"))
+    result = backend.convert(_csv_request(b"a;b;c\n1;2;3\n4;5\n", uri="sample.csv"))
+    (table,) = result.pages[0].blocks
+    assert table.metadata["delimiter"] == ";"
+    assert table.rows == (("a", "b", "c"), ("1", "2", "3"), ("4", "5"))
+    assert result.pages[0].diagnostics == []
+
+
+def test_csv_malformed_quote_probe_never_raises() -> None:
+    """An unterminated quote scores that probe 1 instead of propagating."""
+    backend = csv_module.factory(_config("native-csv"))
+    result = backend.convert(_csv_request(b'a;b\n"oops\n1;2\n', uri="sample.csv"))
+    (table,) = result.pages[0].blocks
+    assert table.metadata["delimiter"] == ";"
+    assert table.rows == (("a", "b"), ("oops\n1;2\n",))
+    assert result.pages[0].diagnostics == []
+
+
+def test_csv_crlf_and_bom_tolerated() -> None:
+    backend = csv_module.factory(_config("native-csv"))
+    result = backend.convert(_csv_request(b"\xef\xbb\xbfa,b\r\n1,2\r\n", uri="sample.csv"))
+    (table,) = result.pages[0].blocks
+    assert table.rows == (("a", "b"), ("1", "2"))
+    assert result.pages[0].diagnostics == []
+
+
+def test_csv_tsv_bom_stripped_without_consumer_normalization() -> None:
+    """The consumer UTF-8-normalizes ``.csv`` but NOT ``.tsv`` — the backend
+    strips the BOM itself on both paths.
+    """
+    backend = csv_module.factory(_config("native-csv"))
+    result = backend.convert(_csv_request(b"\xef\xbb\xbfid\tname\n1\tx\n", uri="sample.tsv"))
+    (table,) = result.pages[0].blocks
+    assert table.rows == (("id", "name"), ("1", "x"))
+
+
+def test_csv_utf16_bom_decodes_to_real_rows() -> None:
+    """Excel UTF-16 exports must not parse as NUL-interleaved junk rows."""
+    backend = csv_module.factory(_config("native-csv"))
+    content = "name,level\r\nC/I,3\r\n".encode("utf-16")
+    result = backend.convert(_csv_request(content, uri="sample.csv"))
+    (table,) = result.pages[0].blocks
+    assert table.rows == (("name", "level"), ("C/I", "3"))
+    assert result.pages[0].diagnostics == []
+
+
+def test_csv_long_field_survives_field_limit() -> None:
+    """A 200 KB cell exceeds the stdlib default cap — extraction keeps it."""
+    backend = csv_module.factory(_config("native-csv"))
+    result = backend.convert(_csv_request(b"a,b\n" + b"x" * 200_000 + b",2\n", uri="sample.csv"))
+    (table,) = result.pages[0].blocks
+    assert table.rows == (("a", "b"), ("x" * 200_000, "2"))
+
+
+def test_csv_empty_file_emits_no_chunk() -> None:
+    """An empty grid emits no chunk: a content-less TABLE would surface
+    downstream as an empty table element. The page stays diagnostic-only.
+    """
+    backend = csv_module.factory(_config("native-csv"))
+    for content in (b"", b"\n\n\n"):
+        result = backend.convert(_csv_request(content, uri="sample.csv"))
+        assert result.pages[0].blocks == []
+        codes = [diagnostic.code for diagnostic in result.pages[0].diagnostics]
+        assert codes == ["csv-sniff-fallback", "csv-empty-table"]
+        assert result.pages[0].diagnostics[0].level is DiagnosticLevel.INFO
+    result = backend.convert(_csv_request(b"", uri="sample.tsv"))
+    assert result.pages[0].blocks == []
+    assert [diagnostic.code for diagnostic in result.pages[0].diagnostics] == ["csv-empty-table"]
+
+
+def test_csv_trailing_blank_rows_trimmed_interior_kept() -> None:
+    backend = csv_module.factory(_config("native-csv"))
+    result = backend.convert(_csv_request(b"a,b\n1,2\n\n3,4\n   \n\n", uri="sample.csv"))
+    (table,) = result.pages[0].blocks
+    assert table.rows == (("a", "b"), ("1", "2"), (), ("3", "4"))
+    assert table.content == "| a | b |\n| --- | --- |\n| 1 | 2 |\n|  |  |\n| 3 | 4 |"
+
+
+def test_csv_markdown_table_renders_empty_grid_empty() -> None:
+    """The projection is total: an empty grid renders empty, never raises."""
+    assert csv_module._markdown_table(()) == ""
+
+
+# ── native-csv: delimited data → TABLE (pc-oir.1) ──────────────────────────
+
+
+def _csv_request(content: bytes, uri: str) -> ConversionRequest:
+    return ConversionRequest(source=_source(content, uri=uri))
+
+
+def test_csv_analyze_marks_text_bearing() -> None:
+    backend = csv_module.factory(_config("native-csv"))
+    analysis = backend.analyze(_source(csv_bytes(), uri="sample.csv"))
+    assert analysis.page_count == 1
+    assert analysis.signals[0].has_native_text is True
+    assert analysis.signals[0].text_chars == len(csv_bytes())
+    assert analysis.signals[0].image_count == 0
+
+
+def test_csv_convert_from_disk(tmp_path: Path) -> None:
+    backend = csv_module.factory(_config("native-csv"))
+    path = tmp_path / "sample.csv"
+    path.write_bytes(csv_bytes())
+    result = backend.convert(ConversionRequest(source=SourceDocument(uri=str(path))))
+    (table,) = result.pages[0].blocks
+    assert table.rows is not None
+    assert table.rows[0] == ("id", "name", "note")
 
 
 def _kinds(result: Any, page: int = 1) -> list[ChunkKind]:
