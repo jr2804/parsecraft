@@ -53,6 +53,13 @@ _GUARD_SCRIPT = (
 )
 
 
+# Flat-list characterisation (NOT the trigger — the hang needs nesting, see
+# above). kompend-1's retracted 93-byte shape, kept as parsing-behaviour
+# pins: our adapter must treat trailing-blank / sibling variants identically,
+# and a future regression names the variant that changed.
+_FLAT_SHAPE_TEXT = "- Constant-delay indicator: mean over frames start+2..stop of\n  |delay[i] - delay[i-2]| ms where < 10 ms."
+
+
 # kompend-1's matrix (2026-10-30), transcribed verbatim — 11 of the 12
 # reported cases (the 12th is unreconstructable; ask kompend-1, don't invent
 # it). Harness: real `DocumentConverter`, timer strictly around `convert()`,
@@ -105,13 +112,6 @@ def test_docling_matrix_shape_parses_on_our_adapter(source: str, kinds: list[Chu
     result = parse_markdown(source, "mem://matrix", produced_at=PRODUCED)
     assert [block.kind for block in _blocks(result)] == kinds
     assert [block.content for block in _blocks(result)] == contents
-
-
-# Flat-list characterisation (NOT the trigger — the hang needs nesting, see
-# above). kompend-1's retracted 93-byte shape, kept as parsing-behaviour
-# pins: our adapter must treat trailing-blank / sibling variants identically,
-# and a future regression names the variant that changed.
-_FLAT_SHAPE_TEXT = "- Constant-delay indicator: mean over frames start+2..stop of\n  |delay[i] - delay[i-2]| ms where < 10 ms."
 
 
 def test_pipe_heavy_fixture_parses_well_under_one_second() -> None:
