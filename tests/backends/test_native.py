@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 
+from parsecraft.adapters.classification import TextKind, register_text_classifier_provider
 from parsecraft.backends import pymupdf as pymupdf_module
 from parsecraft.backends.native import csv as csv_module
 from parsecraft.backends.native import html as html_module
@@ -33,7 +34,9 @@ from parsecraft.backends.protocol import (
     SourceDocument,
 )
 from parsecraft.backends.registry import BackendRegistry
+from parsecraft.cli import config as cli_config
 from parsecraft.ir.models import ChunkKind, DiagnosticLevel, FailureCode, PageRange, PageResult
+from parsecraft.pipeline.analysis import media_type_for
 from tests.fixtures.documents import csv_bytes, document_bytes, tsv_bytes
 
 # ── NativeBackendBase flow (via a stub backend) ────────────────────────────
@@ -43,6 +46,16 @@ class _StubBackend(NativeBackendBase):
     """Minimal concrete subclass for exercising the shared flow."""
 
     name = "native-stub"
+
+
+class _StubTextClassifier:
+    """Structural TextKindClassifier returning a canned verdict."""
+
+    def __init__(self, verdict: tuple[TextKind, float]) -> None:
+        self._verdict = verdict
+
+    def classify_text(self, text: str) -> tuple[TextKind, float]:
+        return self._verdict
 
 
 # ── _common: source reading, helpers ───────────────────────────────────────
@@ -153,6 +166,96 @@ def test_text_convert_from_disk_file(cache_subdir: Path) -> None:
     backend = text_module.factory(_config("native-text"))
     result = backend.convert(ConversionRequest(source=SourceDocument(uri=str(path), content=None)))
     assert _contents(result) == ["on disk"]
+
+
+@pytest.fixture(autouse=True)
+def _isolated_judge_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """extract_text_pages resolves the global judge config — never a real one."""
+    monkeypatch.delenv("PARSECRAFT_JUDGE_MODEL", raising=False)
+    monkeypatch.setattr(cli_config, "global_config_path", lambda: tmp_path / "global" / "config.toml")
+
+
+def test_text_extract_unconfigured_matches_paragraph_chunks() -> None:
+    content = b"alpha\n\nbeta"
+    page = text_module.extract_text_pages(_source(content), content)[0]
+    assert page == PageResult(page_number=1, blocks=paragraph_chunks("native-text", 1, "alpha\n\nbeta"))
+
+
+def test_text_extract_configured_markdown_like_stamps_verdict(monkeypatch: pytest.MonkeyPatch) -> None:
+    register_text_classifier_provider("stub-text-kind-9p63", lambda spec: _StubTextClassifier((TextKind.MARKDOWN_LIKE, 0.9)))
+    monkeypatch.setenv("PARSECRAFT_JUDGE_MODEL", "stub-text-kind-9p63/any-model")
+    pages = text_module.extract_text_pages(_source(b"# Hi\n", uri="mem://wired"), b"# Hi\n")
+    assert [block.kind for block in pages[0].blocks] == [ChunkKind.HEADING]
+    assert [block.metadata.get("detected_kind") for block in pages[0].blocks] == ["markdown-like"]
+    assert [block.confidence for block in pages[0].blocks] == [0.9]
+    assert [block.id for block in pages[0].blocks] == ["md-0000-heading"]
+    assert pages[0].diagnostics[0].level is DiagnosticLevel.INFO
+
+
+def test_text_extract_configured_plain_stamps_plain(monkeypatch: pytest.MonkeyPatch) -> None:
+    register_text_classifier_provider("stub-text-kind-plain", lambda spec: _StubTextClassifier((TextKind.PLAIN, 1.0)))
+    monkeypatch.setenv("PARSECRAFT_JUDGE_MODEL", "stub-text-kind-plain/model")
+    pages = text_module.extract_text_pages(_source(b"just words"), b"just words")
+    assert [block.kind for block in pages[0].blocks] == [ChunkKind.PARAGRAPH]
+    assert [block.metadata.get("detected_kind") for block in pages[0].blocks] == ["plain"]
+    assert [block.confidence for block in pages[0].blocks] == [1.0]
+
+
+def test_text_extract_broken_spec_falls_back_with_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PARSECRAFT_JUDGE_MODEL", "no-such-provider-9p63/model")
+    pages = text_module.extract_text_pages(_source(b"hello"), b"hello")
+    assert pages[0].blocks == paragraph_chunks("native-text", 1, "hello")
+    (diagnostic,) = pages[0].diagnostics
+    assert diagnostic.level is DiagnosticLevel.WARNING
+    assert diagnostic.code == "text-kind"
+    assert "unusable" in diagnostic.message
+
+
+def test_text_extract_parse_failure_falls_back_with_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    register_text_classifier_provider("stub-text-kind-boom", lambda spec: _StubTextClassifier((TextKind.MARKDOWN_LIKE, 1.0)))
+    monkeypatch.setenv("PARSECRAFT_JUDGE_MODEL", "stub-text-kind-boom/model")
+
+    def _boom(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("parse exploded")
+
+    monkeypatch.setattr(text_module, "parse_ambiguous_text", _boom)
+    pages = text_module.extract_text_pages(_source(b"# Hi"), b"# Hi")
+    assert pages[0].blocks == paragraph_chunks("native-text", 1, "# Hi")
+    (diagnostic,) = pages[0].diagnostics
+    assert diagnostic.level is DiagnosticLevel.WARNING
+    assert "parse failed" in diagnostic.message
+
+
+def test_text_kind_classification_import_pulls_no_cli() -> None:
+    # The subprocess must import THIS checkout: the ambient interpreter
+    # resolves parsecraft to the shared checkout, which lacks new modules.
+    src_dir = Path(__file__).resolve().parents[2] / "src"
+    env = {**os.environ, "PYTHONPATH": str(src_dir)}
+    script = """
+import sys
+
+import parsecraft.adapters.classification
+
+cli = sorted(m for m in sys.modules if m == "parsecraft.cli" or m.startswith("parsecraft.cli."))
+assert not cli, f"cli pulled: {cli}"
+print("CLASSIFICATION_IMPORTS_OK")
+"""
+    proc = subprocess.run(  # noqa: S603 - trusted local interpreter, fixed argv, no shell
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "CLASSIFICATION_IMPORTS_OK" in proc.stdout
+
+
+def test_media_type_for_ignores_detected_kind_even_for_markdown_bytes() -> None:
+    assert media_type_for(Path("note.txt")) == "text/plain"
+    pages = text_module.extract_text_pages(_source(b"# Hi\n\npara"), b"# Hi\n\npara")
+    assert all(block.kind is ChunkKind.PARAGRAPH for block in pages[0].blocks)
+    assert all("detected_kind" not in block.metadata for block in pages[0].blocks)
 
 
 # ── native-markdown ────────────────────────────────────────────────────────

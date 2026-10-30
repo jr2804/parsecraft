@@ -33,6 +33,14 @@ is now reserved for backends with no third-party runtime dep.
   and is never lifted into metadata (consumer contract: the consumer keys
   data rows by column name). `native-text` carries `rows=None` — its
   extraction is plain text with no cheap grid structure.
+- `native-text` classifies only when a text-kind classifier resolves
+  (pc-9p6.3): unconfigured runs emit bare `paragraph_chunks` (no verdict key,
+  `confidence=None`, byte-identical to before); a resolved classifier stamps
+  `detected_kind` plus real confidence via `parse_ambiguous_text`.
+  Resolution or parse failures fall back to the bare path with a WARNING
+  `text-kind` diagnostic — ingestion is never blocked. Extension routing in
+  `media_type_for` is untouched: a classifier only improves structure within
+  plain text, never refuses it.
 - Entry modules stay light: optional/heavy deps (none here — see
   `backends/pymupdf/AGENTS.md` for the pymupdf import boundaries). No inline
   imports (`pyreorder` hoists them).
