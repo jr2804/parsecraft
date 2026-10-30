@@ -93,6 +93,19 @@ in a skill or `docs/`, linked once.
   below for archiving completed plans.
 - **No TODO lists.** Use issue trackers or beads.
 
+### Bead shape
+
+- **One epic per family**, the pieces as children (`bd update <child> --parent
+  <epic>`). A parentless open bead is a family that was never named.
+- **A closed parent may not keep an open child.**
+- **Parking takes both**: `-s deferred` AND `--parent <parked-epic>` — either
+  alone fails (deferred hides the reason, parent stays in `bd ready`).
+- **Never block a child on its own epic** — the epic closes when its children
+  close, making every close need `--force`.
+- **Reparenting over an existing edge fails**: `bd dep remove` first.
+- **`bd show` renders Markdown** — forward-slash paths in bead bodies.
+- **Closed is closed**: file a follow-up, never rewrite a close reason.
+
 ## Implementation Plans
 
 - Plans, refactoring plans, and design docs go in `.agents/plans/<feature>/`
