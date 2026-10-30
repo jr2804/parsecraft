@@ -57,7 +57,7 @@ from parsecraft.pipeline import (
     pipeline_failure,
 )
 from parsecraft.pipeline.analysis import apply_classifier
-from parsecraft.pipeline.executor import ALL_PASSES_FAILED_CODE, RequestOptions, _cache_key, _exception_failure
+from parsecraft.pipeline.executor import ALL_PASSES_FAILED_CODE, RequestOptions, _bounds_segment, _cache_key, _exception_failure
 from parsecraft.routing import DeterministicJudge, Intent, OcrFacts, RoutingConstraints, RoutingError, RoutingPreference
 
 PRODUCED = datetime(2026, 9, 27, tzinfo=UTC)
@@ -977,6 +977,128 @@ def test_cache_miss_on_changed_judge(monkeypatch: pytest.MonkeyPatch, tmp_path: 
         cache=store,
     )
     assert len(calls) == 2  # judge identity is part of the key
+
+
+def test_cache_miss_on_changed_max_output_chars(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A bounded run must not reuse bytes produced under different bounds (pc-9p6.7)."""
+    registry = make_registry(monkeypatch)
+    calls = add_stub(registry, make_descriptor("native-a"))
+    store = ConversionCache(root=tmp_path / "conversions")
+    source = make_source()
+
+    _execute_bounded(registry, store, source)
+    assert len(calls) == 1
+    _execute_bounded(registry, store, source, options=RequestOptions(max_output_chars=10**6))
+    assert len(calls) == 2  # different bound ⇒ different key (removing the knob from the material would hit here)
+    _execute_bounded(registry, store, source, options=RequestOptions(max_output_chars=10**6))
+    assert len(calls) == 2  # same bound hits
+
+
+def test_cache_miss_on_changed_max_context_tokens(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """max_context_tokens changes generation, so it changes the key (pc-9p6.7)."""
+    registry = make_registry(monkeypatch)
+    calls = add_stub(registry, make_descriptor("native-a"))
+    store = ConversionCache(root=tmp_path / "conversions")
+    source = make_source()
+
+    _execute_bounded(registry, store, source, options=RequestOptions(max_context_tokens=4000))
+    assert len(calls) == 1
+    _execute_bounded(registry, store, source, options=RequestOptions(max_context_tokens=8000))
+    assert len(calls) == 2
+    _execute_bounded(registry, store, source, options=RequestOptions(max_context_tokens=8000))
+    assert len(calls) == 2  # same bound hits
+
+
+def test_cache_hit_on_timeout_s_only_difference(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A deadline changes how long we wait, not what a success contains (pc-9p6.7)."""
+    registry = make_registry(monkeypatch)
+    calls = add_stub(registry, make_descriptor("native-a"))
+    store = ConversionCache(root=tmp_path / "conversions")
+    source = make_source()
+
+    _execute_bounded(registry, store, source)
+    assert len(calls) == 1
+    _execute_bounded(registry, store, source, options=RequestOptions(timeout_s=30.0))
+    assert len(calls) == 1  # timeout_s is OUT of the key by ruling
+
+
+def test_cache_miss_on_changed_region_ids(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """region_ids is keyed by intent: a future consumer must not inherit a hit (pc-9p6.7)."""
+    registry = make_registry(monkeypatch)
+    calls = add_stub(registry, make_descriptor("native-a"))
+    store = ConversionCache(root=tmp_path / "conversions")
+    source = make_source()
+
+    _execute_bounded(registry, store, source, options=RequestOptions(region_ids=frozenset({"a"})))
+    assert len(calls) == 1
+    _execute_bounded(registry, store, source, options=RequestOptions(region_ids=frozenset({"b"})))
+    assert len(calls) == 2
+    _execute_bounded(registry, store, source, options=RequestOptions(region_ids=frozenset({"b"})))
+    assert len(calls) == 2
+
+
+def _execute_bounded(registry: BackendRegistry, store: ConversionCache, source: SourceDocument, **kwargs: Any) -> None:
+    """One cached execute with request bounds; the stub ignores them (key-only test)."""
+    execute(make_analysis(1), registry, make_constraints(), source, produced_at=PRODUCED, cache=store, **kwargs)
+
+
+def test_uncached_default_digest_is_pinned(monkeypatch: pytest.MonkeyPatch) -> None:
+    """RequestOptions() produces today's exact digest — pin the hex, not self-equality."""
+    registry = make_registry(monkeypatch)
+    add_stub(registry, make_descriptor("native-a"))
+    digest = _cache_key(make_source(), registry, make_constraints(), None)
+    assert digest == "26194e6e5cd75ed3e5b297ce3e6507a4c959da0c50cd68b3ab19136b3fa02565"
+
+
+def test_empty_bounds_segment_is_omitted_from_the_key() -> None:
+    """A defaulted request keys exactly as it did before bounds were keyed.
+
+    Without the omission, the next person re-adds ``"{}"`` unconditionally
+    and silently invalidates every existing entry (cf. pc-9p6.7 review).
+    """
+    assert _bounds_segment(None) == "{}"
+    assert _bounds_segment(RequestOptions()) == "{}"
+
+
+def test_cancelled_run_stores_nothing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Cancellation is a control channel: a fully cancelled run leaves no cache entry."""
+
+    def _cancel_immediately(request: ConversionRequest, name: str) -> BackendResult:
+        assert request.cancellation is not None
+        assert request.cancellation()
+        return BackendResult(
+            backend=BackendRef(name=name, version=_VERSION),
+            pages=[],
+            failures=[
+                PassFailure(
+                    code=FailureCode.CANCELLED,
+                    pass_kind=PassKind.NATIVE,
+                    backend=name,
+                    backend_version=_VERSION,
+                    budget_s=0.0,
+                    elapsed_s=0.0,
+                    detail="cancelled before extraction",
+                    occurred_at=datetime.now(UTC),
+                )
+            ],
+            elapsed_s=0.0,
+        )
+
+    registry = make_registry(monkeypatch)
+    calls = add_stub(registry, make_descriptor("native-a"), convert_fn=_cancel_immediately)
+    store = ConversionCache(root=tmp_path / "conversions")
+    result = execute(
+        make_analysis(1),
+        registry,
+        make_constraints(),
+        make_source(),
+        produced_at=PRODUCED,
+        cache=store,
+        options=RequestOptions(cancellation=lambda: True),
+    )
+    assert len(calls) == 1  # dispatched once…
+    assert not store.root.exists()  # …and stored never
+    assert pipeline_failure(result.document) is not None
 
 
 def test_cache_hit_survives_corrupt_entry(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

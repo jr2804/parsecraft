@@ -125,7 +125,7 @@ def execute(
     each ``ConversionRequest``.
     """
     plan = plan_route(analysis, registry.list_backends(), constraints, judge)
-    key = _cache_key(source, registry, constraints, judge, ocr_classifier, text_classifier) if cache is not None else None
+    key = _cache_key(source, registry, constraints, judge, ocr_classifier, text_classifier, options) if cache is not None else None
     if cache is not None and key is not None:
         cached = cache.get(key)
         if cached is not None and pipeline_failure(cached) is None:
@@ -210,8 +210,9 @@ def _cache_key(
     judge: RoutingJudge | None,
     ocr_classifier: str | None = None,
     text_classifier: str | None = None,
+    options: RequestOptions | None = None,
 ) -> str:
-    """sha256 over source bytes, registry fingerprint, constraints, judge id, classifier specs.
+    """sha256 over source bytes, registry fingerprint, constraints, judge id, classifier specs, request bounds.
 
     The two classifier segments are verbatim spec strings (``"none"`` when absent),
     keyed by configuration rather than resolved identity: a resolved instance does
@@ -230,6 +231,10 @@ def _cache_key(
     source_hash = hashlib.sha256(source_bytes).hexdigest()
     effective_judge = judge if judge is not None else DeterministicJudge()
     judge_id = judge_cache_identity(effective_judge)
+    # The bounds segment is omitted when empty: a defaulted request keys
+    # exactly as it did before bounds were keyed (6-element material), so no
+    # existing cache entry is invalidated by the mere presence of the seam.
+    bounds = _bounds_segment(options)
     material = json.dumps(
         [
             source_hash,
@@ -238,6 +243,7 @@ def _cache_key(
             judge_id,
             _classifier_segment(ocr_classifier),
             _classifier_segment(text_classifier),
+            *([bounds] if bounds != "{}" else []),
         ],
         separators=(",", ":"),
     )
@@ -247,6 +253,36 @@ def _cache_key(
 def _classifier_segment(spec: str | None) -> str:
     """One key element per classifier: the stripped spec, ``"none"`` when absent."""
     return spec.strip() if spec and spec.strip() else "none"
+
+
+def _bounds_segment(options: RequestOptions | None) -> str:
+    """One canonical key element for the request bounds that change the bytes.
+
+    Only knobs that change the produced document enter the material:
+    ``max_output_chars`` truncates pages, ``max_context_tokens`` changes
+    generation, ``region_ids`` scopes extraction by intent. ``timeout_s`` is
+    deliberately OUT: a deadline changes how long we wait, not what a success
+    contains — a cached artifact from a longer deadline is still valid output,
+    and keying it would invalidate every entry whenever an operator tightened
+    a deadline. ``cancellation`` is a control channel, not an input: a
+    cancelled run stores nothing (a full cancel leaves no blocks, and
+    ``pipeline_failure`` keeps it out of the cache), so it can never poison a
+    later hit.
+    Only non-default values enter the segment, and an empty segment is
+    omitted from the key material entirely — so ``RequestOptions()`` keys
+    exactly as it did before bounds were keyed (today's digest bit-for-bit),
+    and no existing cache entry is invalidated by the mere presence of the seam.
+    """
+    active = options if options is not None else RequestOptions()
+    defaults = RequestOptions()
+    material: dict[str, object] = {}
+    if active.max_output_chars != defaults.max_output_chars:
+        material["max_output_chars"] = active.max_output_chars
+    if active.max_context_tokens != defaults.max_context_tokens:
+        material["max_context_tokens"] = active.max_context_tokens
+    if active.region_ids != defaults.region_ids:
+        material["region_ids"] = sorted(active.region_ids)
+    return json.dumps(material, sort_keys=True, separators=(",", ":"))
 
 
 def _canonical_constraints(constraints: RoutingConstraints) -> str:
