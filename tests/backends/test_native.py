@@ -1074,6 +1074,12 @@ def test_csv_markdown_table_renders_empty_grid_empty() -> None:
         ("a\\|b", "a\\\\\\|b"),
         ("x\ny", "x<br />y"),
         ("x\r\ny", "x<br />y"),
+        ("x\ry", "x<br />y"),
+        ("AT&T", "AT&amp;T"),
+        ("a<b", "a&lt;b"),
+        ("a>b", "a&gt;b"),
+        ("&amp;", "&amp;amp;"),
+        ("a<br />b", "a&lt;br /&gt;b"),
     ],
 )
 def test_csv_escape_cell_unit(cell: str, expected: str) -> None:
@@ -1099,19 +1105,35 @@ def test_csv_backslash_cannot_smuggle_column_break() -> None:
     assert table.content == "| a | b |\n| --- | --- |\n| a\\\\\\|b | 2 |"
 
 
-def test_csv_literal_break_markup_not_reinterpreted() -> None:
-    """Literal ``<br />``/HTML-like text passes through unchanged (pc-9p6.13).
+def test_csv_literal_markup_escaped_not_reinterpreted() -> None:
+    """Literal ``<br />``/``<b>`` become entities; only real breaks use ``<br />``.
 
-    The marker is ambiguous by design: content cannot tell a literal break
-    from an escaped newline — rows is the literal record, content the lossy
-    projection.
+    Entity escaping runs before break insertion, so a literal break marker
+    renders as visible text — never as a break, never confused with one.
     """
     backend = csv_module.factory(_config("native-csv"))
     content = b'a,b\n"a<br />b","<b>x|y</b>"\n'
     result = backend.convert(_csv_request(content, uri="sample.csv"))
     (table,) = result.pages[0].blocks
     assert table.rows == (("a", "b"), ("a<br />b", "<b>x|y</b>"))
-    assert table.content == "| a | b |\n| --- | --- |\n| a<br />b | <b>x\\|y</b> |"
+    assert table.content == ("| a | b |\n| --- | --- |\n| a&lt;br /&gt;b | &lt;b&gt;x\\|y&lt;/b&gt; |")
+
+
+@pytest.mark.parametrize(
+    ("raw", "cell"),
+    [
+        (b'a,b\n"x\ny",2\n', "x\ny"),
+        (b'a,b\n"x\r\ny",2\n', "x\r\ny"),
+        (b'a,b\n"x\ry",2\n', "x\ry"),
+    ],
+)
+def test_csv_all_newline_flavours_stay_on_one_physical_line(raw: bytes, cell: str) -> None:
+    """LF, CRLF, and lone CR all become ``<br />``; rows keep the real break."""
+    backend = csv_module.factory(_config("native-csv"))
+    result = backend.convert(_csv_request(raw, uri="sample.csv"))
+    (table,) = result.pages[0].blocks
+    assert table.rows == (("a", "b"), (cell, "2"))
+    assert table.content == "| a | b |\n| --- | --- |\n| x<br />y | 2 |"
 
 
 def test_csv_multiline_cell_stays_on_one_physical_line() -> None:

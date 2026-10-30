@@ -247,18 +247,24 @@ def _markdown_table(rows: tuple[tuple[str, ...], ...]) -> str:
 
 
 def _escape_cell(cell: str) -> str:
-    r"""Cell text safe for a GFM table: pipes/backslashes escaped, one line.
+    r"""Cell text safe for a GFM table: entities, pipes/backslashes, one line.
 
-    Backslashes go first so a literal ``a\\|b`` cannot smuggle a column
-    break through the pipe escape; interior newlines become ``<br />`` so one
-    logical row stays one physical line. Identity on plain cells, so simple
-    tables render exactly as before.
+    ``&``/``<``/``>`` become entities first, so literal markup (``<br />``,
+    ``<b>``) renders as visible text and can never coincide with the ``<br />``
+    inserted below for real line breaks. Backslashes go before pipes so a
+    literal ``a\\|b`` cannot smuggle a column break through the pipe escape.
+    CR, LF, and CRLF all become ``<br />`` (markdown-it treats a lone CR as a
+    newline). Identity on plain cells, so simple tables render exactly as
+    before.
 
-    Known limit (pc-9p6.13): a literal ``<br />`` already in a cell is
-    indistinguishable in ``content`` from an escaped newline — the projection
-    is lossy by design, ``rows`` carries the literal text.
+    Known limit (pc-9p6.13): other inline metacharacters (``*``, backtick,
+    ``_``, links) are NOT escaped — they affect inline formatting, never table
+    structure. The projection is lossy by design; ``rows`` is the literal
+    record.
     """
-    return cell.replace("\\", "\\\\").replace("|", "\\|").replace("\r\n", "\n").replace("\n", "<br />")
+    text = cell.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    text = text.replace("\\", "\\\\").replace("|", "\\|")
+    return text.replace("\r\n", "\n").replace("\n", "<br />").replace("\r", "<br />")
 
 
 factory: BackendFactory = _CsvFactory()
