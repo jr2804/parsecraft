@@ -224,7 +224,7 @@ def test_text_extract_malformed_spec_stays_warning(monkeypatch: pytest.MonkeyPat
     assert "unusable" in diagnostic.message
 
 
-def test_text_extract_parse_failure_falls_back_with_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_text_extract_parse_failure_falls_back_quietly(monkeypatch: pytest.MonkeyPatch) -> None:
     register_text_classifier_provider("stub-text-kind-boom", lambda spec: _StubTextClassifier((TextKind.MARKDOWN_LIKE, 1.0)))
     monkeypatch.setenv("PARSECRAFT_JUDGE_MODEL", "stub-text-kind-boom/model")
 
