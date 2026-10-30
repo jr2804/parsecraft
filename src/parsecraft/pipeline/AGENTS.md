@@ -56,6 +56,15 @@ a `DocumentResult` with `TraceEntry` records — no silent drops.
   Marked with a `ponytail:` comment at the creation site.
 - Constraints come from outside (pc-4's `environment` package via
   `constraints_from_environment`); `execute` never builds its own.
+- Request seam (pc-c54): `execute` accepts keyword-only
+  `options: RequestOptions | None` (caller preferences only) and threads it
+  to `_execute_group`, which builds each `ConversionRequest` as
+  `ConversionRequest(source=source, page_range=page_range,
+  **options.model_dump())`. `source`/`page_range` stay executor-owned routing
+  facts, never caller knobs; an empty `RequestOptions` builds byte-identical
+  requests to the old two-argument call. `region_ids` is carried with zero
+  backend consumers (deleting the declared field is a separate decision).
+  Request bounds are NOT part of the conversion-cache key (separate decision).
 - Heavy imports happen only inside `registry.create` — the instantiation
   boundary; tests isolate the registry by stubbing entry-point discovery.
 - Conversion-cache identity (pc-9p6.4): `_cache_key` hashes source bytes +
