@@ -323,7 +323,9 @@ def test_convert_omits_heading_level_on_body_text(docling_stub: _State) -> None:
 
 
 def test_docx_headings_fixture_carries_title_deep_headings_and_body() -> None:
-    styles = [paragraph.style.name for paragraph in importlib.import_module("docx").Document(io.BytesIO(docx_headings_bytes())).paragraphs]
+    document = importlib.import_module("docx").Document(io.BytesIO(docx_headings_bytes()))
+    assert document.paragraphs
+    styles = [paragraph.style.name if paragraph.style is not None else None for paragraph in document.paragraphs]
     assert styles == ["Title", "Heading 1", "Normal", "Heading 2", "Heading 3", "Heading 9"]
 
 
