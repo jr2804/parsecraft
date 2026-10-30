@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import sys
 import types
@@ -420,14 +421,84 @@ def test_markdown_like_matches_parse_markdown_plus_stamps() -> None:
     assert any(diagnostic.code == TEXT_KIND_CODE for diagnostic in result.pages[0].diagnostics)
 
 
-def test_data_like_parses_plain_with_the_verdict_preserved() -> None:
-    """DATA_LIKE routes to the plain path until delimited ingestion lands."""
-    result = parse_ambiguous_text("a,b\n1,2\n", "mem://x", classifier=_StubClassifier((TextKind.DATA_LIKE, 1.0)))
+def test_data_like_routes_to_the_real_csv_table() -> None:
+    """DATA_LIKE goes through the native-csv parser: TABLE IR, source envelope."""
+    stub = _StubClassifier((TextKind.DATA_LIKE, 1.0))
+    result = parse_ambiguous_text("a,b\n1,2\n", "file:///notes.txt", classifier=stub)
+
+    assert stub.texts == ["a,b\n1,2\n"]
+    assert len(result.pages) == 1
+    assert len(result.pages[0].blocks) == 1
+    chunk = result.pages[0].blocks[0]
+    assert chunk.kind.name == "TABLE"
+    assert chunk.id == "native-csv-1-b0"
+    assert chunk.rows == (("a", "b"), ("1", "2"))
+    assert chunk.content == "| a | b |\n| --- | --- |\n| 1 | 2 |"
+    assert chunk.metadata["backend"] == "native-csv"
+    assert chunk.metadata["delimiter"] == ","
+    assert chunk.metadata[DETECTED_KIND_KEY] == TextKind.DATA_LIKE.value
+    assert chunk.confidence == 1.0
+    assert result.metadata.format == "text/plain"
+    assert result.metadata.source_uri == "file:///notes.txt"
+    assert any(diagnostic.code == TEXT_KIND_CODE and "parser: csv" in diagnostic.message for diagnostic in result.pages[0].diagnostics)
+
+
+def test_data_like_sniffs_the_delimiter() -> None:
+    """The csv backend's own sniff decides — semicolons stay one row, not one column."""
+    result = parse_ambiguous_text("a;b\n1;2\n", "mem://x", classifier=_StubClassifier((TextKind.DATA_LIKE, 1.0)))
+
+    chunk = result.pages[0].blocks[0]
+    assert chunk.kind.name == "TABLE"
+    assert chunk.rows == (("a", "b"), ("1", "2"))
+    assert chunk.metadata["delimiter"] == ";"
+    assert chunk.metadata[DETECTED_KIND_KEY] == TextKind.DATA_LIKE.value
+
+
+def test_data_like_sniff_fallback_parses_comma() -> None:
+    """No consistent delimiter: the csv backend's comma fallback + INFO, still TABLE."""
+    result = parse_ambiguous_text("alpha\nbeta\n", "mem://x", classifier=_StubClassifier((TextKind.DATA_LIKE, 1.0)))
+
+    chunk = result.pages[0].blocks[0]
+    assert chunk.kind.name == "TABLE"
+    assert chunk.rows == (("alpha",), ("beta",))
+    assert chunk.metadata["delimiter"] == ","
+    assert any(diagnostic.code == "csv-sniff-fallback" for diagnostic in result.pages[0].diagnostics)
+
+
+def test_data_like_csv_failure_falls_back_to_plain(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A csv-path failure parses plain, never raises — the verdict is still stamped."""
+
+    def _boom(source: object, data: bytes) -> list[object]:
+        raise RuntimeError("csv down")
+
+    monkeypatch.setattr("parsecraft.adapters.classification.extract_csv_pages", _boom)
+    result = parse_ambiguous_text("a,b\n1,2\n", "mem://x", classifier=_StubClassifier((TextKind.DATA_LIKE, 0.8)))
 
     assert all(block.kind.name == "PARAGRAPH" for block in result.pages[0].blocks)
-    assert all("TABLE" not in block.kind.name for block in result.pages[0].blocks)
     for chunk in result.pages[0].blocks:
         assert chunk.metadata[DETECTED_KIND_KEY] == TextKind.DATA_LIKE.value
+        assert chunk.confidence == 0.8
+    assert any(diagnostic.code == TEXT_KIND_CODE and "parser: plain" in diagnostic.message for diagnostic in result.pages[0].diagnostics)
+
+
+def test_data_like_keeps_source_identity() -> None:
+    """Envelope agrees with the plain path: hash over bytes, source format, forwarded fields."""
+    produced = datetime(2026, 10, 30, tzinfo=UTC)
+    text = "a,b\n1,2\n"
+    result = parse_ambiguous_text(
+        text,
+        "file:///notes.txt",
+        classifier=_StubClassifier((TextKind.DATA_LIKE, 1.0)),
+        title="notes",
+        package_version="9.9.9",
+        produced_at=produced,
+    )
+
+    assert result.metadata.source_hash == hashlib.sha256(text.encode("utf-8")).hexdigest()
+    assert result.metadata.format == "text/plain"
+    assert result.metadata.title == "notes"
+    assert result.metadata.package_version == "9.9.9"
+    assert result.metadata.produced_at == produced
 
 
 def test_markdown_branch_keeps_the_source_format() -> None:

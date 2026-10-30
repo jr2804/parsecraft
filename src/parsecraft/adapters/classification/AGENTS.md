@@ -17,11 +17,13 @@ else the plain paragraph path).
 ## Local Contracts
 
 - Verdicts are the closed `TextKind` set (`markdown-like`/`data-like`/`plain`).
+- `MARKDOWN_LIKE` → `parse_markdown` (source format forced `text/plain`);
 - One model call per file, full text untruncated; blank input costs zero calls.
 - Any failure degrades to `(PLAIN, 0.0)` — never out of the pipeline.
 - The verdict lands on chunk `detected_kind` metadata, the first-class
   `confidence` field (never a same-named metadata key), and a `text-kind`
-  page diagnostic; `DATA_LIKE` parses plain until delimited ingestion lands
+  page diagnostic; `DATA_LIKE` → the native-csv parser (TABLE IR, sniffed
+  delimiter, csv diagnostics preserved; csv-path failure falls back to plain)
   (verdict preserved for it).
 - `metadata.format` always stays the source type (`text/plain` on both
   branches) — the verdict must never re-key identical bytes.

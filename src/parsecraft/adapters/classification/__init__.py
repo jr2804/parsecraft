@@ -13,9 +13,11 @@ pure function of the whole bytes. No sampling: the verdict mapping is a pure
 function of the model's answer, ties resolve to PLAIN, and identical bytes
 with an identical model answer yield the identical verdict every run.
 
-DATA_LIKE currently routes to the plain path: delimited ingestion belongs to
-its own bead, so this module records the verdict (chunk metadata +
-diagnostic) and parses plain. The verdict is preserved for that bead.
+DATA_LIKE routes to the real csv parser (:func:`extract_csv_pages` from the
+native-csv backend — stdlib csv, sniffed delimiter, TABLE IR), preserving the
+verdict in chunk metadata + diagnostic. The csv path never blocks: a parse
+failure falls back to plain, and an empty grid yields the csv backend's own
+no-chunk page.
 """
 
 from __future__ import annotations
@@ -33,6 +35,8 @@ from pydantic import BaseModel, Field, ValidationError
 from parsecraft.adapters.errors import AdapterError
 from parsecraft.adapters.markdown import parse_markdown
 from parsecraft.backends.native._common import paragraph_chunks
+from parsecraft.backends.native.csv import extract_csv_pages
+from parsecraft.backends.protocol import SourceDocument
 from parsecraft.ir.models import (
     Diagnostic,
     DiagnosticLevel,
@@ -51,6 +55,7 @@ DETECTED_KIND_KEY = "detected_kind"
 
 #: Parser names recorded in the verdict diagnostic.
 _MARKDOWN_PARSER = "markdown"
+_CSV_PARSER = "csv"
 _PLAIN_PARSER = "plain"
 
 #: Lazy default module path for a provider's loader (export: ``load_text_classifier``).
@@ -188,14 +193,14 @@ def parse_ambiguous_text(
 ) -> DocumentResult:
     """Parse an ambiguous blob: one classification, then the matching parser.
 
-    MARKDOWN_LIKE goes through :func:`parse_markdown`; DATA_LIKE and PLAIN go
-    through the plain paragraph path (delimited ingestion is its own bead —
-    the DATA_LIKE verdict is preserved in metadata for it). ``title``,
-    ``package_version`` and ``produced_at`` reach both parsers, so the two
-    verdict paths agree on document identity. Every chunk gains
+    MARKDOWN_LIKE goes through :func:`parse_markdown`; DATA_LIKE goes through
+    the real csv parser (:func:`extract_csv_pages` — stdlib csv, TABLE IR);
+    PLAIN goes through the plain paragraph path. ``title``,
+    ``package_version`` and ``produced_at`` reach every parser, so all verdict
+    paths agree on document identity. Every chunk gains
     ``detected_kind`` metadata and the ``confidence`` field, and every page a
-    ``text-kind`` diagnostic. A classifier failure yields the plain path, not
-    an exception.
+    ``text-kind`` diagnostic. A classifier failure — or a csv-path failure —
+    yields the plain path, not an exception.
     """
     kind, confidence = classify_text_kind(text, classifier=classifier)
     if kind is TextKind.MARKDOWN_LIKE:
@@ -205,6 +210,15 @@ def parse_ambiguous_text(
         # differently across runs (pc-2: consumer parse-cache identity).
         result = result.model_copy(update={"metadata": result.metadata.model_copy(update={"format": "text/plain"})})
         parser = _MARKDOWN_PARSER
+    elif kind is TextKind.DATA_LIKE:
+        try:
+            result = _csv_document(text, source_uri, title=title, package_version=package_version, produced_at=produced_at)
+            parser = _CSV_PARSER
+        except Exception:
+            # Conservative fallback: the csv path never blocks ingestion — a
+            # failure here parses plain, exactly like a classifier failure.
+            result = _plain_document(text, source_uri, title=title, package_version=package_version, produced_at=produced_at)
+            parser = _PLAIN_PARSER
     else:
         result = _plain_document(text, source_uri, title=title, package_version=package_version, produced_at=produced_at)
         parser = _PLAIN_PARSER
@@ -350,6 +364,28 @@ def _map_verdict(answer: str) -> tuple[TextKind, float]:
     return (TextKind.PLAIN, 0.0)
 
 
+def _csv_document(
+    text: str,
+    source_uri: str,
+    *,
+    title: str | None = None,
+    package_version: str = "0.0.0",
+    produced_at: datetime | None = None,
+) -> DocumentResult:
+    """DATA_LIKE through the real csv parser: TABLE IR, source envelope.
+
+    The text is handed to the native-csv backend's own extract function with
+    the source declared ``text/plain`` — extension routing already decided
+    this blob is not ``.csv``, so the delimiter is sniffed, never forced.
+    Chunk shape, ids (``native-csv-1-b0``), and csv diagnostics are the csv
+    backend's own; document identity (source envelope) is this module's.
+    """
+    from_source = SourceDocument(uri=source_uri, media_type="text/plain")
+    pages = extract_csv_pages(from_source, text.encode("utf-8"))
+    metadata = _envelope(text, source_uri, len(pages), title=title, package_version=package_version, produced_at=produced_at)
+    return DocumentResult(metadata=metadata, pages=pages)
+
+
 def _plain_document(
     text: str,
     source_uri: str,
@@ -359,20 +395,37 @@ def _plain_document(
     produced_at: datetime | None = None,
 ) -> DocumentResult:
     """One page of paragraph chunks split on blank lines (the native text shape)."""
-    produced = produced_at if produced_at is not None else datetime.now(UTC)
     # The native-text shape, shared not copied: chunk ids stay native-text-* so
     # a .txt document reads identically with or without a classifier (pc-2).
     blocks = paragraph_chunks("native-text", 1, text)
-    metadata = DocumentMetadata(
+    metadata = _envelope(text, source_uri, 1, title=title, package_version=package_version, produced_at=produced_at)
+    return DocumentResult(metadata=metadata, pages=[PageResult(page_number=1, blocks=blocks)])
+
+
+def _envelope(
+    text: str,
+    source_uri: str,
+    page_count: int,
+    *,
+    title: str | None = None,
+    package_version: str = "0.0.0",
+    produced_at: datetime | None = None,
+) -> DocumentMetadata:
+    """Source-identity envelope shared by the plain and csv verdict paths.
+
+    ``format`` is always the SOURCE format (``text/plain``) — never the chosen
+    parser — so identical bytes never key differently across runs.
+    """
+    produced = produced_at if produced_at is not None else datetime.now(UTC)
+    return DocumentMetadata(
         source_uri=source_uri,
         source_hash=hashlib.sha256(text.encode("utf-8")).hexdigest(),
         format="text/plain",
-        page_count=1,
+        page_count=page_count,
         title=title,
         produced_at=produced,
         package_version=package_version,
     )
-    return DocumentResult(metadata=metadata, pages=[PageResult(page_number=1, blocks=blocks)])
 
 
 def _stamp(pages: list[PageResult], kind: TextKind, confidence: float, parser: str) -> None:
