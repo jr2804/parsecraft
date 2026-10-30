@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from markdown_it import MarkdownIt
 
 from parsecraft.adapters.classification import TextKind, register_text_classifier_provider
 from parsecraft.backends import pymupdf as pymupdf_module
@@ -1134,6 +1135,21 @@ def test_csv_all_newline_flavours_stay_on_one_physical_line(raw: bytes, cell: st
     (table,) = result.pages[0].blocks
     assert table.rows == (("a", "b"), (cell, "2"))
     assert table.content == "| a | b |\n| --- | --- |\n| x<br />y | 2 |"
+
+
+def test_csv_projection_renders_distinct_breaks_in_markdown_it() -> None:
+    """Browser-facing: literal markup escaped, real breaks break (pc-9p6.13)."""
+    backend = csv_module.factory(_config("native-csv"))
+    content = b'h1,h2\n"a<br />b","x\ny"\n"<b>t</b>","&amp;"\n'
+    result = backend.convert(_csv_request(content, uri="sample.csv"))
+    (table,) = result.pages[0].blocks
+    assert table.rows == (("h1", "h2"), ("a<br />b", "x\ny"), ("<b>t</b>", "&amp;"))
+    rendered = MarkdownIt().enable("table").render(table.content)
+    assert "<td>a&lt;br /&gt;b</td>" in rendered
+    assert "<td>x<br />y</td>" in rendered
+    assert "<td>&lt;b&gt;t&lt;/b&gt;</td>" in rendered
+    assert "<td>&amp;amp;</td>" in rendered
+    assert rendered.count("<td") == 4
 
 
 def test_csv_multiline_cell_stays_on_one_physical_line() -> None:
