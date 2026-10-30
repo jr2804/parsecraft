@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _dist_version
 from time import monotonic
 from typing import Protocol, get_origin
+
+from pydantic import BaseModel, Field
 
 from parsecraft.backends.errors import BackendError, DependencyUnavailableError
 from parsecraft.backends.protocol import (
@@ -69,6 +71,22 @@ class CacheProtocol(Protocol):
         ...
 
 
+class RequestOptions(BaseModel):
+    """Caller-supplied per-request knobs; the executor merges them with routing facts.
+
+    Carries ONLY caller preferences — ``source`` and ``page_range`` stay
+    executor-owned (routing facts, not preferences) and are merged at the
+    ``ConversionRequest`` build site. An empty instance builds byte-identical
+    requests to today (acceptance: ``model_dump()`` equality).
+    """
+
+    timeout_s: float | None = Field(default=None, gt=0)
+    cancellation: Callable[[], bool] | None = None
+    max_output_chars: int | None = Field(default=None, gt=0)
+    max_context_tokens: int | None = Field(default=None, gt=0)
+    region_ids: frozenset[str] = Field(default_factory=frozenset)
+
+
 def execute(
     analysis: AnalysisResult,
     registry: BackendRegistry,
@@ -80,6 +98,7 @@ def execute(
     cache: CacheProtocol | None = None,
     ocr_classifier: str | None = None,
     text_classifier: str | None = None,
+    options: RequestOptions | None = None,
 ) -> PipelineResult:
     """Plan the route, dispatch contiguous groups, and aggregate the document.
 
@@ -99,6 +118,11 @@ def execute(
     ``DocumentResult`` without any dispatch (its ``groups`` record the planned
     groups with no attempts — nothing was executed); a miss executes and
     stores. All filesystem policy lives behind the injected protocol.
+
+    ``options`` (default ``None`` = byte-identical requests to today) carries
+    caller-supplied per-request bounds; ``_execute_group`` merges them with
+    the routing facts (``source``, ``page_range``) it alone knows when building
+    each ``ConversionRequest``.
     """
     plan = plan_route(analysis, registry.list_backends(), constraints, judge)
     key = _cache_key(source, registry, constraints, judge, ocr_classifier, text_classifier) if cache is not None else None
@@ -110,7 +134,7 @@ def execute(
     trace: list[TraceEntry] = []
     groups: list[PageGroup] = []
     for group_routes in _group_pages(plan.pages, registry):
-        group_pages, group_trace, group = _execute_group(group_routes, registry, source, analysis, constraints.offline, constraints.backend_options)
+        group_pages, group_trace, group = _execute_group(group_routes, registry, source, analysis, constraints.offline, constraints.backend_options, options)
         pages.extend(group_pages)
         trace.extend(group_trace)
         groups.append(group)
@@ -310,7 +334,9 @@ def _execute_group(
     analysis: AnalysisResult,
     offline: bool = False,
     backend_options: Mapping[str, Mapping[str, str | int | float | bool]] | None = None,
+    options: RequestOptions | None = None,
 ) -> tuple[list[PageResult], list[TraceEntry], PageGroup]:
+    request_options = options if options is not None else RequestOptions()
     page_numbers = [route.page_number for route in routes]
     intent = routes[0].intent
     candidates = routes[0].candidates
@@ -340,7 +366,13 @@ def _execute_group(
             entries.append(_trace(name, version, pass_kind, page_range, PassStatus.FAILED, failure=failure, elapsed_s=elapsed, settings=settings))
             continue
         try:
-            result = backend.convert(ConversionRequest(source=source, page_range=page_range))
+            # Wholesale by design (pc-c54): same-named future knobs flow
+            # without an executor change. Twin fields must be added together:
+            # the splat passes names through, so a RequestOptions field with
+            # no ConversionRequest twin must surface, not vanish (enforced via
+            # extra="forbid" on the protocol — pc-2 follow-up, forbidden file
+            # for this branch).
+            result = backend.convert(ConversionRequest(source=source, page_range=page_range, **request_options.model_dump()))
         except BackendError as exc:
             failure, elapsed = _exception_failure(name, version, pass_kind, exc, started)
             attempts.append(PassAttempt(backend=name, status=PassStatus.FAILED, failure=failure))

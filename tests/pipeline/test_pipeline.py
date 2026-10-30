@@ -57,7 +57,7 @@ from parsecraft.pipeline import (
     pipeline_failure,
 )
 from parsecraft.pipeline.analysis import apply_classifier
-from parsecraft.pipeline.executor import ALL_PASSES_FAILED_CODE, _cache_key, _exception_failure
+from parsecraft.pipeline.executor import ALL_PASSES_FAILED_CODE, RequestOptions, _cache_key, _exception_failure
 from parsecraft.routing import DeterministicJudge, Intent, OcrFacts, RoutingConstraints, RoutingError, RoutingPreference
 
 PRODUCED = datetime(2026, 9, 27, tzinfo=UTC)
@@ -1295,6 +1295,63 @@ def test_no_pages_returned_is_a_failure(monkeypatch: pytest.MonkeyPatch) -> None
     assert group.winner == "native-b"
     assert group.attempts[0].failure is not None
     assert "backend returned none" in group.attempts[0].failure.detail
+
+
+def test_execute_forwards_request_options_to_the_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A stub observes a non-default value for every forwarded knob (pc-c54.1)."""
+
+    def _not_cancelled() -> bool:
+        return False
+
+    registry = make_registry(monkeypatch)
+    calls = add_stub(registry, make_descriptor("native-a"))
+    options = RequestOptions(
+        timeout_s=30.0,
+        cancellation=_not_cancelled,
+        max_output_chars=1000,
+        max_context_tokens=500,
+        region_ids=frozenset({"title"}),
+    )
+    execute(make_analysis(3), registry, make_constraints(), make_source(), produced_at=PRODUCED, options=options)
+    (request,) = calls
+    assert request.page_range == PageRange(start=1, end=3)
+    assert request.timeout_s == 30.0
+    assert request.cancellation is _not_cancelled
+    assert request.max_output_chars == 1000
+    assert request.max_context_tokens == 500
+    assert request.region_ids == frozenset({"title"})
+
+
+def test_execute_without_options_builds_todays_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No options: page_range stays executor-owned, every knob at its default (pc-c54.2/3)."""
+    registry = make_registry(monkeypatch)
+    calls = add_stub(registry, make_descriptor("native-a"))
+    source = make_source()
+    execute(make_analysis(1), registry, make_constraints(), source, produced_at=PRODUCED)
+    (request,) = calls
+    assert request.page_range is None
+    assert request.model_dump() == ConversionRequest(source=source, page_range=None).model_dump()
+
+
+def test_execute_without_options_keeps_group_page_range(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Empty options: the executor-owned page_range still arrives (pc-c54.3)."""
+    registry = make_registry(monkeypatch)
+    calls = add_stub(registry, make_descriptor("native-a"))
+    execute(make_analysis(3), registry, make_constraints(), make_source(), produced_at=PRODUCED)
+    (request,) = calls
+    assert request.page_range == PageRange(start=1, end=3)
+    assert (request.timeout_s, request.cancellation, request.max_output_chars, request.max_context_tokens) == (None, None, None, None)
+    assert request.region_ids == frozenset()
+
+
+def test_empty_request_options_match_a_bare_request() -> None:
+    """Unit level: ``**RequestOptions().model_dump()`` adds nothing (pc-c54.2)."""
+    source = make_source()
+    page_range = PageRange(start=2, end=5)
+    assert (
+        ConversionRequest(source=source, page_range=page_range, **RequestOptions().model_dump()).model_dump()
+        == ConversionRequest(source=source, page_range=page_range).model_dump()
+    )
 
 
 def make_analysis(pages: int, *, blank_pages: tuple[int, ...] = ()) -> AnalysisResult:

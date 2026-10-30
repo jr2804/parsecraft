@@ -34,6 +34,7 @@ from parsecraft.pipeline.analysis import (
     choose_analyzer,
     media_type_for,
 )
+from parsecraft.pipeline.executor import RequestOptions
 from parsecraft.providers._endpoints import override_endpoint, select_judge_spec, select_text_classifier_spec
 from parsecraft.routing import (
     JudgeViolationError,
@@ -168,6 +169,9 @@ def convert_source(
             cache=cache,
             ocr_classifier=classifier,
             text_classifier=_text_classifier_spec(),
+            # The seam pc-7aw will fill: empty today, so requests stay
+            # byte-identical while the executor learns to carry knobs.
+            options=RequestOptions(),
         )
     except JudgeViolationError as exc:
         raise ConvertError(f"judge returned an invalid order: {exc}", exit_code=1) from exc
