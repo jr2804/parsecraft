@@ -199,6 +199,18 @@ worktrees and the main checkout both carry `.tmp-*` scratch files by convention
 (commit messages, bead bodies, probe scripts), and a blanket add commits them —
 it happened once and had to be amended out of history.
 
+**The release marker is a property of the HEAD commit message, not of a push.**
+`release.yml` tags, publishes and deploys unless the pushed head commit's full
+message contains `[skip release]` — it cannot see the individual commits behind a
+merge. Every merge commit and every non-merge commit intended for the tip must
+carry it. `mise run release-check` reads the same field the workflow reads and
+exits non-zero when a push of `main` would release; use
+`mise run release-check-intent` to declare a milestone. On 2026-10-30 eight merge
+commits and one fix commit reached `main` without the marker — nothing failed and
+nothing warned, so a user push at that moment would have released a half-finished
+tree. A green `mise all` says nothing about this: it stays passable on a
+deliberate release commit, which correctly omits the marker.
+
 ## Response format
 
 Concise and specific. No filler, intros, or restated requirements.

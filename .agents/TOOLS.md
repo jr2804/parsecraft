@@ -15,6 +15,7 @@ when-to-use note. This is a live inventory, not a historical log.
 | `mise format` / `mise run format-check` | Rewriter / canonical-tree gate (rewriters never run inside `mise all`) |
 | `mise all` | Full gate: format-check + lint-check + test + typecheck + spell + docs + smoke + actionlint |
 | `mise run format-md` | Lint/reformat Markdown with rumdl (not part of `mise all`) |
+| `mise run release-check` | Refuse a dev push to `main` whose head commit lacks `[skip release]`; `mise run release-check-intent` for a milestone. Not part of `mise all` — the gate must stay passable on a release commit, which legitimately omits the marker |
 | `mise run add-mcp-servers <agent>` | Install MCP servers from `.config/mise/data/dev-features.csv` |
 | `mise run add-skills` | Install skills from `.config/mise/data/skills.csv` |
 

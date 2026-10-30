@@ -3,3 +3,15 @@ description = "Install development dependencies"
 # Light extras only: heavy extras (ocr-*, vllm) must never be installed by
 # `mise dev`/CI. Add new *light* extras to this list explicitly.
 run = "uv sync -U --dev --all-groups --extra web"
+
+[tasks.release-check]
+description = "Refuse a dev push to main whose head commit lacks the [skip release] marker"
+# NOT part of `mise all`: the gate must pass on any commit, including a
+# deliberate release commit that legitimately omits the marker. This is a
+# pre-push check, run by hand or from a hook. It exits non-zero only when a
+# push of main would actually tag and publish.
+run = "uv run python scripts/release_check.py"
+
+[tasks.release-check-intent]
+description = "Same check, but declaring the release IS intended (a milestone push)"
+run = "uv run python scripts/release_check.py --allow-release"
