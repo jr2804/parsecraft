@@ -844,9 +844,11 @@ def test_csv_embedded_newline_survives_sniff_and_parse() -> None:
         ("2", "beta, jr", "line one\nline two"),
         ("3", "gamma", "last"),
     )
-    for row in table.rows:
-        for cell in row:
-            assert cell in table.content
+    # Projection escapes (pc-9p6.13): the raw newline must not reach the table
+    # lines — one logical row stays one physical line, rows stay literal.
+    assert "line one\nline two" not in table.content
+    assert "line one<br />line two" in table.content
+    assert table.content.count("\n") == 4
 
 
 @pytest.mark.parametrize(
@@ -1060,6 +1062,65 @@ def test_csv_preserves_explicit_empty_or_whitespace_cells_at_end(content: bytes,
 def test_csv_markdown_table_renders_empty_grid_empty() -> None:
     """The projection is total: an empty grid renders empty, never raises."""
     assert csv_module._markdown_table(()) == ""
+
+
+@pytest.mark.parametrize(
+    ("cell", "expected"),
+    [
+        ("plain", "plain"),
+        ("", ""),
+        ("x|y", "x\\|y"),
+        ("a\\b", "a\\\\b"),
+        ("a\\|b", "a\\\\\\|b"),
+        ("x\ny", "x<br />y"),
+        ("x\r\ny", "x<br />y"),
+    ],
+)
+def test_csv_escape_cell_unit(cell: str, expected: str) -> None:
+    """Pipe/backslash/newline escaping; identity on plain cells."""
+    assert csv_module._escape_cell(cell) == expected
+
+
+def test_csv_pipe_cell_escaped_rows_literal() -> None:
+    """A ``|`` cell is escaped in content; rows keep the literal pipe."""
+    backend = csv_module.factory(_config("native-csv"))
+    result = backend.convert(_csv_request(b'a,b\n"x|y",2\n', uri="sample.csv"))
+    (table,) = result.pages[0].blocks
+    assert table.rows == (("a", "b"), ("x|y", "2"))
+    assert table.content == "| a | b |\n| --- | --- |\n| x\\|y | 2 |"
+
+
+def test_csv_backslash_cannot_smuggle_column_break() -> None:
+    r"""Backslashes escape first, so a literal ``a\|b`` stays one cell."""
+    backend = csv_module.factory(_config("native-csv"))
+    result = backend.convert(_csv_request(b"a,b\na\\|b,2\n", uri="sample.csv"))
+    (table,) = result.pages[0].blocks
+    assert table.rows == (("a", "b"), ("a\\|b", "2"))
+    assert table.content == "| a | b |\n| --- | --- |\n| a\\\\\\|b | 2 |"
+
+
+def test_csv_literal_break_markup_not_reinterpreted() -> None:
+    """Literal ``<br />``/HTML-like text passes through unchanged (pc-9p6.13).
+
+    The marker is ambiguous by design: content cannot tell a literal break
+    from an escaped newline — rows is the literal record, content the lossy
+    projection.
+    """
+    backend = csv_module.factory(_config("native-csv"))
+    content = b'a,b\n"a<br />b","<b>x|y</b>"\n'
+    result = backend.convert(_csv_request(content, uri="sample.csv"))
+    (table,) = result.pages[0].blocks
+    assert table.rows == (("a", "b"), ("a<br />b", "<b>x|y</b>"))
+    assert table.content == "| a | b |\n| --- | --- |\n| a<br />b | <b>x\\|y</b> |"
+
+
+def test_csv_multiline_cell_stays_on_one_physical_line() -> None:
+    """A quoted newline becomes ``<br />``; rows keep the real newline."""
+    backend = csv_module.factory(_config("native-csv"))
+    result = backend.convert(_csv_request(b'a,b\n"x\ny",2\n', uri="sample.csv"))
+    (table,) = result.pages[0].blocks
+    assert table.rows == (("a", "b"), ("x\ny", "2"))
+    assert table.content == "| a | b |\n| --- | --- |\n| x<br />y | 2 |"
 
 
 # ── native-csv: delimited data → TABLE (pc-oir.1) ──────────────────────────

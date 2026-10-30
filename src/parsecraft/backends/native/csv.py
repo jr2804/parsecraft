@@ -233,15 +233,32 @@ def _markdown_table(rows: tuple[tuple[str, ...], ...]) -> str:
     """Markdown projection of the grid (header row 0, separator, data rows).
 
     Total over ``rows`` (empty included): an empty grid renders empty, so the
-    projection never raises on degenerate input.
+    projection never raises on degenerate input. Cells are escaped (see
+    :func:`_escape_cell`) — ``rows`` carries the literal data, ``content``
+    the valid table.
     """
     if not rows:
         return ""
     width = max(len(row) for row in rows)
-    padded = [list(row) + [""] * (width - len(row)) for row in rows]
+    padded = [[_escape_cell(cell) for cell in row] + [""] * (width - len(row)) for row in rows]
     lines = [f"| {' | '.join(padded[0])} |", f"| {' | '.join(['---'] * width)} |"]
     lines.extend(f"| {' | '.join(row)} |" for row in padded[1:])
     return "\n".join(lines)
+
+
+def _escape_cell(cell: str) -> str:
+    r"""Cell text safe for a GFM table: pipes/backslashes escaped, one line.
+
+    Backslashes go first so a literal ``a\\|b`` cannot smuggle a column
+    break through the pipe escape; interior newlines become ``<br />`` so one
+    logical row stays one physical line. Identity on plain cells, so simple
+    tables render exactly as before.
+
+    Known limit (pc-9p6.13): a literal ``<br />`` already in a cell is
+    indistinguishable in ``content`` from an escaped newline — the projection
+    is lossy by design, ``rows`` carries the literal text.
+    """
+    return cell.replace("\\", "\\\\").replace("|", "\\|").replace("\r\n", "\n").replace("\n", "<br />")
 
 
 factory: BackendFactory = _CsvFactory()
