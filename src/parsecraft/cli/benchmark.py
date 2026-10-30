@@ -15,6 +15,7 @@ from parsecraft.benchmark import (
     write_json,
     write_markdown,
 )
+from parsecraft.cli.convert import _effective_timeout_s
 from parsecraft.environment import constraints_from_environment, probe_environment
 
 
@@ -24,14 +25,19 @@ def benchmark_report(
     *,
     max_passes: int = 1,
     allow_ocr: bool | None = None,
+    timeout_s: float | None = None,
 ) -> BenchmarkReport:
     """Benchmark every eligible backend over local documents (offline).
 
     ``formats`` stays empty: the harness filters candidates by each document's
     own media type, so a single format restriction would be wrong for a mix.
+    The effective deadline is the flag when given, else the ``timeout_s``
+    config key — the same ``_effective_timeout_s`` rule as ``convert``: the
+    harness bounds the same ``backend.convert`` calls, so a second semantic
+    would be surprising.
     """
     constraints = constraints_from_environment(probe_environment(), formats=(), allow_ocr=allow_ocr, max_passes=max_passes)
-    return run_benchmark(list(paths), registry, constraints)
+    return run_benchmark(list(paths), registry, constraints, timeout_s=_effective_timeout_s(timeout_s))
 
 
 def write_reports(report: BenchmarkReport, output_dir: Path) -> list[Path]:
