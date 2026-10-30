@@ -1,5 +1,5 @@
 {
-  "package_version": "2026.9.11.post9.dev0+917dbdb",
+  "package_version": "2026.10.13.post53.dev0+a546d73",
   "results": [
     {
       "analyzer_text_chars": 772386,
@@ -19,12 +19,12 @@
         "unknown": 0
       },
       "document": "3f6bb9d6f78e0293b56acd4714dd68cb7d6d1d293402031ce9d5a216bcaf9d75-pg1342.txt",
-      "elapsed_s": 0.002439,
+      "elapsed_s": 0.005146,
       "emitted_chars": 763076,
       "failures": [],
       "pages": 1,
-      "pages_per_second": 409.936869,
-      "peak_memory_bytes": 3056449,
+      "pages_per_second": 194.314361,
+      "peak_memory_bytes": 3059545,
       "selected": true,
       "text_coverage": 0.987946
     },
@@ -39,21 +39,107 @@
         "formula": 0,
         "header": 0,
         "heading": 45,
-        "list": 27,
-        "paragraph": 649,
+        "list": 98,
+        "paragraph": 648,
         "quote": 5,
         "table": 0,
         "unknown": 2
       },
       "document": "43fad3e0ac5190a3b0bc6a41f7b1a853201a26ec2e6b74871f5d96239a8c34cf-commonmark-spec.md",
-      "elapsed_s": 0.739279,
-      "emitted_chars": 147713,
+      "elapsed_s": 0.682634,
+      "emitted_chars": 147693,
       "failures": [],
       "pages": 1,
-      "pages_per_second": 1.352669,
-      "peak_memory_bytes": 8536534,
+      "pages_per_second": 1.464914,
+      "peak_memory_bytes": 8752856,
       "selected": true,
-      "text_coverage": 0.716678
+      "text_coverage": 0.716581
+    },
+    {
+      "analyzer_text_chars": 162267,
+      "backend": "liteparse",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 253,
+        "list": 0,
+        "paragraph": 524,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "98977d783f46449f7aba89c5c8a8348b981cf55938fa9ec7d71009e6d4fa9770-etsi-ts-103558.pdf",
+      "elapsed_s": 2.700979,
+      "emitted_chars": 150160,
+      "failures": [],
+      "pages": 68,
+      "pages_per_second": 25.176054,
+      "peak_memory_bytes": 3193198,
+      "selected": true,
+      "text_coverage": 0.925388
+    },
+    {
+      "analyzer_text_chars": 162267,
+      "backend": "pdf-inspector",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 62,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "98977d783f46449f7aba89c5c8a8348b981cf55938fa9ec7d71009e6d4fa9770-etsi-ts-103558.pdf",
+      "elapsed_s": 0.368981,
+      "emitted_chars": 143402,
+      "failures": [],
+      "pages": 68,
+      "pages_per_second": 184.291382,
+      "peak_memory_bytes": 558756,
+      "selected": false,
+      "text_coverage": 0.883741
+    },
+    {
+      "analyzer_text_chars": 162267,
+      "backend": "pymupdf",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 0,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "98977d783f46449f7aba89c5c8a8348b981cf55938fa9ec7d71009e6d4fa9770-etsi-ts-103558.pdf",
+      "elapsed_s": 0.006807,
+      "emitted_chars": 0,
+      "failures": [
+        {
+          "code": "dependency_missing",
+          "detail": "backend dependency 'parsecraft.backends.pymupdf._convert' is not installed \u2014 install the 'pymupdf' extra"
+        }
+      ],
+      "pages": 0,
+      "pages_per_second": null,
+      "peak_memory_bytes": 144683,
+      "selected": false,
+      "text_coverage": 0.0
     },
     {
       "analyzer_text_chars": 122322,
@@ -73,18 +159,18 @@
         "unknown": 0
       },
       "document": "cb459acca15a2aa895863eaeff6f1d5b9c4ca15578ae3e3706f757787a385969-rfc5322.txt",
-      "elapsed_s": 0.008576,
+      "elapsed_s": 0.012893,
       "emitted_chars": 119369,
       "failures": [],
       "pages": 1,
-      "pages_per_second": 116.600399,
-      "peak_memory_bytes": 1138802,
+      "pages_per_second": 77.562069,
+      "peak_memory_bytes": 1151898,
       "selected": true,
       "text_coverage": 0.975859
     },
     {
-      "analyzer_text_chars": 161871,
-      "backend": "liteparse",
+      "analyzer_text_chars": 7717,
+      "backend": "native-csv",
       "chunk_counts": {
         "caption": 0,
         "code": 0,
@@ -94,23 +180,77 @@
         "header": 0,
         "heading": 0,
         "list": 0,
-        "paragraph": 68,
+        "paragraph": 0,
+        "quote": 0,
+        "table": 1,
+        "unknown": 0
+      },
+      "document": "exoplanets.csv",
+      "elapsed_s": 0.002143,
+      "emitted_chars": 9352,
+      "failures": [],
+      "pages": 1,
+      "pages_per_second": 466.613779,
+      "peak_memory_bytes": 106925,
+      "selected": true,
+      "text_coverage": 1.21187
+    },
+    {
+      "analyzer_text_chars": 191611,
+      "backend": "liteparse",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 225,
+        "list": 0,
+        "paragraph": 315,
         "quote": 0,
         "table": 0,
         "unknown": 0
       },
-      "document": "etsi-ts-103558.pdf",
-      "elapsed_s": 6.010629,
-      "emitted_chars": 163789,
+      "document": "f19653a061f3506ddfc2bf2801e6a6a57f8435177d9b992be860322dc63e2418-itu-t-p863.pdf",
+      "elapsed_s": 3.013789,
+      "emitted_chars": 187472,
       "failures": [],
-      "pages": 68,
-      "pages_per_second": 11.313292,
-      "peak_memory_bytes": 1206330,
+      "pages": 80,
+      "pages_per_second": 26.544659,
+      "peak_memory_bytes": 1973536,
       "selected": true,
-      "text_coverage": 1.011849
+      "text_coverage": 0.978399
     },
     {
-      "analyzer_text_chars": 161871,
+      "analyzer_text_chars": 191611,
+      "backend": "pdf-inspector",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 78,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "f19653a061f3506ddfc2bf2801e6a6a57f8435177d9b992be860322dc63e2418-itu-t-p863.pdf",
+      "elapsed_s": 4.300209,
+      "emitted_chars": 188174,
+      "failures": [],
+      "pages": 80,
+      "pages_per_second": 18.603746,
+      "peak_memory_bytes": 543397,
+      "selected": false,
+      "text_coverage": 0.982063
+    },
+    {
+      "analyzer_text_chars": 191611,
       "backend": "pymupdf",
       "chunk_counts": {
         "caption": 0,
@@ -121,24 +261,56 @@
         "header": 0,
         "heading": 0,
         "list": 0,
-        "paragraph": 337,
+        "paragraph": 0,
         "quote": 0,
         "table": 0,
         "unknown": 0
       },
-      "document": "etsi-ts-103558.pdf",
-      "elapsed_s": 6.467704,
-      "emitted_chars": 155893,
-      "failures": [],
-      "pages": 68,
-      "pages_per_second": 10.513778,
-      "peak_memory_bytes": 17810564,
+      "document": "f19653a061f3506ddfc2bf2801e6a6a57f8435177d9b992be860322dc63e2418-itu-t-p863.pdf",
+      "elapsed_s": 0.004855,
+      "emitted_chars": 0,
+      "failures": [
+        {
+          "code": "dependency_missing",
+          "detail": "backend dependency 'parsecraft.backends.pymupdf._convert' is not installed \u2014 install the 'pymupdf' extra"
+        }
+      ],
+      "pages": 0,
+      "pages_per_second": null,
+      "peak_memory_bytes": 137721,
       "selected": false,
-      "text_coverage": 0.963069
+      "text_coverage": 0.0
     },
     {
-      "analyzer_text_chars": 1653105,
+      "analyzer_text_chars": 1653000,
       "backend": "liteparse",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 3522,
+        "list": 0,
+        "paragraph": 3259,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "fc63bcd61715d0181dd8e85998b1e6201ae3515fc6626102101cab1841e11ec6-nist-sp-800-53r5.pdf",
+      "elapsed_s": 65.342901,
+      "emitted_chars": 1449833,
+      "failures": [],
+      "pages": 492,
+      "pages_per_second": 7.52951,
+      "peak_memory_bytes": 16451000,
+      "selected": true,
+      "text_coverage": 0.877092
+    },
+    {
+      "analyzer_text_chars": 1653000,
+      "backend": "pdf-inspector",
       "chunk_counts": {
         "caption": 0,
         "code": 0,
@@ -154,17 +326,17 @@
         "unknown": 0
       },
       "document": "fc63bcd61715d0181dd8e85998b1e6201ae3515fc6626102101cab1841e11ec6-nist-sp-800-53r5.pdf",
-      "elapsed_s": 115.646923,
-      "emitted_chars": 1494473,
+      "elapsed_s": 6.86253,
+      "emitted_chars": 1670222,
       "failures": [],
       "pages": 492,
-      "pages_per_second": 4.254329,
-      "peak_memory_bytes": 3071007,
-      "selected": true,
-      "text_coverage": 0.90404
+      "pages_per_second": 71.693673,
+      "peak_memory_bytes": 3685628,
+      "selected": false,
+      "text_coverage": 1.010419
     },
     {
-      "analyzer_text_chars": 1653105,
+      "analyzer_text_chars": 1653000,
       "backend": "pymupdf",
       "chunk_counts": {
         "caption": 0,
@@ -175,77 +347,28 @@
         "header": 0,
         "heading": 0,
         "list": 0,
-        "paragraph": 1768,
+        "paragraph": 0,
         "quote": 0,
         "table": 0,
         "unknown": 0
       },
       "document": "fc63bcd61715d0181dd8e85998b1e6201ae3515fc6626102101cab1841e11ec6-nist-sp-800-53r5.pdf",
-      "elapsed_s": 4.002183,
-      "emitted_chars": 1644371,
-      "failures": [],
-      "pages": 492,
-      "pages_per_second": 122.932906,
-      "peak_memory_bytes": 7729439,
+      "elapsed_s": 0.003641,
+      "emitted_chars": 0,
+      "failures": [
+        {
+          "code": "dependency_missing",
+          "detail": "backend dependency 'parsecraft.backends.pymupdf._convert' is not installed \u2014 install the 'pymupdf' extra"
+        }
+      ],
+      "pages": 0,
+      "pages_per_second": null,
+      "peak_memory_bytes": 137465,
       "selected": false,
-      "text_coverage": 0.994717
+      "text_coverage": 0.0
     },
     {
-      "analyzer_text_chars": 191646,
-      "backend": "liteparse",
-      "chunk_counts": {
-        "caption": 0,
-        "code": 0,
-        "figure": 0,
-        "footer": 0,
-        "formula": 0,
-        "header": 0,
-        "heading": 0,
-        "list": 0,
-        "paragraph": 80,
-        "quote": 0,
-        "table": 0,
-        "unknown": 0
-      },
-      "document": "itu-t-p863.pdf",
-      "elapsed_s": 5.672197,
-      "emitted_chars": 194909,
-      "failures": [],
-      "pages": 80,
-      "pages_per_second": 14.103882,
-      "peak_memory_bytes": 652061,
-      "selected": null,
-      "text_coverage": 1.017026
-    },
-    {
-      "analyzer_text_chars": 191646,
-      "backend": "pymupdf",
-      "chunk_counts": {
-        "caption": 0,
-        "code": 0,
-        "figure": 0,
-        "footer": 0,
-        "formula": 0,
-        "header": 0,
-        "heading": 0,
-        "list": 0,
-        "paragraph": 198,
-        "quote": 0,
-        "table": 0,
-        "unknown": 0
-      },
-      "document": "itu-t-p863.pdf",
-      "elapsed_s": 0.611496,
-      "emitted_chars": 191377,
-      "failures": [],
-      "pages": 80,
-      "pages_per_second": 130.826715,
-      "peak_memory_bytes": 1113373,
-      "selected": null,
-      "text_coverage": 0.998596
-    },
-    {
-      "analyzer_text_chars": 154743,
+      "analyzer_text_chars": 155018,
       "backend": "native-html",
       "chunk_counts": {
         "caption": 0,
@@ -262,17 +385,44 @@
         "unknown": 0
       },
       "document": "whatwg-html.html",
-      "elapsed_s": 0.872653,
-      "emitted_chars": 41940,
+      "elapsed_s": 0.166028,
+      "emitted_chars": 42030,
       "failures": [],
       "pages": 1,
-      "pages_per_second": 1.145931,
-      "peak_memory_bytes": 692279,
+      "pages_per_second": 6.023066,
+      "peak_memory_bytes": 698844,
       "selected": true,
-      "text_coverage": 0.27103
+      "text_coverage": 0.27113
     },
     {
-      "analyzer_text_chars": 819025,
+      "analyzer_text_chars": 155018,
+      "backend": "trafilatura",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 371,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "whatwg-html.html",
+      "elapsed_s": 4.940699,
+      "emitted_chars": 3207,
+      "failures": [],
+      "pages": 1,
+      "pages_per_second": 0.2024,
+      "peak_memory_bytes": 36698968,
+      "selected": false,
+      "text_coverage": 0.020688
+    },
+    {
+      "analyzer_text_chars": 814460,
       "backend": "native-html",
       "chunk_counts": {
         "caption": 0,
@@ -289,21 +439,44 @@
         "unknown": 0
       },
       "document": "wikipedia-calculus.html",
-      "elapsed_s": 2.459948,
-      "emitted_chars": 87175,
+      "elapsed_s": 0.473522,
+      "emitted_chars": 87156,
       "failures": [],
       "pages": 1,
-      "pages_per_second": 0.406513,
-      "peak_memory_bytes": 2459150,
+      "pages_per_second": 2.111833,
+      "peak_memory_bytes": 2445743,
       "selected": true,
-      "text_coverage": 0.106438
+      "text_coverage": 0.107011
+    },
+    {
+      "analyzer_text_chars": 814460,
+      "backend": "trafilatura",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 32,
+        "list": 127,
+        "paragraph": 74,
+        "quote": 0,
+        "table": 1,
+        "unknown": 0
+      },
+      "document": "wikipedia-calculus.html",
+      "elapsed_s": 1.089451,
+      "emitted_chars": 59641,
+      "failures": [],
+      "pages": 1,
+      "pages_per_second": 0.917894,
+      "peak_memory_bytes": 4877183,
+      "selected": false,
+      "text_coverage": 0.073228
     }
   ],
   "skips": [
-    {
-      "document": "exoplanets.csv",
-      "reason": "unsupported source suffix '.csv'"
-    },
     {
       "document": "wikidata-q42.json",
       "reason": "unsupported source suffix '.json'"

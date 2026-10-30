@@ -75,8 +75,8 @@ def test_cpu_backends_and_licensed_pdfs_are_present() -> None:
     report = _report()
     documents = {row.document for row in report.results}
     backends = {row.backend for row in report.results}
-    assert "itu-t-p863.pdf" in documents
-    assert "etsi-ts-103558.pdf" in documents
+    assert any(document.endswith("itu-t-p863.pdf") for document in documents)
+    assert any(document.endswith("etsi-ts-103558.pdf") for document in documents)
     assert any("nist-sp-800-53r5" in document for document in documents)
     assert {"native-text", "native-markdown", "native-html", "pymupdf"} <= backends
 
