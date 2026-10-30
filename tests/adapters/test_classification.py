@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib
 import sys
 import types
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -147,6 +147,14 @@ class _FakeClient:
         return types.SimpleNamespace(choices={"text-kind": _FakeAnswer(self._module._probabilities)})
 
 
+class _EndpointsModule(types.ModuleType):
+    """A fake providers._endpoints exposing select_judge_spec."""
+
+    def __init__(self, func: Callable[[str | None], str | None]) -> None:
+        super().__init__("parsecraft.providers._endpoints")
+        self.select_judge_spec = func
+
+
 # ── TextKind ───────────────────────────────────────────────────────────────
 
 
@@ -237,7 +245,13 @@ def test_resolve_configured_error_becomes_unavailable(monkeypatch: pytest.Monkey
     def _boom(cli_spec: str | None) -> str | None:
         raise JudgeError("broken config file")
 
-    monkeypatch.setattr("parsecraft.adapters.classification.select_judge_spec", _boom)
+    monkeypatch.setitem(sys.modules, "parsecraft.providers._endpoints", _EndpointsModule(_boom))
+    with pytest.raises(TextClassifierProviderUnavailableError):
+        resolve_text_classifier(None)
+
+
+def test_resolve_configured_missing_export_is_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(sys.modules, "parsecraft.providers._endpoints", types.ModuleType("parsecraft.providers._endpoints"))
     with pytest.raises(TextClassifierProviderUnavailableError):
         resolve_text_classifier(None)
 
@@ -396,6 +410,25 @@ def test_data_like_parses_plain_with_the_verdict_preserved() -> None:
     assert all("TABLE" not in block.kind.name for block in result.pages[0].blocks)
     for chunk in result.pages[0].blocks:
         assert chunk.metadata[DETECTED_KIND_KEY] == TextKind.DATA_LIKE.value
+
+
+def test_markdown_branch_keeps_the_source_format() -> None:
+    """Format describes the SOURCE (.txt/unknown → text/plain), never the parser.
+
+    The verdict lives in detected_kind, so identical bytes never key
+    differently across runs (pc-2: consumer parse-cache identity).
+    """
+    result = parse_ambiguous_text("# Title\n\nA paragraph.\n", "file:///note.txt", classifier=_StubClassifier((TextKind.MARKDOWN_LIKE, 1.0)))
+
+    assert result.metadata.format == "text/plain"
+    assert result.pages[0].blocks[0].metadata[DETECTED_KIND_KEY] == TextKind.MARKDOWN_LIKE.value
+
+
+def test_plain_path_keeps_native_text_chunk_ids() -> None:
+    """Chunk identity must not change depending on whether a classifier ran (pc-2)."""
+    result = parse_ambiguous_text("first\n\nsecond\n", "mem://x", classifier=_StubClassifier((TextKind.PLAIN, 0.0)))
+
+    assert [block.id for block in result.pages[0].blocks] == ["native-text-1-b0", "native-text-1-b1"]
 
 
 def test_failure_yields_the_plain_path_not_an_exception() -> None:

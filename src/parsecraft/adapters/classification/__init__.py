@@ -32,16 +32,14 @@ from pydantic import BaseModel, Field, ValidationError
 
 from parsecraft.adapters.errors import AdapterError
 from parsecraft.adapters.markdown import parse_markdown
+from parsecraft.backends.native._common import paragraph_chunks
 from parsecraft.ir.models import (
-    ChunkKind,
     Diagnostic,
     DiagnosticLevel,
     DocumentMetadata,
     DocumentResult,
     PageResult,
-    StructuredChunk,
 )
-from parsecraft.providers._endpoints import select_judge_spec
 from parsecraft.routing.judge_providers import JudgeError
 
 #: Diagnostic code marking the pages this module classified (human debugging;
@@ -76,9 +74,6 @@ _KIND_HINTS: tuple[tuple[TextKind, tuple[str, ...]], ...] = (
     (TextKind.DATA_LIKE, ("data-like",)),
     (TextKind.PLAIN, ("plain",)),
 )
-
-#: Split pattern mirroring the native text shape (blank-line-separated blocks).
-_BLANK_LINE = re.compile(r"\n[ \t]*\n+")
 
 
 class TextClassificationError(AdapterError):
@@ -205,6 +200,10 @@ def parse_ambiguous_text(
     kind, confidence = classify_text_kind(text, classifier=classifier)
     if kind is TextKind.MARKDOWN_LIKE:
         result = parse_markdown(text, source_uri, title=title, package_version=package_version, produced_at=produced_at)
+        # format describes the SOURCE (.txt/unknown), not the chosen parser —
+        # the verdict lives in detected_kind, so identical bytes never key
+        # differently across runs (pc-2: consumer parse-cache identity).
+        result = result.model_copy(update={"metadata": result.metadata.model_copy(update={"format": "text/plain"})})
         parser = _MARKDOWN_PARSER
     else:
         result = _plain_document(text, source_uri, title=title, package_version=package_version, produced_at=produced_at)
@@ -292,9 +291,21 @@ def parse_text_classifier_spec(spec: str) -> TextClassifierSpec:
 
 
 def _configured_spec() -> str | None:
-    """The configured decision-model spec, or ``None`` when nothing configures one."""
+    """The configured decision-model spec, or ``None`` when nothing configures one.
+
+    The provider-endpoint graph (``providers._endpoints`` pulls ``cli.config``)
+    is reached here through a call-time :func:`import_module` seam — a
+    function-local ``import`` statement would be hoisted back to module scope
+    by the formatter, re-importing the CLI layer on every adapter import
+    (pc-2: registry discovery imports every factory eagerly — a text adapter
+    must not tax every PDF run).
+    """
+    module = import_module("parsecraft.providers._endpoints")
+    select = getattr(module, "select_judge_spec", None)
+    if not callable(select):
+        raise TextClassifierProviderUnavailableError("judge", "config", "providers._endpoints does not export select_judge_spec")
     try:
-        return select_judge_spec(None)
+        return cast(Callable[[str | None], str | None], select)(None)
     except JudgeError as exc:
         raise TextClassifierProviderUnavailableError("judge", "config", f"cannot read judge configuration: {exc}") from exc
 
@@ -344,16 +355,9 @@ def _plain_document(
 ) -> DocumentResult:
     """One page of paragraph chunks split on blank lines (the native text shape)."""
     produced = produced_at if produced_at is not None else datetime.now(UTC)
-    blocks = [
-        StructuredChunk(
-            id=f"text-1-b{index}",
-            kind=ChunkKind.PARAGRAPH,
-            content=block,
-            page_number=1,
-            reading_order=index,
-        )
-        for index, block in enumerate([chunk.strip() for chunk in _BLANK_LINE.split(text.strip()) if chunk.strip()])
-    ]
+    # The native-text shape, shared not copied: chunk ids stay native-text-* so
+    # a .txt document reads identically with or without a classifier (pc-2).
+    blocks = paragraph_chunks("native-text", 1, text)
     metadata = DocumentMetadata(
         source_uri=source_uri,
         source_hash=hashlib.sha256(text.encode("utf-8")).hexdigest(),

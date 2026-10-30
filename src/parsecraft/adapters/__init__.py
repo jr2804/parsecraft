@@ -9,6 +9,7 @@ Markdown) and is the output-side twin of ``parse_markdown``.
 
 from __future__ import annotations
 
+from parsecraft.adapters.classification import TextKind, classify_text_kind, parse_ambiguous_text
 from parsecraft.adapters.encoding import EncodingDetection, decode, parse_content_type
 from parsecraft.adapters.errors import AdapterError, HttpFetchError, MissingDependencyError
 from parsecraft.adapters.http import HttpResource, fetch
@@ -20,9 +21,12 @@ __all__ = [
     "HttpFetchError",
     "HttpResource",
     "MissingDependencyError",
+    "TextKind",
+    "classify_text_kind",
     "decode",
     "fetch",
     "markdown_blocks",
+    "parse_ambiguous_text",
     "parse_content_type",
     "parse_markdown",
 ]

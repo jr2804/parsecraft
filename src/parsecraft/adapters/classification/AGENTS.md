@@ -23,6 +23,10 @@ else the plain paragraph path).
   `confidence` field (never a same-named metadata key), and a `text-kind`
   page diagnostic; `DATA_LIKE` parses plain until delimited ingestion lands
   (verdict preserved for it).
+- `metadata.format` always stays the source type (`text/plain` on both
+  branches) — the verdict must never re-key identical bytes.
+- The plain path reuses `paragraph_chunks` with the `native-text` id prefix,
+  so chunk identity is identical with or without a classifier.
 - Determinism: same bytes with the same model answer yield the same verdict;
   ties and unparsable answers resolve to PLAIN.
 - Provider token is never hardcoded: `None` resolves the configured decision
