@@ -1,6 +1,6 @@
 """Reproducible backend benchmarks over local documents (Phase 2 harness).
 
-``run_benchmark(documents, registry, constraints, judge=None)`` measures
+``run_benchmark(documents, registry, constraints, judge=None, *, timeout_s=None)`` measures
 every eligible backend per document; ``to_json``/``to_markdown`` render
 deterministic, diff-clean reports. Offline: local paths only, never fetch.
 See ``AGENTS.md`` for the full contract.

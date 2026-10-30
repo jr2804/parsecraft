@@ -161,6 +161,10 @@ def convert(
     ] = RoutingPreference.BALANCED,
     as_json: args.JsonFlag = False,
     max_passes: Annotated[int, typer.Option("--max-passes", min=1, help="Fallback passes per page group")] = 1,
+    timeout_s: Annotated[
+        float | None,
+        typer.Option("--timeout-s", help="Per-request backend deadline in seconds (bounds each attempt, not the whole run)"),
+    ] = None,
     no_ocr: Annotated[bool, typer.Option("--no-ocr", help="Forbid OCR backends")] = False,
     use_cache: Annotated[bool, typer.Option("--cache/--no-cache", help="Reuse a content-addressed conversion cache")] = False,
     backend_option: Annotated[
@@ -182,6 +186,11 @@ def convert(
         raise typer.Exit(code=2)
     if backend_option and backend is None:
         typer.echo("error: --backend-option requires --backend (it configures that backend)", err=True)
+        raise typer.Exit(code=2)
+    # No Typer min=: float has no inclusive bound expressing >0 (min=0 would
+    # accept 0); the manual check mirrors --backend-option above.
+    if timeout_s is not None and timeout_s <= 0:
+        typer.echo("error: --timeout-s must be positive", err=True)
         raise typer.Exit(code=2)
     options: dict[str, dict[str, str | int | float | bool]] = {}
     for raw in backend_option or []:
@@ -206,6 +215,7 @@ def convert(
                 judge_api_key=judge_api_key,
                 classifier=classifier,
                 max_passes=max_passes,
+                timeout_s=timeout_s,
                 allow_ocr=False if no_ocr else None,
                 preference=preference,
                 use_cache=use_cache,
@@ -358,6 +368,10 @@ def benchmark(
     markdown: Annotated[bool, typer.Option("--markdown", help="Force the Markdown report (the default)")] = False,
     output: Annotated[Path | None, typer.Option("--output", "-o", file_okay=False, help="Directory for benchmark.json and benchmark.md")] = None,
     max_passes: Annotated[int, typer.Option("--max-passes", min=1, help="Fallback passes per page group")] = 1,
+    timeout_s: Annotated[
+        float | None,
+        typer.Option("--timeout-s", help="Per-request backend deadline in seconds (bounds each attempt, not the whole run)"),
+    ] = None,
     no_ocr: Annotated[bool, typer.Option("--no-ocr", help="Forbid OCR backends")] = False,
     verbose: args.VerboseFlag = False,
 ) -> None:
@@ -365,9 +379,13 @@ def benchmark(
     if as_json and markdown:
         typer.echo("error: --json and --markdown are mutually exclusive", err=True)
         raise typer.Exit(code=2)
+    # Same positive-only rule as convert: float has no inclusive bound expressing >0.
+    if timeout_s is not None and timeout_s <= 0:
+        typer.echo("error: --timeout-s must be positive", err=True)
+        raise typer.Exit(code=2)
     try:
         with verbosity.third_party_output(verbose=verbose):
-            report = benchmark_module.benchmark_report(paths, max_passes=max_passes, allow_ocr=False if no_ocr else None)
+            report = benchmark_module.benchmark_report(paths, max_passes=max_passes, allow_ocr=False if no_ocr else None, timeout_s=timeout_s)
             written = benchmark_module.write_reports(report, output) if output is not None else []
     except CliError as exc:
         typer.echo(f"error: {exc}", err=True)
