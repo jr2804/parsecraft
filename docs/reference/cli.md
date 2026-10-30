@@ -238,6 +238,44 @@ default** and opt-in per invocation; the root is `$PARSECRAFT_CACHE_DIR` or the
 platform user-cache directory followed by `parsecraft/conversions`. Inspect or
 clear it with [`parsecraft cache`](#parsecraft-cache).
 
+#### Judge endpoint configuration
+
+A decision model needs an endpoint (base URL) and sometimes a credential.
+Each knob resolves per knob, highest precedence first:
+
+1. explicit CLI flags: `--judge-base-url`, `--judge-api-key`;
+2. generic env vars: `PARSECRAFT_JUDGE_BASE_URL`, `PARSECRAFT_JUDGE_API_KEY`;
+3. the `[providers.<section>]` config-file value;
+4. the built-in default (the provider's own base URL, or the legacy
+   credential env var, or no credential for the local daemon).
+
+The default model is selected the same way: an explicit `--judge` spec beats
+`PARSECRAFT_JUDGE_MODEL`, which beats the `[judge] model` config-file value —
+so a host default resolves with no flag at all. A configured default is still
+a chosen lead: `--backend` cannot be combined with it either.
+
+The config-file sections use kompend-shaped provider names: `[providers.zen]`
+is the `zen` provider, `[providers.typesafe]` is `typesafe-ai`, and
+`[providers.ollama-cloud]` is the local `ollama` daemon pointed elsewhere.
+An exact provider token (`[providers.typesafe-ai]`) always works too.
+Credentials are secret-bearing: write `api_key = "${OPENCODE_API_KEY}"`
+— never a literal — and `config show` redacts every `providers.*.api_key`.
+
+```toml
+# ~/.config/parsecraft/config.toml (global; overridden by ./parsecraft.toml)
+[providers.typesafe]
+base_url = "https://proxy.internal/v1"
+api_key = "${TYPESAFE_API_KEY}"
+
+[judge]
+model = "typesafe-ai/jev-latest"
+```
+
+No provider-specific env vars or flags exist — only the two generic env vars
+and the two generic flags above. The legacy credential env vars
+(`TYPESAFE_API_KEY`, `OPENCODE_API_KEY`) keep working as the fallback when
+nothing else names a credential.
+
 ### `parsecraft cache`
 
 Inspect or clear the conversion cache used by `convert --cache`.
@@ -368,7 +406,7 @@ package: `2026.9.9`
 
 Command group for the layered configuration engine. Sources are
 merged in order `default → global → project → env → cli`. The global file is
-`platformdirs.user_config_dir("parsecraft")/config.toml`; the project file is
+`~/.config/parsecraft/config.toml` on every platform; the project file is
 `./parsecraft.toml`; settings come from `PARSECRAFT_CONFIG_*` env vars (`__`
 separates nested sections).
 
@@ -387,6 +425,9 @@ Recognized settings:
 | `cache_dir` | path | unset | Asset-cache override; resolved relative to its declaring file |
 | `offline` | bool | `false` | Asset-manager offline mode |
 | `min_free_bytes` | int | `0` | Asset-manager free-space floor |
+| `providers.<name>.base_url` | string | provider default | Judge endpoint override; kompend-shaped names (`typesafe` = `typesafe-ai`, `ollama-cloud` = `ollama`) |
+| `providers.<name>.api_key` | string | credential default | Secret; write `${VAR_NAME}`, never a literal. Redacted by `show` |
+| `judge.model` | string | unset | Default decision-model spec; `--judge` and `PARSECRAFT_JUDGE_MODEL` beat it |
 
 #### `parsecraft config check`
 
@@ -430,6 +471,9 @@ offline = false  (default:<defaults>)
 | -------- | ------- | ----------- |
 | `PARSECRAFT_JSON` | `parsecraft backends`, `parsecraft config` | Default value of `--json` |
 | `PARSECRAFT_CONFIG_*` | `parsecraft config` | Configuration settings (see below) |
+| `PARSECRAFT_JUDGE_MODEL` | `parsecraft convert` | Default decision-model spec; beats the `[judge]` config value |
+| `PARSECRAFT_JUDGE_BASE_URL` | `parsecraft convert` | Endpoint base-URL override; beats the `[providers.*]` config value |
+| `PARSECRAFT_JUDGE_API_KEY` | `parsecraft convert` | Credential override; beats the `[providers.*]` config value |
 | `PARSECRAFT_CACHE_DIR` | `parsecraft convert --cache`, `parsecraft cache` | Overrides the conversion-cache root |
 
 `PARSECRAFT_JSON` is a CLI flag default. Configuration settings use the

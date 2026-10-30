@@ -173,7 +173,11 @@ rule table decides; no provider is resolved and no network is used".
   | `ollama` | any local model (verified: `nimble`, `tev`) | none — local daemon on `http://localhost:11434` |
 
 - The judge client ships in the base install; only credentials (or a running
-  Ollama) are needed. `parsecraft judges` prints credential state only — no
+  Ollama) are needed. A host default lives in `~/.config/parsecraft/config.toml`
+  (`[judge] model`, `[providers.<name>]` endpoint sections with `api_key =
+  "${VAR_NAME}"`) or in `PARSECRAFT_JUDGE_MODEL` / `PARSECRAFT_JUDGE_BASE_URL` /
+  `PARSECRAFT_JUDGE_API_KEY`; `--judge-base-url` / `--judge-api-key` override
+  per run. `parsecraft judges` prints credential state only — no
   extra column, because the `auto` meta-extra was removed by ADR-0009.
 - `--classifier` folds OCR-need evidence into the analysis instead of re-ranking;
   it combines with `--judge`.

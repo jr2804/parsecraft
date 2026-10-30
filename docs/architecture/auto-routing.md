@@ -310,12 +310,20 @@ and can reject it, so a decision model can never widen eligibility.
 1. Nothing to install: the provider stack (`typesafe-sdk`) is a **core**
    dependency, so all three providers ride the base install (the cloud, Zen
    and the local daemon reach the wire through the same SDK).
-2. Export the credential of the endpoint you named: `TYPESAFE_API_KEY`
-   (cloud) or `OPENCODE_API_KEY` (zen; `jev-1.13-free` is quota-free). The
-   local `ollama/<model>` needs no credential — pull a scoring-capable model
+2. Name the credential and endpoint for the provider you chose. Per knob
+   (base URL, credential), highest precedence first: the `--judge-base-url` /
+   `--judge-api-key` flags, then `PARSECRAFT_JUDGE_BASE_URL` /
+   `PARSECRAFT_JUDGE_API_KEY`, then the `[providers.<name>]` section of
+   `~/.config/parsecraft/config.toml`, then the default (the legacy
+   `TYPESAFE_API_KEY` / `OPENCODE_API_KEY` env vars, or no credential for the
+   local daemon). The config-file spells kompend's provider names
+   (`[providers.typesafe]` is `typesafe-ai`, `[providers.ollama-cloud]` is
+   `ollama`); `api_key` takes a `${VAR_NAME}` reference, never a literal.
+   The local `ollama/<model>` needs no credential — pull a scoring-capable model
    (`nimble`, or the 4B `tev`) with ollama ≥ 0.35.
 3. Run with a spec: `parsecraft convert doc.pdf --judge typesafe-ai/jev-latest`
-   (or `zen/jev-1.13-free`, `ollama/nimble`). Without `--judge`, the
+   (or `zen/jev-1.13-free`, `ollama/nimble`). Without `--judge`,
+   `PARSECRAFT_JUDGE_MODEL`, and the `[judge] model` config value, the
    deterministic judge stays in charge.
 
 Any server speaking the System One request/response contract on the standard

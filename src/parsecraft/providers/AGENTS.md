@@ -83,12 +83,25 @@ by `routing/judge_providers.py` (each turns a `JudgeSpec` into a
   `JudgeProviderUnavailableError` naming the package and how to repair it,
   never as a silent `None`.
 - A judge credential is resolved once at `load_judge`, never mid-conversion:
-  an unset `TYPESAFE_API_KEY`/`OPENCODE_API_KEY` raises
-  `JudgeProviderUnavailableError`, so the CLI reports
-  `judge unavailable: …` before any backend runs. A local endpoint reads no
-  credential at all (the shared loader sends the SDK's local sentinel), and one
-  endpoint's `load_judge` must never probe the host, the network, or the daemon
-  at resolution.
+  per knob (base URL, credential) the order is explicit CLI flags
+  (`--judge-base-url` / `--judge-api-key`, carried in an ambient
+  `EndpointOverride`), then the generic env vars (`PARSECRAFT_JUDGE_BASE_URL` /
+  `PARSECRAFT_JUDGE_API_KEY`), then the `[providers.<section>]` file value
+  (`${VAR}` already expanded by the config engine), then the built-in default
+  — the `PROFILE` base URL, the legacy `TYPESAFE_API_KEY`/`OPENCODE_API_KEY`
+  env var, or the local sentinel. There are no provider-specific env vars or
+  flags. An unset credential raises `JudgeProviderUnavailableError`, so the
+  CLI reports `judge unavailable: …` before any backend runs. A local endpoint
+  reads no credential at all (the shared loader sends the SDK's local
+  sentinel), and one endpoint's `load_judge` must never probe the host, the
+  network, or the daemon at resolution. Reading the local TOML files is
+  allowed (offline, lazy — inside the resolve functions, never at import).
+  The default model is selected the same way by `select_judge_spec`:
+  `--judge` beats `PARSECRAFT_JUDGE_MODEL` beats `[judge] model`.
+  Config-file sections use kompend-shaped names (`[providers.typesafe]` is
+  `typesafe-ai`, `[providers.ollama-cloud]` is `ollama`; exact tokens work
+  too) — the alias map lives in `parsecraft.providers._endpoints`, never in
+  `routing/` (which must never import a provider).
 - Order at resolution: **spec, then environment**. A malformed spec string
   is a caller bug and raises `JudgeSpecError` (CLI exit 2) in
   `parse_judge_spec` before any loader — and therefore before the credential
@@ -103,7 +116,8 @@ indexing test skips without the core dependency), and the System One family:
 `tests/providers/test_typesafe_ai.py` + `tests/providers/test_jev_endpoints.py`
 (offline SDK stub from `tests/fixtures/jev_sdk.py`; the semi-live Ollama tier
 needs a running daemon and a pulled model, so it runs only with
-`uv run pytest -m judge --run-judge`).
+`uv run pytest -m judge --run-judge`), and `tests/providers/test_endpoints.py`
+(config file, generic env, and CLI-override precedence for each endpoint knob).
 
 ## Child DOX Index
 
