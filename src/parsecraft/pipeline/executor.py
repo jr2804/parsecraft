@@ -58,6 +58,13 @@ from parsecraft.routing.models import PageRoute
 #: covers the per-page record and the whole-document verdict.
 ALL_PASSES_FAILED_CODE = "pipeline-all-passes-failed"
 
+#: Emitted IN ADDITION to :data:`ALL_PASSES_FAILED_CODE` when every failed attempt
+#: on a page failed for the same reason: the deadline (:data:`FailureCode.TIMEOUT`).
+#: A caller that only needs "this page is missing" keeps reading
+#: :data:`ALL_PASSES_FAILED_CODE`; this code is for wording and reporting.
+#: Published here, beside its sibling, so consumers import one module for both.
+PIPELINE_TIMEOUT_CODE = "pipeline-timeout"
+
 
 class CacheProtocol(Protocol):
     """Injectable conversion-cache seam (see ``parsecraft.cache``)."""
@@ -445,6 +452,7 @@ def _execute_group(
 
     if winner is None:
         detail = f"all {len(candidates)} candidates failed: {', '.join(candidates)}"
+        timed_out = _all_attempts_timed_out(attempts)
         pages_out = [
             PageResult(
                 page_number=number,
@@ -453,7 +461,18 @@ def _execute_group(
                         level=DiagnosticLevel.WARNING,
                         code=ALL_PASSES_FAILED_CODE,
                         message=detail,
-                    )
+                    ),
+                    *(
+                        [
+                            Diagnostic(
+                                level=DiagnosticLevel.WARNING,
+                                code=PIPELINE_TIMEOUT_CODE,
+                                message=f"every candidate exceeded its deadline (timeout_s={request_options.timeout_s})",
+                            )
+                        ]
+                        if timed_out
+                        else []
+                    ),
                 ],
             )
             for number in page_numbers
@@ -467,6 +486,19 @@ def _execute_group(
         attempts=attempts,
     )
     return pages_out, entries, group
+
+
+def _all_attempts_timed_out(attempts: Sequence[PassAttempt]) -> bool:
+    """True when every recorded failure was a deadline, and at least one was recorded.
+
+    The narrow condition is the point: a mixed failure set stays exactly as it is
+    today, so a page that died of a missing dependency after a timeout is not
+    reported as "all timed out". ``FailureCode.CANCELLED`` is deliberately not a
+    timeout - a cancelled run was stopped on purpose, not out of budget.
+    """
+    if not attempts:
+        return False
+    return all(attempt.failure is not None and attempt.failure.code is FailureCode.TIMEOUT for attempt in attempts)
 
 
 def _exception_failure(

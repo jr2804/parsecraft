@@ -56,8 +56,17 @@ from parsecraft.pipeline import (
     media_type_for,
     pipeline_failure,
 )
+from parsecraft.pipeline import PIPELINE_TIMEOUT_CODE as public_timeout_code
 from parsecraft.pipeline.analysis import apply_classifier
-from parsecraft.pipeline.executor import ALL_PASSES_FAILED_CODE, RequestOptions, _bounds_segment, _cache_key, _exception_failure
+from parsecraft.pipeline.executor import (
+    ALL_PASSES_FAILED_CODE,
+    PIPELINE_TIMEOUT_CODE,
+    RequestOptions,
+    _all_attempts_timed_out,
+    _bounds_segment,
+    _cache_key,
+    _exception_failure,
+)
 from parsecraft.routing import DeterministicJudge, Intent, OcrFacts, RoutingConstraints, RoutingError, RoutingPreference
 
 PRODUCED = datetime(2026, 9, 27, tzinfo=UTC)
@@ -330,7 +339,9 @@ def test_all_candidates_fail_is_loud_not_silent(monkeypatch: pytest.MonkeyPatch)
     assert document.metadata.page_count == len(document.pages) == 2
     for page in document.pages:
         assert page.blocks == []
-        assert [d.code for d in page.diagnostics] == [ALL_PASSES_FAILED_CODE]
+        # fail_timeout is a TIMEOUT, so the timeout code rides along (pc-ua7);
+        # the failure code stays FIRST so a consumer reading [0] is unaffected.
+        assert [d.code for d in page.diagnostics] == [ALL_PASSES_FAILED_CODE, PIPELINE_TIMEOUT_CODE]
         assert page.diagnostics[0].level is DiagnosticLevel.WARNING
     assert all(entry.status is PassStatus.FAILED for entry in document.trace)
 
@@ -560,20 +571,6 @@ def test_execute_is_deterministic(monkeypatch: pytest.MonkeyPatch) -> None:
     first = execute(analysis, registry, constraints, make_source(), produced_at=PRODUCED)
     second = execute(analysis, registry, constraints, make_source(), produced_at=PRODUCED)
     assert normalized(first) == normalized(second)
-
-
-def fail_timeout(request: ConversionRequest, name: str) -> BackendResult:
-    failure = PassFailure(
-        code=FailureCode.TIMEOUT,
-        pass_kind=PassKind.NATIVE,
-        backend=name,
-        backend_version=_VERSION,
-        budget_s=5.0,
-        elapsed_s=5.1,
-        detail="convert exceeded budget",
-        occurred_at=PRODUCED,
-    )
-    return BackendResult(backend=BackendRef(name=name, version=_VERSION), pages=[], failures=[failure], elapsed_s=5.1)
 
 
 def normalized(result: PipelineResult) -> dict[str, Any]:
@@ -1190,10 +1187,139 @@ def test_non_degraded_document_has_empty_quality(monkeypatch: pytest.MonkeyPatch
     assert result.document.quality == []
 
 
+def test_all_attempts_timed_out_requires_at_least_one_attempt() -> None:
+    """The empty case is defensive, not reachable through ``execute``: no attempts is not a timeout.
+
+    ``all([])`` is True in Python, so without this guard an empty attempt list would
+    be reported as "every candidate timed out" - a claim about work that never ran.
+    Pinned directly because planning guarantees at least one candidate, which means
+    ``execute`` can never reach this line.
+    """
+    assert _all_attempts_timed_out([]) is False
+    (timeout_attempt,) = [
+        PassAttempt(
+            backend="a",
+            status=PassStatus.FAILED,
+            failure=PassFailure(
+                code=FailureCode.TIMEOUT,
+                pass_kind=PassKind.NATIVE,
+                backend="a",
+                backend_version=_VERSION,
+                budget_s=1.0,
+                elapsed_s=1.1,
+                detail="timed out",
+                occurred_at=PRODUCED,
+            ),
+        )
+    ]
+    assert _all_attempts_timed_out([timeout_attempt]) is True
+
+
 def test_all_passes_failed_code_is_public_and_matches_executor() -> None:
 
     assert public_code == ALL_PASSES_FAILED_CODE
     assert public_pipeline.ALL_PASSES_FAILED_CODE == "pipeline-all-passes-failed"
+
+
+def test_timeout_code_is_public_and_matches_executor() -> None:
+    """A consumer imports both codes from one module and gets the same strings."""
+    assert public_timeout_code == PIPELINE_TIMEOUT_CODE
+    assert public_pipeline.PIPELINE_TIMEOUT_CODE == "pipeline-timeout"
+
+
+def test_all_timeouts_add_the_timeout_code_beside_the_failure_code(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every candidate timed out: the page says WHY, not just THAT, and keeps the old code."""
+    registry = make_registry(monkeypatch)
+    add_stub(registry, make_descriptor("native-a"), convert_fn=fail_timeout)
+    result = execute(
+        make_analysis(2),
+        registry,
+        make_constraints(max_passes=1),
+        make_source(),
+        produced_at=PRODUCED,
+        options=RequestOptions(timeout_s=5.0),
+    )
+    for page in result.document.pages:
+        assert [d.code for d in page.diagnostics] == [ALL_PASSES_FAILED_CODE, PIPELINE_TIMEOUT_CODE]
+        assert all(d.level is DiagnosticLevel.WARNING for d in page.diagnostics)
+        assert page.diagnostics[1].message is not None
+        assert "timeout_s=5.0" in page.diagnostics[1].message
+    # the document-level verdict is unchanged: control flow keeps reading ONE code
+    assert [signal.name for signal in result.document.quality] == [ALL_PASSES_FAILED_CODE]
+    failure = pipeline_failure(result.document)
+    assert failure is not None
+    assert failure.code is FailureCode.TIMEOUT
+
+
+def test_every_candidate_timing_out_still_gets_the_code(monkeypatch: pytest.MonkeyPatch) -> None:
+    """max_passes=2 with BOTH candidates timing out: every attempt timed out, so the code applies."""
+    registry = make_registry(monkeypatch)
+    add_stub(registry, make_descriptor("native-a"), convert_fn=fail_timeout)
+    add_stub(registry, make_descriptor("native-b"), convert_fn=fail_timeout)
+    result = execute(make_analysis(1), registry, make_constraints(max_passes=2), make_source(), produced_at=PRODUCED)
+    assert len(result.groups[0].attempts) == 2
+    page = result.document.pages[0]
+    assert [d.code for d in page.diagnostics] == [ALL_PASSES_FAILED_CODE, PIPELINE_TIMEOUT_CODE]
+
+
+def test_mixed_failure_causes_keep_todays_output_exactly(monkeypatch: pytest.MonkeyPatch) -> None:
+    """One timeout then one dependency failure is NOT "all timed out" - unchanged output."""
+    registry = make_registry(monkeypatch)
+    add_stub(registry, make_descriptor("native-a"), convert_fn=fail_timeout)
+    add_stub(
+        registry,
+        make_descriptor("native-b"),
+        create_error=DependencyUnavailableError("parsecraft.backends.native.b", "fake"),
+    )
+    result = execute(make_analysis(1), registry, make_constraints(max_passes=2), make_source(), produced_at=PRODUCED)
+    assert len(result.groups[0].attempts) == 2
+    assert [d.code for d in result.document.pages[0].diagnostics] == [ALL_PASSES_FAILED_CODE]
+
+
+def test_cancellation_is_not_reported_as_a_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """CANCELLED is a deliberate stop, not a deadline: no timeout code is added."""
+    registry = make_registry(monkeypatch)
+
+    def fail_cancelled(request: ConversionRequest, name: str) -> BackendResult:
+        failure = PassFailure(
+            code=FailureCode.CANCELLED,
+            pass_kind=PassKind.NATIVE,
+            backend=name,
+            backend_version=_VERSION,
+            budget_s=0.0,
+            elapsed_s=0.1,
+            detail="cancelled by caller",
+            occurred_at=PRODUCED,
+        )
+        return BackendResult(backend=BackendRef(name=name, version=_VERSION), pages=[], failures=[failure], elapsed_s=0.1)
+
+    add_stub(registry, make_descriptor("native-a"), convert_fn=fail_cancelled)
+    result = execute(make_analysis(1), registry, make_constraints(max_passes=1), make_source(), produced_at=PRODUCED)
+    assert [d.code for d in result.document.pages[0].diagnostics] == [ALL_PASSES_FAILED_CODE]
+
+
+def test_a_successful_page_never_carries_the_timeout_code(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A timeout on candidate A with candidate B winning is a normal fallback, not a timeout page."""
+    registry = make_registry(monkeypatch)
+    add_stub(registry, make_descriptor("native-a"), convert_fn=fail_timeout)
+    add_stub(registry, make_descriptor("native-b"))
+    result = execute(make_analysis(1), registry, make_constraints(), make_source(), produced_at=PRODUCED)
+    assert result.groups[0].winner == "native-b"
+    assert result.document.pages[0].diagnostics == []
+
+
+def fail_timeout(request: ConversionRequest, name: str) -> BackendResult:
+    failure = PassFailure(
+        code=FailureCode.TIMEOUT,
+        pass_kind=PassKind.NATIVE,
+        backend=name,
+        backend_version=_VERSION,
+        budget_s=5.0,
+        elapsed_s=5.1,
+        detail="convert exceeded budget",
+        occurred_at=PRODUCED,
+    )
+    return BackendResult(backend=BackendRef(name=name, version=_VERSION), pages=[], failures=[failure], elapsed_s=5.1)
 
 
 def test_canonical_group_discriminator() -> None:
@@ -1514,9 +1640,11 @@ def test_timeout_with_default_passes_loses_the_page(monkeypatch: pytest.MonkeyPa
     assert not fast_calls  # the second candidate was never in the plan
     (page,) = result.document.pages
     assert page.blocks == []
-    (diagnostic,) = page.diagnostics
-    assert diagnostic.level == DiagnosticLevel.WARNING
-    assert diagnostic.code == ALL_PASSES_FAILED_CODE
+    failure_diagnostic, timeout_diagnostic = page.diagnostics
+    assert failure_diagnostic.level == DiagnosticLevel.WARNING
+    assert failure_diagnostic.code == ALL_PASSES_FAILED_CODE
+    # pc-ua7: the page also says the cause was the deadline, not a broken backend.
+    assert timeout_diagnostic.code == PIPELINE_TIMEOUT_CODE
 
 
 def _timeout_failure(request: ConversionRequest, name: str) -> BackendResult:

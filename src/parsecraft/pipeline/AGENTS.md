@@ -51,6 +51,11 @@ a `DocumentResult` with `TraceEntry` records — no silent drops.
   some pages with content — is deliberately *not* a failure), and such a failed
   document is never written to the cache: a missing extra is environment state,
   not a property of the content.
+- When every failed attempt on those pages failed of the **deadline**, a second
+  `WARNING` `pipeline-timeout` (`PIPELINE_TIMEOUT_CODE`) is added after it:
+  control flow keeps reading `ALL_PASSES_FAILED_CODE` alone, and the extra code
+  is for wording. Mixed causes (a timeout then a missing extra) keep the single
+  diagnostic exactly, and `CANCELLED` is never a timeout.
 - One backend instance at a time (8 GB VRAM ceiling): instances are created
   per attempt and dropped (`del backend`) before the next one — no pool.
   Marked with a `ponytail:` comment at the creation site.
