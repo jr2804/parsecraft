@@ -201,8 +201,21 @@ def test_text_extract_configured_plain_stamps_plain(monkeypatch: pytest.MonkeyPa
     assert [block.confidence for block in pages[0].blocks] == [1.0]
 
 
-def test_text_extract_broken_spec_falls_back_with_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_text_extract_unavailable_provider_falls_back_quietly(monkeypatch: pytest.MonkeyPatch) -> None:
+    # No text-classifier loader exists for routing providers yet (pc-9p6.3
+    # finding): an operator's working routing config is not their mistake,
+    # so the fallback stays at INFO, not WARNING.
     monkeypatch.setenv("PARSECRAFT_JUDGE_MODEL", "no-such-provider-9p63/model")
+    pages = text_module.extract_text_pages(_source(b"hello"), b"hello")
+    assert pages[0].blocks == paragraph_chunks("native-text", 1, "hello")
+    (diagnostic,) = pages[0].diagnostics
+    assert diagnostic.level is DiagnosticLevel.INFO
+    assert diagnostic.code == "text-kind"
+    assert "unusable" in diagnostic.message
+
+
+def test_text_extract_malformed_spec_stays_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PARSECRAFT_JUDGE_MODEL", "a:")
     pages = text_module.extract_text_pages(_source(b"hello"), b"hello")
     assert pages[0].blocks == paragraph_chunks("native-text", 1, "hello")
     (diagnostic,) = pages[0].diagnostics
@@ -222,7 +235,7 @@ def test_text_extract_parse_failure_falls_back_with_warning(monkeypatch: pytest.
     pages = text_module.extract_text_pages(_source(b"# Hi"), b"# Hi")
     assert pages[0].blocks == paragraph_chunks("native-text", 1, "# Hi")
     (diagnostic,) = pages[0].diagnostics
-    assert diagnostic.level is DiagnosticLevel.WARNING
+    assert diagnostic.level is DiagnosticLevel.INFO
     assert "parse failed" in diagnostic.message
 
 
