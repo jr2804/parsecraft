@@ -1063,8 +1063,8 @@ def good_native(signals_count: int = 1) -> list[PageSignal]:
 def test_native_pdf_is_demoted_when_pdf_extra_absent() -> None:
     """A host without ``parsecraft[pymupdf]`` must not be led by ``pymupdf``.
 
-    The consumer session measured the cost this removes: on the 2026.10.3 tier model,
-    ``pymupdf`` led every ``application/pdf`` NATIVE page because its
+    The consumer session measured the cost this removes: on the 2026.10.3 tier
+    model, ``pymupdf`` led every ``application/pdf`` NATIVE page because its
     ``analyze()`` runs on core pypdf, while its ``convert()`` needs PyMuPDF —
     so each document paid one failed lead attempt before falling through.
     A10 demotes it into the extra-backed tier for exactly that host.

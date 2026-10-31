@@ -110,7 +110,7 @@ def _extract(html: str | bytes) -> str:
     if markdown and markdown.strip():
         return markdown
     # Consumer-verified fallback: Markdown came back empty — try plain text
-    # before failing
+    # before failing.
     return cast("str", trafilatura.extract(html, output_format="text"))
 
 
