@@ -18,6 +18,12 @@ title: Installation
 | CPython 3.14 | Supported, including the free-threaded `3.14t` build (Ubuntu, macOS, Windows) |
 | CPython 3.15-dev | Best-effort |
 
+Core installs and runs on all of the above. Individual **extras** can be narrower:
+some publish wheels for one interpreter family only (a Rust `abi3` extension does
+not load on a free-threaded build; `onnxruntime` has no free-threaded macOS or
+Windows wheel at all). See [Interpreter and platform availability](../reference/backends.md#interpreter-and-platform-availability)
+before choosing a free-threaded host for a workflow that needs a specific engine.
+
 ## GPU torch
 
 OCR backends need `torch`, and the PyPI Windows/Linux wheels are **CPU builds**
