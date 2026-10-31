@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from parsecraft import pipeline as public_pipeline
 from parsecraft.backends import default_registry
 from parsecraft.backends.errors import BackendError, DependencyUnavailableError
+from parsecraft.backends.native._common import NATIVE_BACKEND_VERSION
 from parsecraft.backends.ocr.tesseract import TesseractUnavailableError
 from parsecraft.backends.protocol import (
     AnalysisResult,
@@ -1045,6 +1046,18 @@ def test_uncached_default_digest_is_pinned(monkeypatch: pytest.MonkeyPatch) -> N
     add_stub(registry, make_descriptor("native-a"))
     digest = _cache_key(make_source(), registry, make_constraints(), None)
     assert digest == "26194e6e5cd75ed3e5b297ce3e6507a4c959da0c50cd68b3ab19136b3fa02565"
+
+
+def test_native_version_bump_changes_the_cache_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """0.1.2 → 0.1.3 decoder/output changes must not reuse 0.1.2-cached documents."""
+    old = BackendDescriptor(name="native-text", version="0.1.2", capabilities=make_caps())
+    new = BackendDescriptor(name="native-text", version=NATIVE_BACKEND_VERSION, capabilities=make_caps())
+    keys = []
+    for descriptor in (old, new):
+        registry = make_registry(monkeypatch)
+        add_stub(registry, descriptor)
+        keys.append(_cache_key(make_source(), registry, make_constraints(), None))
+    assert keys[0] != keys[1]
 
 
 def test_empty_bounds_segment_is_omitted_from_the_key() -> None:

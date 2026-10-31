@@ -37,7 +37,8 @@ from parsecraft.ir.models import (
     utcnow,
 )
 
-NATIVE_BACKEND_VERSION = "0.1.2"
+# Decoder or output changes must invalidate earlier cached documents (pc-9p6.14).
+NATIVE_BACKEND_VERSION = "0.1.3"
 
 _BLOCK_SPLIT = re.compile(r"\n[ \t]*\n+")
 

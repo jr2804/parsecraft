@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
@@ -30,7 +31,7 @@ from parsecraft.backends.protocol import (
 from parsecraft.cli import config as cli_config
 from parsecraft.cli.app import app
 from parsecraft.environment import EnvironmentInfo
-from parsecraft.ir import ChunkKind, PageResult, PageSignal, StructuredChunk
+from parsecraft.ir import ChunkKind, Diagnostic, DiagnosticLevel, DocumentMetadata, DocumentResult, PageResult, PageSignal, StructuredChunk
 from parsecraft.pipeline.analysis import NoAnalyzerError, UnsupportedSourceError, choose_analyzer, media_type_for
 from parsecraft.providers import _endpoints as endpoints
 from parsecraft.routing import Intent, MachineProfile, PageContext, RoutingConstraints, RoutingJudge, RoutingPreference
@@ -195,6 +196,16 @@ class _ExplodingJudge:
         raise AssertionError("no judge spec was given — the deterministic default must plan")
 
 
+@pytest.fixture
+def _quiet_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Neutralize the machine GPU probe so CLI output assertions stay exact."""
+    monkeypatch.setattr(
+        convert_module,
+        "probe_environment",
+        lambda: EnvironmentInfo(installed_extras=frozenset(), vram_budget_gb=0.0, offline=True),
+    )
+
+
 def test_media_type_for_supported_and_unsupported(tmp_path: Path) -> None:
     assert media_type_for(tmp_path / "a.TXT") == "text/plain"
     assert media_type_for(tmp_path / "a.md") == "text/markdown"
@@ -212,6 +223,15 @@ def test_read_source_reads_bytes_and_reports_missing(tmp_path: Path) -> None:
 
     with pytest.raises(convert_module.ConvertError, match="cannot read source"):
         convert_module.read_source(tmp_path / "missing.txt", "text/plain")
+
+
+def test_read_unknown_source_reports_unreadable_as_usage_error(tmp_path: Path) -> None:
+    """Unreadable unknown-suffix input keeps the usage error (exit 2), not a crash (pc-9p6.14)."""
+    with pytest.raises(UnsupportedSourceError) as error:
+        media_type_for(tmp_path / "a.xyz")
+    with pytest.raises(convert_module.ConvertError, match="unsupported source") as failure:
+        convert_module.read_unknown_source(tmp_path / "missing.xyz", error.value)
+    assert failure.value.exit_code == convert_module._USAGE_EXIT_CODE
 
 
 def test_analysis_backend_prefers_native_then_name_and_errors() -> None:
@@ -365,11 +385,78 @@ def test_convert_no_auto_requires_backend(tmp_path: Path, registry: BackendRegis
 
 
 def test_convert_unknown_suffix_is_usage_error(tmp_path: Path, registry: BackendRegistry) -> None:
+    """Binary bytes with an unknown suffix still reject (sniff runs before routing)."""
     path = tmp_path / "doc.xyz"
-    path.write_text("data", encoding="utf-8")
+    path.write_bytes(b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n" + bytes(200))
     result = runner.invoke(app, ["convert", str(path)])
     assert result.exit_code == 2
     assert "unsupported source" in _text(result)
+
+
+def test_convert_unknown_text_suffix_converts(tmp_path: Path, registry: BackendRegistry) -> None:
+    """Unknown suffixes carrying text convert as text/plain (pc-9p6.14)."""
+    _register(registry, _descriptor("native-text", ("text/plain",)), content="converted paragraph")
+    path = tmp_path / "doc.xyz"
+    path.write_bytes((_LONG_TEXT + "\n").encode("utf-8"))
+    result = runner.invoke(app, ["convert", str(path)])
+    assert result.exit_code == 0
+    assert "converted paragraph" in result.output
+
+
+def test_convert_latin1_text_warns_on_stderr(tmp_path: Path) -> None:
+    """Non-UTF-8 bytes convert with a heuristic-charset warning on stderr (pc-9p6.14)."""
+    path = tmp_path / "notes.txt"
+    path.write_bytes(("Record: Café naïve façade résumé\n" * 8).encode("latin-1"))
+    result = runner.invoke(app, ["convert", str(path)])
+    assert result.exit_code == 0
+    assert "heuristic" in (result.stderr or "")
+    assert "Record:" in result.output
+
+
+@pytest.mark.usefixtures("_quiet_environment")
+def test_convert_json_carries_encoding_diagnostic(tmp_path: Path) -> None:
+    """The warning is also in the payload — stderr is a surface, the IR is the record."""
+    path = tmp_path / "notes.txt"
+    path.write_bytes(("Café naïve façade résumé\n" * 8).encode("latin-1"))
+    result = runner.invoke(app, ["convert", str(path), "--json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert any(d["code"] == "text-encoding" for d in payload["pages"][0]["diagnostics"])
+    assert "heuristic" in (result.stderr or "")
+
+
+@pytest.mark.usefixtures("_quiet_environment")
+def test_convert_unknown_text_suffix_end_to_end(tmp_path: Path) -> None:
+    """Unknown suffix, real registry: text converts as text/plain (pc-9p6.14)."""
+    path = tmp_path / "notes.xyz"
+    path.write_bytes((_LONG_TEXT + "\n").encode("utf-8"))
+    result = runner.invoke(app, ["convert", str(path), "--json"])
+    assert result.exit_code == 0
+    assert json.loads(result.stdout)["metadata"]["format"] == "text/plain"
+
+
+def test_warn_text_encoding_notes_dedupes_per_message(capsys: pytest.CaptureFixture[str]) -> None:
+    """One stderr line per distinct message no matter how many pages repeat it."""
+    note = Diagnostic(level=DiagnosticLevel.WARNING, code="text-encoding", message="heuristic note")
+    other = Diagnostic(level=DiagnosticLevel.INFO, code="text-kind", message="unrelated")
+    document = DocumentResult(
+        metadata=DocumentMetadata(
+            source_uri="mem://dedup",
+            source_hash="0" * 64,
+            format="text/plain",
+            page_count=2,
+            produced_at=datetime.now(UTC),
+            package_version="0.0.0-test",
+        ),
+        pages=[
+            PageResult(page_number=1, diagnostics=[note, other]),
+            PageResult(page_number=2, diagnostics=[note]),
+        ],
+    )
+    convert_module.warn_text_encoding_notes(document)
+    captured = capsys.readouterr()
+    assert captured.err.count("heuristic note") == 1
+    assert captured.out == ""
 
 
 def test_convert_missing_file_is_usage_error(tmp_path: Path, registry: BackendRegistry) -> None:

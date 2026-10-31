@@ -40,11 +40,14 @@ def inspect_source(
     allow_ocr: bool | None = None,
 ) -> InspectPreview:
     """Analyze a source and preview its route without converting content."""
+    unknown_error: UnsupportedSourceError | None = None
     try:
         media_type = media_type_for(path)
     except UnsupportedSourceError as exc:
-        raise convert.ConvertError(str(exc), exit_code=2) from exc
-    source = convert.read_source(path, media_type)
+        unknown_error = exc
+        # Provisional: the sniff decides below; never used for routing unless text.
+        media_type = "text/plain"
+    source = convert.read_unknown_source(path, unknown_error) if unknown_error is not None else convert.read_source(path, media_type)
     environment = convert.probe_environment()  # a single probe per invocation
     convert.warn_unusable_gpu(environment)
     try:

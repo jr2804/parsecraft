@@ -117,8 +117,22 @@ the fetch starts — informational only, no prompt and no flag. Supported suffix
 `.markdown`, `.html`, `.htm`, `.rst`, `.tex`, `.log`, `.ini`, `.cfg`, `.toml`,
 `.sh`, `.py`, `.c`, `.cc`, `.cpp`, `.h`, `.hpp`, `.m`), the delimited family (`.csv`, `.tsv`), the office family
 (`.docx`, `.pptx`, `.xlsx`, `.odt`, `.rtf`, `.epub`), plus `.pdf`, `.jpg`,
-`.jpeg`, `.png`, `.tif`, and `.tiff`. `.json` and `.xml` are
-deliberately unsupported (no backend claims those media types).
+`.jpeg`, `.png`, `.tif`, and `.tiff`. `.json`, `.xml`, and extensionless
+paths stay out of `MEDIA_TYPES` on purpose — the CLI routes them through a
+text sniff instead of rejecting them: content identified as text becomes
+`text/plain` via `native-text`, without changing the source bytes or their
+hash. Content identified as binary, or unreadable input, keeps the original
+usage error and exits `2`. This heuristic can misclassify either kind of input;
+it is not a security check.
+
+Fidelity notes — the sniff decides *textness*, not *encoding*, and a
+heuristic decode is announced, never silent. `native-text` decodes
+deterministic-first (BOM-declared codec, else historical UTF-8 path) and
+routes everything else through charset detection carrying a `text-encoding`
+WARNING diagnostic, echoed once per distinct message on stderr. So: charset
+guesses can be wrong even without replacement characters; on a warning,
+verify the output and if needed convert a copy of the source to UTF-8 before
+ingestion. No guaranteed-fidelity claim is made for sniffed input.
 
 That map is what the CLI *accepts*, not what a given install can *convert*: every
 media type must be claimed by at least one registered backend, and the office

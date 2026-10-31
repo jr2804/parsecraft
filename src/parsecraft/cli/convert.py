@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from importlib import import_module
 from pathlib import Path
 
 import typer
@@ -35,6 +36,7 @@ from parsecraft.pipeline.analysis import (
     analyze_source,
     choose_analyzer,
     media_type_for,
+    sniff_text_plain,
 )
 from parsecraft.pipeline.executor import RequestOptions
 from parsecraft.providers._endpoints import override_endpoint, select_judge_spec, select_text_classifier_spec
@@ -121,17 +123,20 @@ def convert_source(
     flag wins, otherwise the ``timeout_s`` config key); ``None`` means unbounded,
     exactly as before.
     """
+    unknown_error: UnsupportedSourceError | None = None
     try:
         media_type = media_type_for(path)
     except UnsupportedSourceError as exc:
-        raise ConvertError(str(exc), exit_code=_USAGE_EXIT_CODE) from exc
+        unknown_error = exc
+        # Provisional: the sniff decides below; never used for routing unless text.
+        media_type = "text/plain"
     environment = probe_environment()  # a single probe per invocation, shared by analysis and the seams
     warn_unusable_gpu(environment)
     registry_names = frozenset(descriptor.name for descriptor in default_registry.list_backends())
     resolved_classifier, resolved_judge, preferred_backend = _resolve_providers(
         classifier, backend, judge, environment, preference, registry_names, judge_base_url, judge_api_key
     )
-    source = read_source(path, media_type)
+    source = read_unknown_source(path, unknown_error) if unknown_error is not None else read_source(path, media_type)
     registry = default_registry
     try:
         analyzer = choose_analyzer(registry.list_backends(), media_type, installed_extras=environment.installed_extras)
@@ -370,6 +375,46 @@ def read_source(path: Path, media_type: str) -> SourceDocument:
     except OSError as exc:
         raise ConvertError(f"cannot read source {path}: {exc}") from exc
     return SourceDocument(uri=path.absolute().as_uri(), media_type=media_type, content=content)
+
+
+def read_unknown_source(path: Path, unsupported: UnsupportedSourceError) -> SourceDocument:
+    """Read a source whose suffix has no MIME mapping, sniffing for text (pc-9p6.14).
+
+    The file is read exactly once; binary (or unreadable) input keeps the
+    original usage error so the call site still exits 2 with the same
+    message. Text input becomes a ``text/plain`` document with the ORIGINAL
+    bytes — byte-identical to converting the same bytes from a ``.txt`` —
+    so the raw source hash is preserved and downstream caching matches.
+    """
+    try:
+        content = path.read_bytes()
+    except OSError:
+        raise ConvertError(str(unsupported), exit_code=_USAGE_EXIT_CODE) from unsupported
+    if not sniff_text_plain(content):
+        raise ConvertError(str(unsupported), exit_code=_USAGE_EXIT_CODE) from unsupported
+    return SourceDocument(uri=path.absolute().as_uri(), media_type="text/plain", content=content)
+
+
+def warn_text_encoding_notes(document: DocumentResult) -> None:
+    """Echo each distinct heuristic-charset note once on stderr (pc-9p6.14).
+
+    Page diagnostics never reach the Markdown/stdout rendering, so without
+    this the heuristic decode stays silent to the default CLI user. The IR
+    keeps the per-page records; stderr gets one line per distinct message.
+    Called from the ``convert`` command only — the library stays quiet and
+    library consumers read the IR diagnostics.
+    """
+    # Call-time import (import_module, never an import statement): the sorter
+    # cannot hoist it, so importing the backend module (adapters stack) stays
+    # deferred until a conversion actually produced pages.
+    encoding_code = str(import_module("parsecraft.backends.native.text").ENCODING_CODE)
+
+    seen: set[str] = set()
+    for page in document.pages:
+        for diagnostic in page.diagnostics:
+            if diagnostic.code == encoding_code and diagnostic.message not in seen:
+                seen.add(diagnostic.message)
+                typer.echo(f"warning: {diagnostic.message}", err=True)
 
 
 def build_constraints(

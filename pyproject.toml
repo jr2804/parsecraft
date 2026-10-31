@@ -16,6 +16,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
+    "binaryornot>=0.6",  # MIT, zero-dep: unknown-suffix text gate (pc-9p6.14)
     "charset-normalizer>=3.4",
     "huggingface-hub>=0.34",
     "liteparse>=2.14",

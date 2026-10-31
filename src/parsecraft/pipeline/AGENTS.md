@@ -31,6 +31,11 @@ a `DocumentResult` with `TraceEntry` records — no silent drops.
   `analyze_source` takes an optional keyword-only `classifier`; a seam
   `ClassifierError` falls back to the unmodified analysis (ADR-0004 A3).
   `plan_route` is unchanged.
+- Unknown suffixes and extensionless files use `sniff_text_plain` before the
+  CLI routes them as `text/plain`; `MEDIA_TYPES` remains the suffix map.
+  The bounded BOM/binaryornot check is heuristic, not a security gate: it can
+  miss binary in unsampled bytes or reject text, including BOM-less UTF-16.
+  Keep binaryornot lazy on known-suffix paths and preserve the original bytes.
 - Grouping: contiguous pages merge into one range iff they share
   `(intent, chosen, candidates)` AND the chosen descriptor has
   `supports_page_ranges` AND `supports_multi_page`; otherwise one page per

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import codecs
 import csv
 import hashlib
 import os
@@ -14,6 +15,8 @@ import pytest
 from markdown_it import MarkdownIt
 
 from parsecraft.adapters.classification import TextKind, register_text_classifier_provider
+from parsecraft.adapters.encoding import EncodingDetection
+from parsecraft.adapters.encoding import decode as decode_bytes
 from parsecraft.backends import pymupdf as pymupdf_module
 from parsecraft.backends.native import csv as csv_module
 from parsecraft.backends.native import html as html_module
@@ -160,6 +163,84 @@ def test_text_page_range_outside_single_page_returns_no_pages() -> None:
     result = backend.convert(request)
     assert result.pages == []
     assert result.failures == []
+
+
+# ── heuristic charset decoding (pc-9p6.14) ──────────────────────────────────
+
+
+def test_text_extract_utf8_bom_keeps_the_bom_silently() -> None:
+    """A UTF-8 BOM takes today's exact path: U+FEFF preserved, no diagnostic."""
+    raw = "Héllo\n".encode("utf-8-sig")
+    (page,) = text_module.extract_text_pages(_source(raw), raw)
+    assert page.blocks[0].content == "\ufeffHéllo"
+    assert page.diagnostics == []
+
+
+def test_text_extract_utf16le_decodes_with_a_warning() -> None:
+    raw = ("Hello world, this is a longer line of text.\n" * 20).encode("utf-16-le")
+    (page,) = text_module.extract_text_pages(_source(raw), raw)
+    assert page.blocks[0].content == raw.decode("utf-16-le").strip()  # paragraph_chunks strips
+    (note,) = [d for d in page.diagnostics if d.code == text_module.ENCODING_CODE]
+    assert note.level == DiagnosticLevel.WARNING
+    assert "heuristic" in note.message
+
+
+def test_text_extract_latin1_warns_and_matches_the_detector() -> None:
+    raw = ("Café naïve façade résumé\n" * 40).encode("latin-1")
+    (page,) = text_module.extract_text_pages(_source(raw), raw)
+    (note,) = [d for d in page.diagnostics if d.code == text_module.ENCODING_CODE]
+    assert note.level == DiagnosticLevel.WARNING
+    assert "heuristic" in note.message
+    assert "\x00" not in page.blocks[0].content  # no NUL-garbage passthrough
+    assert page.blocks[0].content == decode_bytes(raw).text.strip()  # paragraph_chunks strips
+
+
+def test_text_extract_undecided_charset_says_so(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A detector fallback to UTF-8 is reported as undecided, not as a determination."""
+    monkeypatch.setattr(
+        "parsecraft.backends.native.text.decode_bytes",
+        lambda data: EncodingDetection(charset="utf-8", text=data.decode("utf-8", errors="replace")),
+    )
+    raw = "Café\n".encode("latin-1")
+    (page,) = text_module.extract_text_pages(_source(raw), raw)
+    (note,) = [d for d in page.diagnostics if d.code == text_module.ENCODING_CODE]
+    assert "undecided" in note.message
+
+
+def test_text_extract_nul_bytes_decode_exactly_with_a_note() -> None:
+    raw = b"alpha\x00beta\n"
+    (page,) = text_module.extract_text_pages(_source(raw), raw)
+    assert page.blocks[0].content == "alpha\x00beta"
+    (note,) = [d for d in page.diagnostics if d.code == text_module.ENCODING_CODE]
+    assert "NUL" in note.message
+
+
+def test_text_extract_malformed_bom_falls_back_with_a_warning() -> None:
+    raw = b"\xff\xfe\x41"  # odd-length UTF-16 BOM prefix: not a well-formed stream
+    (page,) = text_module.extract_text_pages(_source(raw), raw)
+    assert any(d.code == text_module.ENCODING_CODE and d.level == DiagnosticLevel.WARNING for d in page.diagnostics)
+
+
+def test_text_extract_surrogate_prefix_falls_back_with_a_warning() -> None:
+    raw = b"\xff\xfeA\x00\x00\xd8B\x00"  # lone surrogate: strict validity fails
+    (page,) = text_module.extract_text_pages(_source(raw), raw)
+    assert any(d.code == text_module.ENCODING_CODE and d.level == DiagnosticLevel.WARNING for d in page.diagnostics)
+
+
+def test_text_extract_utf16_bom_decodes_exactly_and_silently() -> None:
+    """A valid 16-bit BOM declares the codec: exact text, no diagnostic (pc-9p6.14)."""
+    raw = codecs.BOM_UTF16_LE + "Héllo world\n".encode("utf-16-le")
+    (page,) = text_module.extract_text_pages(_source(raw), raw)
+    assert page.blocks[0].content == "Héllo world"
+    assert page.diagnostics == []
+
+
+def test_text_extract_utf16_shaped_ascii_warns() -> None:
+    """NUL-interleaved ASCII takes the heuristic decode path, never the silent one."""
+    raw = b"a\x00b\x00c\x00" * 100
+    (page,) = text_module.extract_text_pages(_source(raw), raw)
+    assert page.blocks[0].content != ""
+    assert any(d.code == text_module.ENCODING_CODE and d.level == DiagnosticLevel.WARNING for d in page.diagnostics)
 
 
 def test_text_convert_from_disk_file(cache_subdir: Path) -> None:
@@ -715,8 +796,8 @@ def test_csv_descriptor_claims_both_delimited_types() -> None:
     assert csv_module.BACKEND_NAME == "native-csv"
     assert csv_module.SUPPORTED_FORMATS == ["text/csv", "text/tab-separated-values"]
     descriptor = csv_module.factory.descriptor
-    # Parser and projection changes must invalidate earlier cached documents.
-    assert descriptor.version == NATIVE_BACKEND_VERSION == "0.1.2"
+    # Parser, decoder, and projection changes must invalidate earlier cached documents.
+    assert descriptor.version == NATIVE_BACKEND_VERSION == "0.1.3"
     assert descriptor.capabilities.supports_page_ranges is False
     assert descriptor.capabilities.supports_multi_page is False
     backend = csv_module.factory(_config("native-csv"))

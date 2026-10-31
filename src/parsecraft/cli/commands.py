@@ -16,7 +16,7 @@ from parsecraft.cli import benchmark as benchmark_module
 from parsecraft.cli import inspect as inspect_module
 from parsecraft.cli import judges as judges_module
 from parsecraft.cli import models as models_module
-from parsecraft.cli.convert import _USAGE_EXIT_CODE, ConvertError, convert_source, render
+from parsecraft.cli.convert import _USAGE_EXIT_CODE, ConvertError, convert_source, render, warn_text_encoding_notes
 from parsecraft.cli.errors import CliError
 from parsecraft.config import ConfigError
 from parsecraft.routing import RoutingPreference
@@ -225,6 +225,7 @@ def convert(
     except ConvertError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=exc.exit_code) from exc
+    warn_text_encoding_notes(document)
     rendered = render(document, as_json=as_json)
     if output is None:
         typer.echo(rendered)

@@ -177,12 +177,32 @@ def test_cli_inspect_no_ocr(tmp_path: Path, offline_probe: None, monkeypatch: py
 
 
 def test_cli_inspect_unsupported_suffix(tmp_path: Path, offline_probe: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Binary bytes with an unknown suffix still reject (sniff runs before routing)."""
     monkeypatch.setattr(commands_module, "default_registry", _registry())
     path = tmp_path / "doc.xyz"
-    path.write_text("data", encoding="utf-8")
+    path.write_bytes(b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n" + bytes(200))
     result = runner.invoke(app, ["inspect", str(path)])
     assert result.exit_code == 2
     assert "unsupported source" in _text(result)
+
+
+def test_cli_inspect_unknown_text_suffix(tmp_path: Path, offline_probe: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unknown suffixes carrying text inspect as text/plain (pc-9p6.14)."""
+    monkeypatch.setattr(commands_module, "default_registry", _registry())
+    path = tmp_path / "notes.xyz"
+    path.write_bytes((_LONG_TEXT + "\n").encode("utf-8"))
+    result = runner.invoke(app, ["inspect", str(path)])
+    assert result.exit_code == 0
+    assert "text/plain" in _text(result)
+
+
+def test_inspect_source_unknown_text_preserves_raw_hash(tmp_path: Path) -> None:
+    """Sniffing and decoding never touch the source bytes (pc-9p6.14)."""
+    raw = ("Café naïve\n" * 10).encode("latin-1")
+    path = tmp_path / "notes.xyz"
+    path.write_bytes(raw)
+    preview = inspect_module.inspect_source(path, _registry())
+    assert preview.analysis.source_hash == hashlib.sha256(raw).hexdigest()
 
 
 def _registry(**options: object) -> BackendRegistry:

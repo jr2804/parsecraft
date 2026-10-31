@@ -381,12 +381,6 @@ def test_file_writers_emit_identical_lf_content(monkeypatch: pytest.MonkeyPatch,
     assert json.loads(json_path.read_text(encoding="utf-8"))["package_version"] == report.package_version
 
 
-def make_document(tmp_path: Path, name: str, content: str = "local document content") -> Path:
-    path = tmp_path / name
-    path.write_text(content, encoding="utf-8")
-    return path
-
-
 def test_staged_corpus_absence_is_a_skip_not_an_error(monkeypatch: pytest.MonkeyPatch) -> None:
     registry = make_registry(monkeypatch)
     add_stub(registry, make_descriptor("native-a"))
@@ -394,6 +388,21 @@ def test_staged_corpus_absence_is_a_skip_not_an_error(monkeypatch: pytest.Monkey
     report = run_benchmark([corpus], registry, default_constraints())
     assert report.results == []
     assert report.skips[0].reason == "file not found"
+
+
+def test_unknown_text_suffix_still_skips(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The runner keeps suffix-only routing: unknown text skips even though convert accepts it."""
+    registry = make_registry(monkeypatch)
+    add_stub(registry, make_descriptor("native-a"))
+    report = run_benchmark([make_document(tmp_path, "notes.xyz")], registry, default_constraints())
+    assert report.results == []
+    assert [(skip.document, skip.reason) for skip in report.skips] == [("notes.xyz", "unsupported source suffix '.xyz'")]
+
+
+def make_document(tmp_path: Path, name: str, content: str = "local document content") -> Path:
+    path = tmp_path / name
+    path.write_text(content, encoding="utf-8")
+    return path
 
 
 def make_descriptor(name: str, formats: tuple[str, ...] = ("text/plain",)) -> BackendDescriptor:

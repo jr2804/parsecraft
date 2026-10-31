@@ -1,15 +1,19 @@
 """Public analysis entry points: media classification and the canonical analyzer.
 
 Single source of truth shared by the CLI, the benchmark harness, and
-external consumers (e.g. the KNOX adapter): ``MEDIA_TYPES``,
+external consumers: ``MEDIA_TYPES``,
 ``media_type_for``, ``choose_analyzer``, ``analyze_source``. Nothing here
 imports CLI code — the CLI maps these typed errors onto its own exit codes.
 """
 
 from __future__ import annotations
 
+import codecs
+import re
 from collections.abc import Collection, Sequence
+from importlib import import_module
 from pathlib import Path
+from typing import Protocol, cast
 
 from parsecraft.backends.protocol import (
     AnalysisResult,
@@ -28,8 +32,10 @@ from parsecraft.routing.classifier import (
 from parsecraft.routing.rules import FEATURE_TABLE_CODE, is_ocr
 
 #: Suffix → MIME for every source class this package can consume. Values
-#: must be claimed by at least one registered backend (invariant-tested);
-#: suffixes with no claiming backend (json/xml) stay unsupported on purpose.
+#: must be claimed by at least one registered backend (invariant-tested).
+#: Suffixes with no claiming backend (json/xml/extensionless) stay OUT of
+#: this map on purpose: the CLI routes them through ``sniff_text_plain``
+#: (pc-9p6.14), which maps valid text to ``text/plain``.
 MEDIA_TYPES: dict[str, str] = {
     ".c": "text/plain",
     ".cc": "text/plain",
@@ -68,6 +74,31 @@ MEDIA_TYPES: dict[str, str] = {
 }
 
 
+#: BOM prefix → (exact codec, code unit size); longest prefixes first (pc-9p6.14).
+_BOM_CODECS: tuple[tuple[bytes, str, int], ...] = (
+    (codecs.BOM_UTF32_LE, "utf-32-le", 4),
+    (codecs.BOM_UTF32_BE, "utf-32-be", 4),
+    (codecs.BOM_UTF16_LE, "utf-16-le", 2),
+    (codecs.BOM_UTF16_BE, "utf-16-be", 2),
+)
+
+#: Lone surrogates are not valid Unicode text (pc-9p6.14).
+_LONE_SURROGATE_RE = re.compile("[\ud800-\udfff]")
+
+#: BOM validity is checked over at most this many leading bytes (pc-9p6.14).
+_BOM_PROBE_BYTES = 65536
+
+_HEAD_WINDOW_BYTES = 32768
+_TAIL_WINDOW_BYTES = 32768
+_STACKED_WINDOW_BYTES = _HEAD_WINDOW_BYTES + _TAIL_WINDOW_BYTES
+
+
+class _BinaryCheck(Protocol):
+    """The ``binaryornot.check`` surface this module needs (imported call-time)."""
+
+    def is_binary_string(self, data: bytes) -> bool: ...
+
+
 class AnalysisError(Exception):
     """Base class for public analysis-path failures (never a CLI error)."""
 
@@ -96,6 +127,91 @@ def media_type_for(path: Path) -> str:
         supported = ", ".join(sorted(MEDIA_TYPES))
         raise UnsupportedSourceError(path.name, supported)
     return media_type
+
+
+def sniff_text_plain(data: bytes) -> bool:
+    """Heuristic gate: unknown-suffix bytes that are probably text (pc-9p6.14).
+
+    A BOM prefix is an exact declaration, not a statistical call — but only
+    when the BOM-declared codec strictly decodes the leading bytes with no
+    lone surrogates (a lying or truncated prefix falls through to the
+    windows below instead of being blindly approved as text). The UTF-8 BOM
+    is strict-validated the same way (bounded probe with torn-edge trim;
+    small files validate whole). Validity is checked over at most the first
+    64 KiB, so the cost stays bounded no matter the file size. Otherwise binaryornot decides over the full
+    content up to 64 KiB, else over head+tail 32 KiB windows whose cuts are
+    aligned to UTF-8 code-point boundaries first — a cut landing inside a
+    multibyte sequence would otherwise read as binary (pc-3 adversarial:
+    valid CJK/emoji UTF-8 classified binary on torn slices). Binary confined
+    to the unsampled middle is NOT detected — a documented limitation, not
+    a security gate. Multibyte text binaryornot itself cannot see (BOM-less
+    UTF-16 CJK reads binary even full-scan) is a known false negative,
+    documented not fixed. Empty input sniffs as text (parity with empty
+    ``.txt``).
+    """
+    # Call-time import (import_module, never an import statement): the sorter
+    # cannot hoist it, so the startup path never pays the ~0.5 s table cost.
+    check = _binaryornot_check()
+
+    if _bom_declares_text(data):
+        return True
+    if len(data) <= _STACKED_WINDOW_BYTES:
+        return not check.is_binary_string(data)
+    head = _utf8_edge_trimmed_head(data[:_HEAD_WINDOW_BYTES])
+    tail = _utf8_edge_trimmed_tail(data[-_TAIL_WINDOW_BYTES:])
+    return not check.is_binary_string(head) and not check.is_binary_string(tail)
+
+
+def _binaryornot_check() -> _BinaryCheck:
+    """Import binaryornot at call time: ~0.5 s of tables; analysis.py is startup-path."""
+    return cast("_BinaryCheck", import_module("binaryornot.check"))
+
+
+def _bom_declares_text(data: bytes) -> bool:
+    """Whether a BOM prefix strictly validates as text (pc-9p6.14)."""
+    for bom, codec, unit in _BOM_CODECS:
+        if not data.startswith(bom):
+            continue
+        if (len(data) - len(bom)) % unit != 0:
+            return False  # truncated units: not a well-formed stream, fall through
+        probe = data[:_BOM_PROBE_BYTES]
+        probe = probe[: len(probe) - (len(probe) % unit)]
+        try:
+            text = probe.decode(codec)
+        except UnicodeDecodeError:
+            return False
+        return _LONE_SURROGATE_RE.search(text) is None
+    if data.startswith(codecs.BOM_UTF8):
+        probe = data if len(data) <= _BOM_PROBE_BYTES else _utf8_edge_trimmed_head(data[:_BOM_PROBE_BYTES])
+        try:
+            probe.decode("utf-8")
+            return True
+        except UnicodeDecodeError:
+            return False
+    return False
+
+
+def _utf8_edge_trimmed_head(window: bytes) -> bytes:
+    """Drop a torn multibyte tail (at most 3 bytes) from a head window (pc-9p6.14)."""
+    for cut in range(4):
+        candidate = window if cut == 0 else window[:-cut]
+        try:
+            candidate.decode("utf-8")
+            return candidate
+        except UnicodeDecodeError:
+            continue
+    return window
+
+
+def _utf8_edge_trimmed_tail(window: bytes) -> bytes:
+    """Drop a torn multibyte lead (at most 3 bytes) from a tail window (pc-9p6.14)."""
+    for skip in range(4):
+        try:
+            window[skip:].decode("utf-8")
+            return window[skip:]
+        except UnicodeDecodeError:
+            continue
+    return window
 
 
 def analyze_source(

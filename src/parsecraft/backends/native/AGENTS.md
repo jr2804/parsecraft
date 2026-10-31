@@ -48,6 +48,16 @@ is now reserved for backends with no third-party runtime dep.
   wiring gap, not the user's mistake. Extension routing in `media_type_for`
   is untouched: a classifier only improves structure within plain text,
   never refuses it.
+- `native-text` decoding is deterministic-first (pc-9p6.14): a 16/32-bit BOM
+  prefix decodes with the BOM-declared codec; BOM-less valid UTF-8 without
+  NUL bytes takes the historical path (a UTF-8 BOM stays preserved as U+FEFF,
+  exactly as before); everything else goes through charset detection and
+  ALWAYS carries a WARNING `text-encoding` diagnostic (`ENCODING_CODE`) — a
+  returned codec is a guess, never certainty, so the decode is announced
+  rather than silent, even when it decoded cleanly. A BOM-declared strict
+  decode that fails falls through to the heuristic instead of being blindly
+  approved as text. `NATIVE_BACKEND_VERSION` is `0.1.3` because decoder or
+  output changes must invalidate earlier cached documents.
 - Entry modules stay light: optional/heavy deps (none here — see
   `backends/pymupdf/AGENTS.md` for the pymupdf import boundaries). No inline
   imports (`pyreorder` hoists them).

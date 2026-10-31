@@ -234,7 +234,12 @@ mappings:
   `pandoc` (base + host binary) or `pymupdf` (extra `pymupdf`, AGPL) also read
   it. No office format converts on a bare base install.
 - `.html` → `native-html` (complete) or `trafilatura` (readability, extra `web`).
-- Unsupported suffix → usage error, exit `2`.
+- Unknown suffixes and extensionless files are sniffed: content identified
+  as text → `text/plain` via `native-text`, preserving source bytes; content
+  identified as binary or unreadable input → usage error, exit `2`. The
+  heuristic can misclassify either kind and is not a security check. A
+  heuristic charset decode carries a `text-encoding` warning on stderr —
+  verify output on warning and, if needed, convert a copy to UTF-8 first.
 
 Per-backend strengths, weaknesses, licence gates, platform availability, and
 languages: [references/backends.md](references/backends.md).
