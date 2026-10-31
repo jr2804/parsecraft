@@ -184,7 +184,11 @@ beyond it — no design or code exists for either.
 - **Code-owned eligibility.** Installed extras, VRAM budget, format coverage,
   `allow_ocr`, offline, language, and the intent family are filtered before any
   judge runs; a judge only re-ranks and can never widen the set — an
-  ineligible, duplicate, or empty order raises `JudgeViolationError`.
+  ineligible, duplicate, or empty order raises `JudgeViolationError`. Ordering
+  is contractual in both directions: a NATIVE page keeps every OCR candidate
+  behind a native-capable one, and an OCR page keeps a harness in front of a
+  scan-reading parser whenever a harness is eligible (an injected judge cannot
+  promote the parser; naming it with `--backend` still can).
 - **Ranking preference.** `RoutingConstraints.preference` (`speed` | `balanced`
   | `quality`, default `balanced`) is a *ranking* axis, never a filter: it
   reorders candidates inside the family the rules already chose and cannot move

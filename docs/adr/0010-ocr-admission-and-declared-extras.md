@@ -132,11 +132,26 @@ settled, both as "leave as is".
    is a capability ("can read a text-free page"), never a precondition and
    never a promise about the default effort path — the same shape as
    `gpu_requirement`, which is a requirement fact rather than a usage fact.
+3. pc-2's review of the merged tree found that "admission is not promotion"
+   held only for the built-in judge. Two doors stayed open: `_validate_order`
+   guarded `NATIVE` only, so an injected provider judge could lead an OCR-intent
+   page with a non-harness while a harness was eligible, and
+   `RoutingConstraints.preferred_backend` could do the same.
+   `planner._validate_ocr_lead` closes the judge door for every non-`NATIVE`
+   intent: if any eligible candidate is a harness, the lead must be a harness.
+   Naming a backend explicitly (`--backend`, which arrives as
+   `preferred_backend`) stays the caller's privilege — the same shape as the
+   NATIVE lead-tier cap rising to a named backend — so a deliberate
+   `-b docling` on a scan still works. A judge that prefers a parser over an
+   available harness now raises `JudgeViolationError` instead of winning
+   quietly.
 
-Ranking, verified on the merged tree: `DeterministicJudge._sort_key` ranks OCR
+Ranking, verified for the built-in `DeterministicJudge`: `_sort_key` ranks OCR
 harnesses at `family_rank` 0 (`OCR_GENERAL`, no preferred model) or 0-or-1
 (`OCR_TABLES` → `ocr-unlimited`, `OCR_VISION` → `ocr-ovis`) and a non-harness
 parser at 1 or 2, so an `ocr_capable` parser is admitted to an OCR page but can
 never lead one over an available harness. **Admission is not promotion.**
 `tests/routing/test_routing.py::test_ocr_capable_parser_is_admitted_but_never_leads_an_ocr_page`
-pins it.
+pins the ranking, and
+`test_an_injected_judge_may_not_lead_an_ocr_page_with_a_non_harness` pins the
+guard that extends the same rule to an injected judge.

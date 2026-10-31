@@ -46,7 +46,13 @@ identical plan.
   keep every OCR candidate behind every native-capable one (they are
   admitted as fallbacks), so `_validate_native_fallbacks` rejects an order
   that promotes one — closing the hole where a provider judge could spend
-  minutes on a VLM for text a native backend reads in milliseconds.
+  minutes on a VLM for text a native backend reads in milliseconds. The
+  mirror rule holds for OCR pages: when any eligible candidate is a harness,
+  `_validate_ocr_lead` requires the lead to be a harness, so an injected
+  provider judge cannot promote a scan-reading parser over the harness the
+  operator installed (ADR-0010 amendment 3). It applies to every
+  non-`NATIVE` intent and deliberately exempts `preferred_backend`: naming a
+  backend with `--backend` is the caller's own choice, not a judge's verdict.
 - Feature hints are document-level diagnostics codes
   `feature:tables` / `feature:equations` / `feature:figures` (or
   `image_count` mass ≥ `HEAVY_IMAGE_COUNT`); backends/tests emit them.

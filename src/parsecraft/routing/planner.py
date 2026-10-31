@@ -103,7 +103,7 @@ def plan_route(
             raise NoEligibleBackendError(intent, "no native backend covers the source format")
         order = list(active_judge.rank(intent, family, page_context(intent, signal, hints)))
         order = _apply_preference(order, family, intent, constraints)
-        _validate_order(order, family, intent, lead_tier_cap)
+        _validate_order(order, family, intent, lead_tier_cap, constraints.preferred_backend)
         candidates = order[: constraints.max_passes]
         pages.append(
             PageRoute(
@@ -156,12 +156,14 @@ def _validate_order(
     family: list[BackendDescriptor],
     intent: Intent,
     lead_tier_cap: int | None = None,
+    caller_lead: str | None = None,
 ) -> None:
     """One candidate order: subset of the family, no duplicates, tier cap honoured.
 
     ``lead_tier_cap`` is caller-level and computed per page (a caller's preferred
     backend may be eligible for one page and not another): no judge may lead a
-    NATIVE page above the caller's tier.
+    NATIVE page above the caller's tier. ``caller_lead`` is the backend the caller
+    named, which is the one lead that is a *choice* rather than an admission.
     """
     if not order:
         raise JudgeViolationError("", "judge returned an empty order", intent)
@@ -174,6 +176,43 @@ def _validate_order(
             raise JudgeViolationError(name, "duplicate candidate", intent)
         seen.add(name)
     _validate_native_fallbacks(order, family, intent, lead_tier_cap)
+    _validate_ocr_lead(order, family, intent, caller_lead)
+
+
+def _validate_ocr_lead(
+    order: list[str],
+    family: list[BackendDescriptor],
+    intent: Intent,
+    caller_lead: str | None,
+) -> None:
+    """On an OCR page, an admitted parser may serve but never lead over a harness.
+
+    The deterministic judge already ranks this way (``_sort_key`` puts an OCR
+    harness at family rank 0/0-or-1 and a non-harness parser at 1 or 2), so the
+    guard exists for the OTHER judge: an injected provider judge that prefers
+    docling on a scan would otherwise spend CPU minutes producing the empty pages
+    the harness was installed to read — ADR-0010's "admission is not promotion"
+    was a claim about one judge until this was enforced for every judge.
+
+    The caller naming a backend is exempt: ``--backend docling`` on a scan is the
+    operator choosing, the same reasoning as the NATIVE lead-tier cap rising to a
+    named backend's tier (pc-4u7.41). The guard protects against an unpriced
+    surprise, never against the caller's own choice.
+    """
+    if intent is Intent.NATIVE:
+        return
+    lead = order[0]
+    if lead == caller_lead:
+        return
+    if not any(is_ocr(descriptor) for descriptor in family):
+        return  # no harness here: the admitted parser is the best answer available
+    by_name = {descriptor.name: descriptor for descriptor in family}
+    if not is_ocr(by_name[lead]):
+        raise JudgeViolationError(
+            lead,
+            "leads an OCR page over an available OCR harness; name the backend to choose it",
+            intent,
+        )
 
 
 def _validate_native_fallbacks(

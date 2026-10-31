@@ -17,6 +17,7 @@ from parsecraft.backends.protocol import (
     Diagnostic,
     ModelAssetDescriptor,
 )
+from parsecraft.backends.registry import default_registry
 from parsecraft.ir.models import DiagnosticLevel, PageSignal
 from parsecraft.routing import (
     DeterministicJudge,
@@ -190,6 +191,102 @@ def test_ocr_capable_parser_is_admitted_but_never_leads_an_ocr_page() -> None:
 
     # With no harness available the same page reaches the parser instead of degrading.
     assert list(DeterministicJudge().rank(Intent.OCR_GENERAL, [hybrid])) == ["docling"]
+
+
+def test_an_injected_judge_may_not_lead_an_ocr_page_with_a_non_harness() -> None:
+    """ADR-0010's "admission is not promotion" holds for EVERY judge, not just the default one.
+
+    The deterministic ranking makes the invariant hold by construction; a provider
+    judge ranks families itself, so a judge that prefers docling on a scan is
+    refused the same way one leading a NATIVE page above the caller's tier is
+    refused. Rewriting the judge's order instead would hide a ranking policy that
+    is wrong for every other page too.
+    """
+    hybrid = make_desc("docling", ALL_FORMATS, group="docling", ocr_capable=True)
+    harness = make_desc("ocr-tele", ALL_FORMATS, group="ocr-tele", with_asset=True)
+    analysis = make_analysis([make_signal(1, text_chars=0, native=False)], 1)
+    extras = {"docling", "ocr-tele"}
+
+    with pytest.raises(JudgeViolationError, match="leads an OCR page over an available OCR harness"):
+        plan_route(
+            analysis,
+            [hybrid, harness],
+            full_constraints(installed_extras=extras, allow_ocr=True, offline=False),
+            _fixed_order_judge(["docling", "ocr-tele"]),
+        )
+
+    # The caller naming the backend is a choice, not an admission: it still leads.
+    chosen = plan_route(
+        analysis,
+        [hybrid, harness],
+        full_constraints(installed_extras=extras, allow_ocr=True, offline=False, preferred_backend="docling"),
+        _fixed_order_judge(["docling", "ocr-tele"]),
+    )
+    assert chosen.pages[0].chosen == "docling"
+
+    # With no harness on the host the parser is the best answer available and leads.
+    alone = plan_route(
+        analysis,
+        [hybrid],
+        full_constraints(installed_extras={"docling"}, allow_ocr=True),
+        _fixed_order_judge(["docling"]),
+    )
+    assert alone.pages[0].chosen == "docling"
+
+
+def _fixed_order_judge(order: list[str]) -> RoutingJudge:
+    """A judge with a hard-coded order — the shape a provider judge takes in tests."""
+
+    class _FixedOrderJudge(RoutingJudge):
+        @staticmethod
+        def rank(
+            intent: Intent,
+            candidates: Sequence[BackendDescriptor],
+            context: PageContext | None = None,
+        ) -> Sequence[str]:
+            return [name for name in order if name in {descriptor.name for descriptor in candidates}]
+
+    return _FixedOrderJudge()
+
+
+def test_no_ocr_excludes_harnesses_but_keeps_an_ocr_capable_parser() -> None:
+    """``--no-ocr`` forbids the harness pass; a parser that OCRs internally stays eligible.
+
+    That is what ``allow_ocr`` has always gated (``is_hard_eligible`` drops
+    ``is_ocr`` backends only), and the ``ocr_capable`` admission did not change it:
+    on a ``--no-ocr`` host a scan still reaches docling, which then does its own
+    OCR. ``docs/reference/cli.md`` says exactly this, so the two stay in step.
+    """
+    hybrid = make_desc("docling", ALL_FORMATS, group="docling", ocr_capable=True)
+    harness = make_desc("ocr-tele", ALL_FORMATS, group="ocr-tele", with_asset=True)
+    constraints = full_constraints(installed_extras={"docling", "ocr-tele"}, allow_ocr=False, offline=False)
+
+    assert is_hard_eligible(harness, constraints) is False
+    assert is_hard_eligible(hybrid, constraints) is True
+    plan = plan_route(make_analysis([make_signal(1, text_chars=0, native=False)], 1), [hybrid, harness], constraints)
+    assert [page.chosen for page in plan.pages] == ["docling"]
+
+
+def test_real_descriptors_declare_which_parsers_read_scans_internally() -> None:
+    """The admission is declared by the shipped backends, not only by test doubles.
+
+    ``ocr_capable`` is what lets an OCR-intent page reach a parser that OCRs
+    text-free pages itself. Asserting it against the real registry catches what a
+    hand-built descriptor cannot: a backend renamed without its flag, or a new
+    hybrid parser that forgets to declare the capability and is unreachable on
+    exactly the pages it exists for (the pc-04u sibling defect).
+    """
+    descriptors = {descriptor.name: descriptor for descriptor in default_registry.list_backends()}
+
+    for name in ("docling", "mineru", "marker"):
+        assert name in descriptors, f"{name} is not registered"
+        assert descriptors[name].capabilities.ocr_capable is True, name
+        assert is_ocr(descriptors[name]) is False, name  # admitted, never reclassified
+        assert serves_ocr_intent(descriptors[name]) is True, name
+
+    for name, descriptor in descriptors.items():
+        if is_ocr(descriptor):
+            assert descriptor.capabilities.ocr_capable is False, f"{name} is a harness; the flag is for parsers"
 
 
 def test_missing_extra_is_ineligible() -> None:
