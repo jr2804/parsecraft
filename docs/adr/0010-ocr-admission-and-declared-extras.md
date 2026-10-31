@@ -115,3 +115,28 @@ has to go.
 - End to end through the consumer: the bitmap-only PDF reported
   `backends: liteparse` with `degraded-blank-page` before the change and
   `backends: docling` with correct text after it.
+
+## Amendments
+
+2026-10-31 (pc-1, on merge): two boundaries were left open above and are now
+settled, both as "leave as is".
+
+1. docling stays ungated by `allow_ocr`. The flag governs *harness* passes —
+   the expensive separate VLM runs it was built to avoid (the 527 s `ocr-ovis`
+   blank-page measurement). docling's internal OCR is a property of the parser
+   the operator already selected, not an extra pass they opted into, and a
+   `--no-ocr` run on a native page already lets docling OCR internally today,
+   so gating it on OCR intents alone would be inconsistent. A stricter knob, if
+   anyone wants one, is a new flag rather than a redefinition of this one.
+2. mineru keeps `ocr_capable: True`, with the effort-dependence noted. The flag
+   is a capability ("can read a text-free page"), never a precondition and
+   never a promise about the default effort path — the same shape as
+   `gpu_requirement`, which is a requirement fact rather than a usage fact.
+
+Ranking, verified on the merged tree: `DeterministicJudge._sort_key` ranks OCR
+harnesses at `family_rank` 0 (`OCR_GENERAL`, no preferred model) or 0-or-1
+(`OCR_TABLES` → `ocr-unlimited`, `OCR_VISION` → `ocr-ovis`) and a non-harness
+parser at 1 or 2, so an `ocr_capable` parser is admitted to an OCR page but can
+never lead one over an available harness. **Admission is not promotion.**
+`tests/routing/test_routing.py::test_ocr_capable_parser_is_admitted_but_never_leads_an_ocr_page`
+pins it.

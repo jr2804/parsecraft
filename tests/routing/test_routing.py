@@ -173,6 +173,25 @@ def test_ocr_capable_parser_serves_ocr_intents_without_becoming_an_ocr_backend()
     assert in_intent_family(Intent.OCR_GENERAL, plain) is False
 
 
+def test_ocr_capable_parser_is_admitted_but_never_leads_an_ocr_page() -> None:
+    """Admission is not promotion: an available harness still leads every OCR page.
+
+    The point of keeping the admission a capability rather than folding it into
+    ``is_ocr`` is that a host which paid for a VLM must not silently fall back to a
+    CPU parser: ``DeterministicJudge._sort_key`` ranks harnesses at family 0 (or
+    0-or-1 where a preferred model is named) and a non-harness parser at 1 or 2.
+    """
+    hybrid = make_desc("docling", ALL_FORMATS, group="docling", ocr_capable=True)
+    harness = make_desc("ocr-tele", ALL_FORMATS, group="ocr-tele", with_asset=True)
+    family = [hybrid, harness]
+    for intent in (Intent.OCR_GENERAL, Intent.OCR_TABLES, Intent.OCR_VISION):
+        assert list(DeterministicJudge().rank(intent, family)) == ["ocr-tele", "docling"], intent
+        assert list(DeterministicJudge(RoutingPreference.QUALITY).rank(intent, family)) == ["ocr-tele", "docling"], intent
+
+    # With no harness available the same page reaches the parser instead of degrading.
+    assert list(DeterministicJudge().rank(Intent.OCR_GENERAL, [hybrid])) == ["docling"]
+
+
 def test_missing_extra_is_ineligible() -> None:
     constraints = full_constraints(installed_extras=set())
     assert is_hard_eligible(make_desc("ocr-tele", ALL_FORMATS, group="ocr-tele"), constraints) is False
