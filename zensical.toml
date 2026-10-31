@@ -27,6 +27,7 @@ nav = [
   { "Guides" = [
     { "Steer the auto-backend selector" = "guides/auto-backend-selector.md" },
     { "Write a backend" = "guides/backend-authoring.md" },
+    { "Attribute captions to tables and figures" = "guides/caption-attribution.md" },
   ] },
   { "Reference" = [
     { "CLI" = "reference/cli.md" },

@@ -1,13 +1,13 @@
 # AGENTS.md — src/parsecraft/adapters/
 
-Input adapters: convert external document formats into the canonical IR.
+Input adapters and opt-in source-grounded attribution over the canonical IR.
 
 ## Purpose
 
 Parse source documents into `DocumentResult`/`PageResult`/`StructuredChunk`
-and feed document bytes to future web backends. Adapters are INPUT-only:
-they never consume rendered output of `parsecraft.ir.markdown` — the IR is
-the single source of truth (ADR-0001 §11, `parsecraft.ir.AGENTS.md`).
+and provide opt-in attribution over those results. Adapters never consume
+rendered output of `parsecraft.ir.markdown` — the IR is the single source
+of truth (ADR-0001 §11, `parsecraft.ir.AGENTS.md`).
 
 ## Ownership
 
@@ -22,6 +22,7 @@ the single source of truth (ADR-0001 §11, `parsecraft.ir.AGENTS.md`).
   imports; loaded only by their light front modules at call time.
 - `errors.py` — `AdapterError` hierarchy (`MissingDependencyError`,
   `HttpFetchError`).
+- `classification/` and `caption/` — see Child DOX Index.
 
 ## Local Contracts
 
@@ -60,3 +61,8 @@ the single source of truth (ADR-0001 §11, `parsecraft.ir.AGENTS.md`).
 with a 1.0 s bound, list fidelity, frontmatter pins),
 `tests/adapters/test_encoding.py`, `tests/adapters/test_http.py`
 (100% coverage gate applies).
+
+## Child DOX Index
+
+- `classification/AGENTS.md` — optional text-shape classification
+- `caption/AGENTS.md` — opt-in caption attribution

@@ -16,7 +16,7 @@ Markdown as a deterministic projection.
   `config/AGENTS.md`); zero imports from the rest of the package.
 - `assets/` — model-asset manager: downloads, cache, license records (see
   `assets/AGENTS.md`).
-- `adapters/` — input adapters that converge sources into the IR (see
+- `adapters/` — input adapters and opt-in IR attribution (see
   `adapters/AGENTS.md`).
 - `routing/` — deterministic auto-mode planner: analysis signals → intent →
   eligible backend candidates, with injectable judge and OCR-need classifier

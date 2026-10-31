@@ -20,3 +20,7 @@ mkdocstrings.
 ## CLI
 
 ::: parsecraft.cli
+
+## Caption attribution
+
+::: parsecraft.adapters.caption
