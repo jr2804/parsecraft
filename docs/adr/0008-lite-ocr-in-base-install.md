@@ -49,8 +49,9 @@ tier for one engine's packaging gap.
 1. **Ship shape (c): a base-registered OCR backend over the `tesseract` system
    binary.** The *backend* is in the base and eligible by default; the *engine*
    is an OS package. No new extra is declared for it.
-2. **Engine discovery is a probe, not an assumption** (ADR-0005 pattern,
-   `backends/docling/libreoffice.py` as the template): an env-var override first,
+2. **Engine discovery is a probe, not an assumption** (ADR-0005 pattern —
+   historically templated on the docling LibreOffice discovery since removed
+   with the docling.rs engine swap, pc-wl3.4): an env-var override first,
    then a bounded platform search (PATH on POSIX; the standard install roots on
    Windows), then a typed, actionable `DependencyUnavailableError` naming the OS
    package to install. A declaration is honoured verbatim and never probed.
@@ -163,9 +164,10 @@ in the tree.
     `installed_extras` pattern — a probe fact flowing to one eligibility check —
     not a new routing primitive: `INTENT_RULES` and `can_degrade_to_native` are
     untouched, and no backend name is special-cased. The same fact feeds
-    decision 12, so one mechanism serves both. Pandoc and the docling LibreOffice
-    path are the obvious future members; they are deliberately **not** migrated
-    here.
+    decision 12, so one mechanism serves both. Pandoc is the obvious future
+    member; it is deliberately **not** migrated here. (The docling LibreOffice
+    path this decision once named was removed with the docling.rs engine
+    swap, pc-wl3.4 — docling.rs parses office formats natively.)
 14. **The base gains `Pillow` alongside `pypdfium2`.** It is pypdfium2's own
     documented bridge to encoded images (`to_pil`), already a dependency of the
     OCR extras and docling, and licence-permissive; hand-rolling an image encoder

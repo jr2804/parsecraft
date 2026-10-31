@@ -17,8 +17,9 @@ Consequences of being engine-driven rather than model-driven:
 - ``model_asset`` is ``None`` until the tessdata asset lands, so the trace names
   the engine rather than a model that does not exist.
 
-**Discovery** follows the ADR-0005 pattern that
-``backends/docling/libreoffice.py`` established, unchanged in shape:
+**Discovery** follows the ADR-0005 pattern (an operator's env-var
+declaration honoured verbatim, then a bounded platform search, then a
+typed unavailability), unchanged in shape:
 
 1. **The operator's ``PARSECRAFT_TESSERACT``** — taken verbatim, never probed.
    A declared path is a decision, not a fact to second-guess.

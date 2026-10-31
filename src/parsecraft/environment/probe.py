@@ -54,9 +54,8 @@ EXTRA_IMPORTS: dict[str, tuple[str, ...]] = {
 #: Engine name -> the environment variable that DECLARES it. A declaration is
 #: honoured verbatim and never probed (ADR-0008 decision 2): an operator who
 #: points at an engine outside PATH gets it counted. Keyed by ENGINE name, not
-#: backend name, so no backend is special-cased (decision 13). Pandoc and the
-#: docling LibreOffice path are the obvious future members; they are
-#: deliberately not wired here.
+#: backend name, so no backend is special-cased (decision 13). Pandoc is the
+#: obvious future member; it is deliberately not wired here.
 ENGINE_DECLARATIONS: dict[str, str] = {TESSERACT_ENGINE: TESSERACT_ENV}
 
 #: Engine name -> that engine's own host discovery. The probe DELEGATES rather

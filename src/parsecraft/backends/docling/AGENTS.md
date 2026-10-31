@@ -15,14 +15,6 @@ mapping is engine-independent.
 
 - `docling.py` — light factory (`DoclingFactory`), `DOCLING_FORMATS`,
   `DESCRIPTOR`, `DOCLING_BACKEND_VERSION`. Imports no docling code.
-- `libreoffice.py` — LibreOffice discovery (`find_libreoffice_cmd`,
-  `resolve_libreoffice_cmd`, `configure_libreoffice_env`,
-  `LibreOfficeUnavailableError`); light and stdlib-only. RETIRED from the
-  convert path 2026-10-31 (pc-wl3.3): docling.rs parses office formats
-  natively in Rust — verified with a real DOCX converting while
-  `DOCLING_LIBREOFFICE_CMD` pointed at garbage — so `create()` no longer
-  calls it. The module and its tests stay (pure stdlib, still passing)
-  until a follow-up removes them.
 - `_impl.py` — heavy implementation (`DoclingBackend`, `create`); the only
   module that imports `docling_rs`, `docling_core`, and `pypdfium2`.
 - `__init__.py` — package docstring only (entry point lives in `docling.py`).
@@ -37,12 +29,11 @@ mapping is engine-independent.
   load through `importlib.import_module` at instantiation, never inline
   (`pyreorder` would hoist an inline import to module level and break the
   offline-import gate).
-- **LibreOffice discovery (pc-ct9)** lives in `libreoffice.py` but is RETIRED
-  from the convert path (pc-wl3.3, see Ownership): docling.rs parses office
-  formats natively in Rust and ignores `DOCLING_LIBREOFFICE_CMD` (verified
-  2026-10-31 - a real DOCX converts with the variable pointing at garbage),
-  so `create()` no longer calls `configure_libreoffice_env()`. No declared
-  format needs LibreOffice.
+- **No LibreOffice discovery** (removed pc-wl3.4, 2026-10-31): docling.rs
+  parses office formats natively in Rust and ignores
+  `DOCLING_LIBREOFFICE_CMD` (verified — a real DOCX converts with the
+  variable pointing at garbage), so no declared format needs LibreOffice
+  and `create()` configures nothing.
 - `supported_formats` lists only inputs **conversion-verified** against the
   real library (PDF/HTML/DOCX: re-verified 2026-10-31 against docling.rs
   2.55.4 through this backend — PDF with models installed, page_range
@@ -85,8 +76,7 @@ mapping is engine-independent.
 
 `mise test` — `tests/backends/test_docling.py` (offline; the heavy
 `docling_rs` / `docling_core` / `pypdfium2` imports are stubs in
-`sys.modules`) and `tests/backends/test_docling_libreoffice.py` (pure
-stdlib, no extra needed). Live smoke: `uv run --isolated --extra docling
+`sys.modules`). Live smoke: `uv run --isolated --extra docling
 parsecraft convert FIXTURE` in a throwaway environment — dependencies are never
 installed with `uv pip install`, the project routes dependency changes through
 `uv add` (root rule), and `--isolated --extra` is the idiom for exercising a
