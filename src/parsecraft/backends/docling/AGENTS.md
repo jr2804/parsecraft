@@ -66,12 +66,25 @@ mapping is engine-independent.
   into the docling.rs model cache, not the ~700 MB upstream claims).
   **This covers the LAYOUT models only.** A cache with the layout models but
   without the OCR ones does not raise at all: docling-rs prints a warning on
-  stderr, continues without OCR, and returns pages with zero blocks, so a
-  scanned page arrives as an empty page with no failure (pc-04u, verified
-  2026-10-31 by deleting only `ocr_*` from a full cache — a text PDF through
-  the same cache is unaffected, so the two paths differ and only one is
-  typed). The fragment guard matches the layout wording, so it would not
-  catch an OCR wording change either.
+  stderr, continues without OCR, and returns pages with zero blocks (pc-04u,
+  verified 2026-10-31 by deleting only `ocr_*` from a full cache — a text PDF
+  through the same cache is unaffected, so the two paths differ and only one
+  is typed). The adapter now surfaces that degradation: `convert()` captures
+  fd 2 around the single blocking pass (`dup2` to a temp file under a
+  process-global lock, replayed verbatim afterwards) and, when the bytes
+  contain `_OCR_UNAVAILABLE_FRAGMENT` ("OCR model unavailable" — kept next to
+  the layout fragment constant with the same fragment-not-sentence comment,
+  same upstream-wording coupling class), attaches a `WARNING` page diagnostic
+  `docling-ocr-unavailable` naming `docling_rs.download_models()` to every
+  page the degradation emptied (zero-block pages only; healthy pages stay
+  clean, a text PDF through the same cache carries no warning). The signal
+  is a page diagnostic, deliberately **not** a second `quality` entry: the
+  router's `degraded-blank-page` already fires from page-signal
+  classification on both empty and OCR'd outcomes, so a second global entry
+  could double-report one page. Live verification:
+  `tests/backends/test_docling_live.py` (opt-in `--run-live-docling`, every
+  conversion in its own child process — docling-rs shares loaded models
+  between live processes, measured).
 - Bounds are honored between items: cancellation, `timeout_s` (checked after
   the single blocking pass), and `max_output_chars`. Failures stay typed
   (`CANCELLED`, `TIMEOUT`, `BUDGET_EXCEEDED`, `BACKEND_ERROR`), never raw.

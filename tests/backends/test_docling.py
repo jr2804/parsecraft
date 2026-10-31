@@ -7,14 +7,17 @@ same pattern as the LiteParse and OCR families.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import importlib
 import io
+import os
 import re
 import sys
+import tempfile
 import time
 import types
-from collections.abc import Iterator
+from collections.abc import Callable, Generator, Iterator
 from pathlib import Path
 
 import pytest
@@ -27,6 +30,16 @@ from tests.fixtures.documents import docx_headings_bytes
 
 _PDF_BYTES = b"%PDF-1.7 stub"
 _PDF_SOURCE = SourceDocument(uri="file:///doc.pdf", media_type="application/pdf", content=_PDF_BYTES)
+
+
+# Verbatim docling-rs 2.55.4 warning for a partial model cache (layout models
+# present, OCR models absent) — captured from the real engine, fd 2, pc-04u.
+_OCR_WARNING = (
+    b"warning: OCR model unavailable (ocr: load .models/ocr_rec_en.onnx: File at "
+    b"`.models/ocr_rec_en.onnx` does not exist); continuing without OCR \u2014 scanned "
+    b"pages and text inside images will come back empty (run scripts/install/"
+    b"download_dependencies.sh for the model)\n"
+)
 
 
 # ── Stubs: heavy packages faked through sys.modules ─────────────────────────────
@@ -85,6 +98,10 @@ class _Converter:
 
     def convert(self, source: object, page_range: tuple[int, int] | None = None) -> _ConversionResult:
         self._state.convert_calls.append((getattr(source, "name", None), page_range))
+        for blob in self._state.stderr_warnings:
+            # Real fd-2 writes, like the Rust engine: exercises the adapter's
+            # dup2 capture path, not a Python-level stderr stub (pc-04u).
+            os.write(2, blob)
         if self._state.convert_error is not None:
             raise self._state.convert_error
         if self._state.delay_s > 0:
@@ -146,6 +163,7 @@ class _State:
         self.convert_calls: list[tuple[str | None, tuple[int, int] | None]] = []
         self.convert_error: Exception | None = None
         self.delay_s = 0.0
+        self.stderr_warnings: list[bytes] = []
 
 
 def _grid_from_markdown(markdown: str) -> list[list[types.SimpleNamespace]]:
@@ -417,6 +435,82 @@ def test_convert_missing_models_names_the_download_helper(docling_stub: _State) 
     assert failure.code is FailureCode.BACKEND_ERROR
     assert "docling_rs.download_models()" in failure.detail
     assert "never downloaded implicitly" in failure.detail
+
+
+def test_convert_warns_on_pages_emptied_by_missing_ocr_models(docling_stub: _State) -> None:
+    """Partial cache: engine warns on fd 2, empty pages get the typed warning (pc-04u)."""
+    docling_stub.stderr_warnings = [_OCR_WARNING]
+    docling_stub.items = [_TextItem("kept text", page_no=1)]
+    result = _convert(_backend(), page_range=PageRange(start=1, end=2))
+    assert [f.code for f in result.failures] == []
+    kept, emptied = result.pages
+    assert [c.content for c in kept.blocks] == ["kept text"]
+    assert kept.diagnostics == []  # the page with content is unaffected
+    assert emptied.blocks == []
+    (diagnostic,) = emptied.diagnostics
+    assert diagnostic.level.value == "warning"
+    assert diagnostic.code == "docling-ocr-unavailable"
+    assert "docling_rs.download_models()" in diagnostic.message
+    assert "came back empty for this page" in diagnostic.message
+
+
+def test_convert_replays_the_engine_warning_to_stderr(docling_stub: _State) -> None:
+    """The capture observes the warning, it never swallows it (pc-04u)."""
+    docling_stub.stderr_warnings = [_OCR_WARNING]
+    window, read = _fd2_capture()
+    with window:
+        result = _convert(_backend())
+    assert result.pages[0].diagnostics[0].code == "docling-ocr-unavailable"
+    assert _OCR_WARNING in read()  # replayed to (this window's) fd 2 verbatim
+
+
+def _fd2_capture() -> tuple[contextlib.AbstractContextManager[None], Callable[[], bytes]]:
+    """Test-side fd-2 capture: ``(window, read)``.
+
+    Opening ``window`` redirects fd 2 into a temp file (nesting inside the
+    adapter's own capture is fine: the adapter replays to *its* restored fd 2,
+    which is this window's file); ``read()`` returns everything captured once
+    the window closed (pc-04u).
+    """
+    holder: dict[str, bytes] = {}
+    fd, path = tempfile.mkstemp(suffix=".txt")
+    os.close(fd)
+
+    @contextlib.contextmanager
+    def _window() -> Generator[None]:
+        backup = os.dup(2)
+        fd = os.open(path, os.O_RDWR | os.O_TRUNC)
+        os.dup2(fd, 2)
+        try:
+            yield
+        finally:
+            sys.stderr.flush()
+            os.dup2(backup, 2)
+            os.close(backup)
+            os.lseek(fd, 0, os.SEEK_SET)
+            holder["blob"] = os.read(fd, 1 << 20)
+            os.close(fd)
+
+    def _read() -> bytes:
+        return holder["blob"]
+
+    return _window(), _read
+
+
+def test_convert_ignores_unrelated_engine_warnings(docling_stub: _State) -> None:
+    """Only the OCR-model headline matches; other Rust warnings stay quiet."""
+    docling_stub.stderr_warnings = [b"warning: table structure disabled by config\n", b"OCR model"]
+    result = _convert(_backend())
+    assert result.pages[0].blocks == []
+    assert result.pages[0].diagnostics == []
+
+
+def test_convert_without_ocr_warning_keeps_pages_clean(docling_stub: _State) -> None:
+    """No warning, no diagnostics — the healthy path is unchanged (pc-04u)."""
+    docling_stub.items = [_TextItem("hello", page_no=1)]
+    result = _convert(_backend())
+    assert [c.content for c in result.pages[0].blocks] == ["hello"]
+    assert result.pages[0].diagnostics == []
 
 
 def _backend() -> DocumentBackend:

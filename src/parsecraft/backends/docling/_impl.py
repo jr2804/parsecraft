@@ -26,6 +26,10 @@ Design notes:
 from __future__ import annotations
 
 import hashlib
+import os
+import sys
+import tempfile
+import threading
 from io import BytesIO
 from pathlib import Path
 from time import monotonic
@@ -49,6 +53,8 @@ from parsecraft.backends.protocol import (
 from parsecraft.backends.source import path_from_file_uri
 from parsecraft.ir.models import (
     ChunkKind,
+    Diagnostic,
+    DiagnosticLevel,
     FailureCode,
     PageRange,
     PageResult,
@@ -97,6 +103,21 @@ _DECLINED_MEDIA_TYPES: dict[str, str] = {
 # model-cache path (`.models/...` vs an absolute cache dir), so exact-match is
 # rejected and matching stays on this stable core.
 _MODEL_NOT_FOUND_FRAGMENTS = "model not found at"
+#: Substring of the docling.rs stderr warning emitted when the ONNX OCR models
+#: are absent while the layout models are present (verified against the real
+#: package with a partial model cache, pc-04u): the engine prints
+#: ``warning: OCR model unavailable (ocr: load .models/ocr_rec_en.onnx ...);
+#: continuing without OCR ...`` and still returns success — empty scanned
+#: pages, no exception, no programmatic API. That warning line is the only
+#: signal the condition exists.
+# Same upstream-wording coupling class as ``_MODEL_NOT_FOUND_FRAGMENTS``
+# above: the full line embeds cache paths and model file names that drift per
+# platform and release, so matching stays on this stable headline fragment.
+_OCR_UNAVAILABLE_FRAGMENT = "OCR model unavailable"
+#: The dup2 capture window is process-global (fd 2 has no thread affinity),
+#: so concurrent converts serialize their capture instead of interleaving
+#: each other's output (pc-04u).
+_CAPTURE_LOCK = threading.Lock()
 _CONVERTER: DocumentConverter | None = None
 
 
@@ -134,7 +155,7 @@ class DoclingBackend:
             return _result(reference, [], [_failure(request, started, FailureCode.CANCELLED, "cancelled before conversion")], started)
         data = source_bytes(request.source)
         try:
-            result = _convert(data, request)
+            result, ocr_unavailable = _convert_and_watch(data, request)
         except Exception as exc:  # docling_rs load/parse boundary — typed, never raw
             if _MODEL_NOT_FOUND_FRAGMENTS in str(exc):
                 detail = (
@@ -147,7 +168,7 @@ class DoclingBackend:
             return _result(reference, [], [_failure(request, started, FailureCode.BACKEND_ERROR, detail)], started)
         if request.timeout_s is not None and monotonic() - started > request.timeout_s:
             return _result(reference, [], [_failure(request, started, FailureCode.TIMEOUT, "conversion exceeded timeout_s")], started)
-        pages, failure = _select(request, result.document, started)
+        pages, failure = _select(request, result.document, started, ocr_unavailable=ocr_unavailable)
         failures = [] if failure is None else [failure]
         return _result(reference, pages, failures, started)
 
@@ -210,6 +231,35 @@ def _pdf_signals(data: bytes) -> list[PageSignal]:
         document.close()
 
 
+def _convert_and_watch(data: bytes, request: ConversionRequest) -> tuple[ConversionResult, bool]:
+    """One docling pass plus whether the engine warned about missing OCR models.
+
+    docling-rs emits engine warnings on the process stderr (fd 2) only — no
+    Python-logging bridge, no return value, no exception (probed 2026-10-31,
+    pc-04u) — so the OCR-models-absent condition is observable nowhere else.
+    The capture window redirects fd 2 into a temp file around the convert
+    call (process-global, hence ``_CAPTURE_LOCK``) and replays everything it
+    caught back to the real stderr afterwards: parsecraft observes the
+    warning, it never swallows it.
+    """
+    blob = b""
+    with _CAPTURE_LOCK:
+        backup = os.dup(2)
+        with tempfile.TemporaryFile() as sink:
+            os.dup2(sink.fileno(), 2)
+            try:
+                result = _convert(data, request)
+            finally:
+                sys.stderr.flush()
+                os.dup2(backup, 2)
+                os.close(backup)
+                sink.seek(0)
+                blob = sink.read()
+        if blob:
+            _replay_stderr(blob)
+    return result, _OCR_UNAVAILABLE_FRAGMENT.encode() in blob
+
+
 def _convert(data: bytes, request: ConversionRequest) -> ConversionResult:
     """Run one docling.rs pass; ``page_range`` is passed only for PDFs."""
     uri = request.source.uri
@@ -218,6 +268,14 @@ def _convert(data: bytes, request: ConversionRequest) -> ConversionResult:
     if request.source.media_type == _PDF_MEDIA_TYPE and request.page_range is not None:
         return _converter().convert(stream, page_range=(request.page_range.start, request.page_range.end))
     return _converter().convert(stream)
+
+
+def _replay_stderr(blob: bytes) -> None:
+    """Write captured bytes back to fd 2, handling short writes."""
+    view = memoryview(blob)
+    while view:
+        written = os.write(2, view)
+        view = view[written:]
 
 
 def _converter() -> DocumentConverter:
@@ -232,13 +290,15 @@ def _select(
     request: ConversionRequest,
     document: DoclingDocument,
     started: float,
+    *,
+    ocr_unavailable: bool = False,
 ) -> tuple[list[PageResult], PassFailure | None]:
     """Map docling items to typed chunks per page, honoring bounds."""
     blocks: dict[int, list[StructuredChunk]] = {}
     used_chars = 0
     for item, _level in document.iterate_items():
         if request.cancellation is not None and request.cancellation():
-            return _filled_pages(blocks, request.page_range), _failure(request, started, FailureCode.CANCELLED, "cancelled between items")
+            return _filled_pages(blocks, request.page_range, ocr_unavailable), _failure(request, started, FailureCode.CANCELLED, "cancelled between items")
         content, kind, rows, metadata = _item_content(item, document)
         if not content:
             continue
@@ -246,7 +306,9 @@ def _select(
         if request.page_range is not None and not (request.page_range.start <= page_number <= request.page_range.end):
             continue
         if request.max_output_chars is not None and used_chars + len(content) > request.max_output_chars:
-            return _filled_pages(blocks, request.page_range), _failure(request, started, FailureCode.BUDGET_EXCEEDED, "max_output_chars budget reached")
+            return _filled_pages(blocks, request.page_range, ocr_unavailable), _failure(
+                request, started, FailureCode.BUDGET_EXCEEDED, "max_output_chars budget reached"
+            )
         used_chars += len(content)
         chunks = blocks.setdefault(page_number, [])
         chunks.append(
@@ -260,7 +322,7 @@ def _select(
                 metadata=metadata,
             )
         )
-    return _filled_pages(blocks, request.page_range), None
+    return _filled_pages(blocks, request.page_range, ocr_unavailable), None
 
 
 def _item_content(item: object, document: DoclingDocument) -> tuple[str, ChunkKind, tuple[tuple[str, ...], ...] | None, dict[str, str]]:
@@ -302,10 +364,43 @@ def _heading_metadata(item: TextItem) -> dict[str, str]:
     return {}
 
 
-def _filled_pages(blocks: dict[int, list[StructuredChunk]], page_range: PageRange | None) -> list[PageResult]:
-    """Every requested page, empty when docling produced no chunks for it."""
+def _filled_pages(
+    blocks: dict[int, list[StructuredChunk]],
+    page_range: PageRange | None,
+    ocr_unavailable: bool = False,
+) -> list[PageResult]:
+    """Every requested page, empty when docling produced no chunks for it.
+
+    When docling-rs warned about missing OCR models, every page that came
+    back empty carries a typed WARNING diagnostic naming the fix. Deliberately
+    a page diagnostic, not a second global quality entry: ``degraded-blank-page``
+    already fires from signal-based page classification (``routing/rules.py``)
+    on both empty and OCR'd outcomes and cannot tell them apart, while this
+    entry states the backend's capability state for exactly the pages the
+    backend emptied (pc-04u).
+    """
     numbers = sorted(blocks) or [1] if page_range is None else list(range(page_range.start, page_range.end + 1))
-    return [PageResult(page_number=number, blocks=blocks.get(number, [])) for number in numbers]
+    return [
+        PageResult(
+            page_number=number,
+            blocks=blocks.get(number, []),
+            diagnostics=[_ocr_unavailable_diagnostic()] if ocr_unavailable and not blocks.get(number) else [],
+        )
+        for number in numbers
+    ]
+
+
+def _ocr_unavailable_diagnostic() -> Diagnostic:
+    """The typed per-page warning for the missing-OCR-models condition."""
+    return Diagnostic(
+        level=DiagnosticLevel.WARNING,
+        code="docling-ocr-unavailable",
+        message=(
+            "docling-rs OCR models are missing: run docling_rs.download_models() once "
+            "(about 1.4 GB into the docling.rs model cache); scanned pages and text "
+            "inside images came back empty for this page"
+        ),
+    )
 
 
 def _failure(request: ConversionRequest, started: float, code: FailureCode, detail: str) -> PassFailure:

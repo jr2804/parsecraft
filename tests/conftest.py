@@ -15,10 +15,12 @@ _NETWORK_MARKER = "network"
 _CORPUS_MARKER = "corpus"
 _GPU_MARKER = "gpu"
 _JUDGE_MARKER = "judge"
+_DOCLING_LIVE_MARKER = "docling_live"
 _RUN_DOWNLOADS = "--run-downloads"
 _RUN_CORPUS = "--run-corpus"
 _RUN_GPU = "--run-gpu"
 _RUN_JUDGE = "--run-judge"
+_RUN_DOCLING_LIVE = "--run-live-docling"
 
 #: Opt-in tiers that legitimately connect. The offline tripwire exempts on the
 #: MARKER alone — never on test names or module lists — so the mechanism stays
@@ -167,6 +169,15 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=False,
         help=f"run the '{_JUDGE_MARKER}' tier (live providers: typesafe-ai/jev-latest, zen/<model>, or the semi-live local ollama/<model>)",
     )
+    parser.addoption(
+        _RUN_DOCLING_LIVE,
+        action="store_true",
+        default=False,
+        help=(
+            f"run the '{_DOCLING_LIVE_MARKER}' tier (real docling-rs engine; full model cache for the "
+            "pass case, PARSECRAFT_DOCLING_PARTIAL_CACHE for the partial-cache warning case)"
+        ),
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -187,6 +198,10 @@ def pytest_configure(config: pytest.Config) -> None:
         "markers",
         f"{_JUDGE_MARKER}: needs a live judge provider (TYPESAFE/OPENCODE keys, or a local Ollama model); skipped unless {_RUN_JUDGE} is passed",
     )
+    config.addinivalue_line(
+        "markers",
+        f"{_DOCLING_LIVE_MARKER}: needs the real docling-rs engine and its model caches; skipped unless {_RUN_DOCLING_LIVE} is passed",
+    )
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
@@ -195,10 +210,12 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     corpus_allowed = config.getoption(_RUN_CORPUS)
     gpu_allowed = config.getoption(_RUN_GPU)
     judge_allowed = config.getoption(_RUN_JUDGE)
+    docling_live_allowed = config.getoption(_RUN_DOCLING_LIVE)
     skip_network = pytest.mark.skip(reason=f"network tests are opt-in: pass {_RUN_DOWNLOADS}")
     skip_corpus = pytest.mark.skip(reason=f"corpus tier is opt-in: pass {_RUN_CORPUS}")
     skip_gpu = pytest.mark.skip(reason=f"gpu tier is opt-in: pass {_RUN_GPU} (CUDA host + .venv-gpu)")
     skip_judge = pytest.mark.skip(reason=f"judge tier is opt-in: pass {_RUN_JUDGE} (live judge provider)")
+    skip_docling_live = pytest.mark.skip(reason=f"docling-live tier is opt-in: pass {_RUN_DOCLING_LIVE} (real engine + model caches)")
     for item in items:
         if _NETWORK_MARKER in item.keywords and not network_allowed:
             item.add_marker(skip_network)
@@ -208,3 +225,5 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
             item.add_marker(skip_gpu)
         if _JUDGE_MARKER in item.keywords and not judge_allowed:
             item.add_marker(skip_judge)
+        if _DOCLING_LIVE_MARKER in item.keywords and not docling_live_allowed:
+            item.add_marker(skip_docling_live)
