@@ -86,6 +86,37 @@ The free-threaded runtime floor and CI matrix are recorded in
    OIDC — no stored API token), skipping files that already exist.
 5. Build the docs site and deploy it to GitHub Pages.
 
+Between steps 3 and 4 the release body is rewritten: an optional AI summary,
+a collapsible full commit list, and the compare link. That step is **opt-in by
+operator configuration and off by default** — there is deliberately no built-in
+model, because an unset variable means "keep this off", not "pick a model for
+me". Two knobs, both required:
+
+| Knob     | Kind     | Meaning                                |
+| -------- | -------- | -------------------------------------- |
+| `OPENROUTER_MODEL` | repo variable | model id to call; unset skips the step |
+| `OPENROUTER_API_KEY` | secret | credential; the step notices and exits 0 without it |
+
+The step is `continue-on-error`, so a router failure never fails a release. Two
+outcomes look similar from the outside and are easy to confuse:
+
+- **Step fails (or the model is rejected):** the body stays exactly what
+  `generate_release_notes` produced — usually just
+  `**Full Changelog**: …/compare/<previous>...<next>` with no per-commit
+  detail, because this repo's commits are grouped into releases rather than
+  listed. The release itself is intact; check
+  `gh run view <id> --log | Select-String "AI release notes"` for the reason.
+- **Model answers but the summary is unusable** (under 200 characters, or no
+  heading and no list item — a moderation verdict like `User Safety: safe`
+  arrives as a well-formed HTTP 200): the step prints a warning, emits nothing,
+  and the generated changelog again stands.
+
+A model id can disappear from a router's free tier without notice (upstreams
+retire `:free` slugs and keep the paid one), which is the failure this step
+reports most often. The fix is an operator run —
+`gh variable set OPENROUTER_MODEL -b "<vendor>/<model>"` against a slug from
+`https://openrouter.ai/api/v1/models` — never a workflow edit.
+
 Packaging reads the version through `uv-dynamic-versioning`; `[tool.uv.dynamic-versioning]`
 declares the bare CalVer tag pattern because the default expects a `v` prefix.
 The distribution version and `parsecraft --version` both come from the installed
