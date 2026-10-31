@@ -404,17 +404,6 @@ def _declared_extras() -> tuple[str, ...]:
     return tuple(data["project"]["optional-dependencies"])
 
 
-def _composite_extras(requirements: dict[str, tuple[str, ...]]) -> set[str]:
-    """Extras that only bundle requirements other extras already declare.
-
-    ``pdf-full`` is the live case: it adds no distribution of its own, so no import
-    can prove it. It also gates nothing — no backend declares it as its dependency
-    group — so the map does not have to name it (its contents report themselves).
-    """
-    named = {extra: {_requirement_name(line) for line in lines} for extra, lines in requirements.items()}
-    return {extra for extra, own in named.items() if not own - set().union(*(other for name, other in named.items() if name != extra))}
-
-
 def test_declared_extras_are_unprovable_by_construction() -> None:
     """A declared extra must be one no import could prove, or the map is lying twice.
 
@@ -428,6 +417,17 @@ def test_declared_extras_are_unprovable_by_construction() -> None:
     composite = _composite_extras(_declared_requirements())
     for extra in EXTRA_DECLARATIONS:
         assert extra in composite, f"{extra!r} declares requirements no sibling shares: import-probe it instead"
+
+
+def _composite_extras(requirements: dict[str, tuple[str, ...]]) -> set[str]:
+    """Extras that only bundle requirements other extras already declare.
+
+    ``pdf-full`` is the live case: it adds no distribution of its own, so no import
+    can prove it. It also gates nothing — no backend declares it as its dependency
+    group — so the map does not have to name it (its contents report themselves).
+    """
+    named = {extra: {_requirement_name(line) for line in lines} for extra, lines in requirements.items()}
+    return {extra for extra, own in named.items() if not own - set().union(*(other for name, other in named.items() if name != extra))}
 
 
 def test_a_declared_extra_is_installed_only_by_its_own_variable(monkeypatch: pytest.MonkeyPatch) -> None:

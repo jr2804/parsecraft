@@ -199,12 +199,6 @@ def can_degrade_to_native(signal: PageSignal, eligible: Sequence[BackendDescript
     return (signal.blank or signal.has_native_text) and any(not is_ocr(descriptor) for descriptor in eligible)
 
 
-def is_ocr(descriptor: BackendDescriptor) -> bool:
-    """Whether a backend is an OCR/VLM route (by name or dependency group)."""
-    group = descriptor.capabilities.optional_dependency_group
-    return descriptor.name.startswith("ocr-") or (group is not None and group.startswith("ocr-"))
-
-
 def serves_ocr_intent(descriptor: BackendDescriptor) -> bool:
     """Whether a backend may be routed a page that needs OCR.
 
@@ -220,6 +214,12 @@ def serves_ocr_intent(descriptor: BackendDescriptor) -> bool:
     docling read it in the same wall time).
     """
     return is_ocr(descriptor) or descriptor.capabilities.ocr_capable
+
+
+def is_ocr(descriptor: BackendDescriptor) -> bool:
+    """Whether a backend is an OCR/VLM route (by name or dependency group)."""
+    group = descriptor.capabilities.optional_dependency_group
+    return descriptor.name.startswith("ocr-") or (group is not None and group.startswith("ocr-"))
 
 
 def classify_page(signal: PageSignal, page_count: int, hints: FeatureHints) -> Intent:
