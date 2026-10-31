@@ -152,7 +152,7 @@ backend.
 | Installed extras | `optional_dependency_group` not in `constraints.installed_extras` |
 | VRAM budget | `gpu_requirement == 1.0` with `estimated_vram_gb` unset or greater than `vram_budget_gb`, or with no usable GPU (`gpu_usable=False`) |
 | Format coverage | `constraints.formats` not fully covered by `supported_formats` |
-| OCR switch | `allow_ocr=False` and the backend is an OCR backend |
+| OCR switch | `allow_ocr=False` and the backend is an OCR harness (`is_ocr`) |
 | Offline | `offline=True` and the backend carries a `ModelAssetDescriptor` |
 | Language | A candidate that declares a non-empty `languages` set, when the requested `language` is not in it |
 
@@ -164,13 +164,32 @@ The intent family is also fixed:
 
 | Intent | Eligible family |
 | ------ | --------------- |
-| `NATIVE` | Eligible native backends lead, OCR backends are fallbacks. At least one eligible **non-OCR** backend is required |
-| `OCR_GENERAL`, `OCR_TABLES`, `OCR_VISION` | OCR backends only |
+| `NATIVE` | Eligible native backends lead, OCR harnesses are fallbacks. At least one eligible **non-OCR-harness** backend is required |
+| `OCR_GENERAL`, `OCR_TABLES`, `OCR_VISION` | Backends that can read a scan: OCR harnesses **and** parsers that OCR internally (`serves_ocr_intent`) |
 
 A `NATIVE` page with native text but no eligible native backend for its format
 (say a `text/csv` source with no CSV native backend) raises
 `NoEligibleBackendError` with `intent=Intent.NATIVE` rather than routing a
 native-intent page to OCR.
+
+### OCR-capable is not an OCR harness
+
+Two predicates split the OCR question, and only the second one governs the intent
+family:
+
+| Predicate | Question | Consumers |
+| --------- | -------- | --------- |
+| `is_ocr(descriptor)` | Is this an OCR **harness** — an `ocr-` name or an `ocr-` dependency group? | extraction tier 2, the `allow_ocr` gate, the judge's family label, the NATIVE-lead guard |
+| `serves_ocr_intent(descriptor)` | Can it read a page that has no text layer? `is_ocr` **or** `capabilities.ocr_capable` | intent-family membership for `OCR_*` pages |
+
+A parser can do both jobs. docling OCRs text-free pages internally, mineru's VLM
+effort reads scans, marker's document-VLM stack does the same — and all three also
+extract native text well. Folding them into `is_ocr` would move them to tier 2,
+bar them from native pages when `allow_ocr` is off, and relabel them in the judge
+for documents they parse perfectly. Leaving them out of `serves_ocr_intent`
+stranded scan pages instead: a one-page bitmap PDF went to a native extractor and
+came back empty with a `degraded-blank-page` signal while docling read the same
+page in the same wall time on CPU.
 
 ## Eligibility funnel
 
@@ -199,7 +218,7 @@ code-owned at plan time and may be set per call.
 | `installed_extras` | `set[str]` | empty | Extra names present in the environment |
 | `vram_budget_gb` | `float` | `0.0` | VRAM ceiling (`ge=0`) |
 | `max_passes` | `int` | `1` | Caps `len(PageRoute.candidates)` (`ge=1`) |
-| `allow_ocr` | `bool` | `True` | When false, OCR backends are ineligible |
+| `allow_ocr` | `bool` | `True` | When false, OCR **harnesses** are ineligible; a parser that OCRs internally (`ocr_capable`) stays eligible |
 | `offline` | `bool` | `True` | When true, model-asset backends are ineligible |
 | `language` | `str` or `None` | `None` | Requested BCP-47 document language; `None` places no language restriction |
 
@@ -390,7 +409,11 @@ never probes the machine. Host reality is *detected* once, in
 
 `probe_environment() -> EnvironmentInfo` measures installed extras (resolve
 only, never import), total GPU VRAM via `nvidia-smi`, and the operator-declared
-`PARSECRAFT_OFFLINE` flag. It also reports `gpu_usable`: hardware presence is not
+`PARSECRAFT_OFFLINE` flag. Some extras cannot be measured at all because they
+install the same requirements as a sibling: `mineru` is exactly `surya`'s
+stack, so any import probe would answer for the wrong extra. Those are
+*declared* instead (`EXTRA_DECLARATIONS`, e.g. `PARSECRAFT_MINERU=1`), on the same
+rule as a declared engine (ADR-0008 decision 2). It also reports `gpu_usable`: hardware presence is not
 runtime capability, and a CPU-only torch build (`+cpu`, see
 `cuda_runtime_note()`) means the planner must not send a GPU-required backend to
 the CPU. `constraints_from_environment(environment, *,

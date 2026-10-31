@@ -266,6 +266,12 @@ vocabulary shared with `RoutingConstraints.formats`, which is built from the
 source's media type. The OCR backends declare `application/pdf`,
 `image/png`, and `image/jpeg` (the payloads their page-access layer accepts).
 
+A parser that reads scans is not automatically one of them. `docling`, `mineru`
+and `marker` OCR text-free pages inside their own conversion and also extract
+native text, so they declare `ocr_capable` instead of joining the `ocr-*`
+family: an OCR-intent page can route to them, while `--no-ocr` keeps them
+eligible and their extraction tier stays 1 (ADR-0010).
+
 Model licences apply to the weights; the ParseCraft adapter code is MIT.
 
 ### `ocr-tesseract` — the base-install OCR path

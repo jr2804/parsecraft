@@ -73,6 +73,7 @@ optional extra is installed:
       "gpu_requirement": 0.0,
       "languages": [],
       "model_asset": null,
+      "ocr_capable": false,
       "optional_dependency_group": null,
       "supported_formats": ["text/plain"],
       "supports_multi_page": false,
@@ -102,7 +103,7 @@ parsecraft convert SOURCE [OPTIONS]
 | `--auto` / `--no-auto` | `--auto` | Route automatically; `--no-auto` requires `--backend` |
 | `--max-passes N` | `1` | Fallback passes per page group (`N >= 1`) |
 | `--timeout-s SECONDS` | unset | Per-request backend deadline in seconds (bounds each attempt, not the whole run; must be positive) |
-| `--no-ocr` | off | Forbid OCR backends |
+| `--no-ocr` | off | Forbid OCR harnesses; a parser that OCRs internally stays eligible |
 | `--preference AXIS` | `balanced` | Ranking axis inside the eligible family: `speed`, `balanced`, or `quality`. Reachable in auto mode with or without `--judge`; ignored by `--backend`, which already names the lead |
 | `--json` | off | Emit the IR as JSON instead of the Markdown projection |
 | `--cache` / `--no-cache` | `--no-cache` | Reuse a content-addressed conversion cache |
@@ -355,7 +356,7 @@ without converting content (same backend selection as `convert`).
 | ------ | ------- | --------- |
 | `--json` | off | Emit the analysis and routing preview as JSON |
 | `--max-passes N` | `1` | Fallback passes for the previewed plan |
-| `--no-ocr` | off | Forbid OCR backends in the preview |
+| `--no-ocr` | off | Forbid OCR harnesses in the preview; a parser that OCRs internally stays eligible |
 
 Output lists the media type, source hash, page count, every page signal
 (`chars`, `images`, `blank`, `replacement`), any diagnostics, and the routing
@@ -431,7 +432,7 @@ deterministic report (the harness omits wall-clock metadata).
 | `--output`, `-o DIR` | unset | Also write `benchmark.json` and `benchmark.md` into `DIR` |
 | `--max-passes N` | `1` | Fallback passes per page group |
 | `--timeout-s SECONDS` | unset | Per-request backend deadline in seconds (same flag-beats-config rule as `convert`) |
-| `--no-ocr` | off | Forbid OCR backends |
+| `--no-ocr` | off | Forbid OCR harnesses; a parser that OCRs internally stays eligible |
 
 Documents are read locally; a missing or unsupported path becomes a `Skip`
 record rather than an error. Constraints come from the detected host
@@ -521,6 +522,8 @@ offline = false  (default:<defaults>)
 | `PARSECRAFT_JUDGE_BASE_URL` | `parsecraft convert` | Endpoint base-URL override; beats the `[providers.*]` config value |
 | `PARSECRAFT_JUDGE_API_KEY` | `parsecraft convert` | Credential override; beats the `[providers.*]` config value |
 | `PARSECRAFT_CACHE_DIR` | `parsecraft convert --cache`, `parsecraft cache` | Overrides the conversion-cache root |
+| `PARSECRAFT_OFFLINE` | any command | Declares offline mode; backends carrying a `model_asset` are excluded |
+| `PARSECRAFT_MINERU` | `parsecraft backends`, `convert`, `inspect` | Declares the `mineru` extra installed — its requirements are identical to `surya`'s, so no import can prove it |
 
 `PARSECRAFT_JSON` is a CLI flag default. Configuration settings use the
 distinct `PARSECRAFT_CONFIG_` prefix so the flag cannot collide with a setting

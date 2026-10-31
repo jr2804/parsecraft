@@ -38,10 +38,11 @@ Each CLI invocation probes the host once (`probe_environment()` in
 
 | Input | How it is detected | How routing uses it |
 | --- | --- | --- |
-| Installed extras | `EXTRA_IMPORTS` map + `importlib.util.find_spec` — locates, never imports | `installed_extras`; a candidate whose `optional_dependency_group` is not installed is ineligible |
+| Installed extras | `EXTRA_IMPORTS` map + `importlib.util.find_spec` — locates, never imports — and `EXTRA_DECLARATIONS` for the extras no import can prove (`mineru`, declared by `PARSECRAFT_MINERU`) | `installed_extras`; a candidate whose `optional_dependency_group` is not installed is ineligible |
 | GPU / VRAM budget | bounded `nvidia-smi --query-gpu=memory.total` call (10 s timeout, first GPU only; missing, failing, or malformed output → `0.0`) plus a metadata read of the installed torch build's CUDA support | `vram_budget_gb` and `gpu_usable`; a backend needing a GPU survives only when the runtime can use one and its declared estimate fits the measured budget |
 | Offline state | `PARSECRAFT_OFFLINE`, operator-declared — connectivity is never probed | `offline`; excludes backends carrying a `model_asset` |
 | OCR permission | derived from detected `ocr-*` extras; `--no-ocr` overrides | `allow_ocr`; when off, OCR intents may only degrade to native |
+| Scan-reading parsers | `BackendCapabilities.ocr_capable`, declared per backend (docling, mineru, marker) | intent family only: an `OCR_*` page may route to a parser that OCRs internally, without that parser becoming an OCR harness (tier, `allow_ocr` and judge family unchanged) |
 | Source formats | suffix → MIME via `MEDIA_TYPES` (`src/parsecraft/pipeline/analysis.py`) | `formats`; a candidate must cover every source MIME |
 | Language (BCP-47) | caller-supplied, never derived | `language`; narrows only backends that *declare* `capabilities.languages` |
 
@@ -425,6 +426,7 @@ deterministic rule table plus, where configured, a judge spec.
 | `--preference speed\|balanced\|quality` (default `balanced`) | `convert` | ranking axis *inside* the eligible family: `speed`/`balanced` take the smallest declared VRAM first, `quality` the largest; reaches the planner's own judge through `RoutingConstraints.preference` and a resolved System One judge through its Choice question |
 | `--backend NAME` / `--no-auto` | `convert` | non-auto lead: `NAME` first on every eligible page; `--no-auto` without `--backend` exits with code 2 |
 | `PARSECRAFT_OFFLINE=1` | environment | offline constraint: backends carrying a `model_asset` are excluded |
+| `PARSECRAFT_MINERU=1` | environment | declares the `mineru` extra installed (its requirements are identical to `surya`'s, so no import can prove it) |
 | `--cache` | `convert` | content-addressed cache keyed on source bytes + registry fingerprint + canonical constraints + judge identity, so a changed knob naturally misses the old entry |
 | `parsecraft inspect` | command | previews per-page signals, diagnostics, intent, chosen backend, candidates, and reason without converting; `--json` emits the same as JSON |
 | judge / classifier spec | `resolve_judge` / `resolve_classifier`; `--judge` / `--classifier` | swaps ordering (or OCR-need evidence) without touching the rules |
