@@ -117,6 +117,7 @@ dev = [
     "pytest>=8.0.0",
     "pytest-cov>=5.0.0",
     "zensical>=0.0.26",
+    "mkdocs-material>=9.6",
     "mkdocstrings[python]>=0.29",
     "markdown-exec>=1.8",
     "markdown-callouts>=0.4",
@@ -124,6 +125,12 @@ dev = [
     "python-docx>=1.2.0",
     "python-pptx>=1.0.2",
 ]
+
+# mkdocs-material is docs-only, never imported by parsecraft: markdown-exec
+# 1.12.5 resolves its tree-rendering icons from material/templates when
+# material is installed, which unblocks the docs build after Zensical 0.0.74
+# moved its templates into zensical-ui (pc-wl3.1). Drop it when markdown-exec
+# supports the zensical-ui layout.
 
 [project.scripts]
 parsecraft = "parsecraft.cli.app:main"
