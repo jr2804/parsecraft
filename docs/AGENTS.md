@@ -68,6 +68,13 @@ one-file-owns-each-definition pattern in `.agents/FILES.md`.
   never restate a different range in prose. Every optional extra must be jointly
   installable — `uv sync -U --all-extras --all-groups --all-packages` is the
   standing rule (root `AGENTS.md` rule 10).
+- **Platform-availability facts come from the published wheel set.** A row in
+  the availability table in `reference/backends.md` states what the registry
+  actually publishes (ABI tags, platforms, sdist) — verify it against PyPI for
+  the pinned version, and say in the commit message which versions you checked.
+  Never infer it from a constraint solver or a prose summary: uv resolves
+  against versions without modelling whether a wheel exists for the target
+  platform, so a green `--all-extras` run is not evidence of installability.
 - **ADRs.** Records live only in `docs/adr/`, in the project-docs skill's ADR
   format. Creation and edits are pc-1's call.
 
