@@ -29,8 +29,18 @@ _ABSENT_CUDA_VALUES = frozenset({"None", "''", '""'})
 
 
 #: Declared map: extra name -> import packages whose presence proves it installed.
+#:
+#: The module named here is the *import package the extra's requirement actually
+#: installs*, which is not always the requirement's own name: the distribution
+#: ``docling-rs`` imports as ``docling_rs``. Renaming or swapping a requirement
+#: without revisiting this line makes the extra undetectable, and that failure is
+#: silent and far away — eligibility drops the backend, so auto mode routes to a
+#: sibling without a word and ``--no-auto --backend X`` reports "pinned backend X
+#: is not eligible for this source" on a host where X is installed and working.
+#: ``tests/environment/test_environment.py`` binds every mapped module to that
+#: extra's own declared requirements so this drift cannot ship again.
 EXTRA_IMPORTS: dict[str, tuple[str, ...]] = {
-    "docling": ("docling",),
+    "docling": ("docling_rs",),  # distribution `docling-rs`, not `docling` (pc-wl3.3)
     "marker": ("marker",),  # bring-your-own dependency (ADR-0006): no declared extra
     "mineru": ("mineru",),
     "ocr": ("transformers",),

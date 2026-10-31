@@ -43,6 +43,17 @@ capabilities in `backends/` descriptors.
   `tests/environment/test_environment.py` enforces the contract both ways —
   every declared extra is in `EXTRA_IMPORTS` and the two sets are disjoint, so
   no stale name survives in either.
+- **Map the import package, not the distribution name.** The value is what
+  ``import`` resolves, and a distribution's name can differ from the module it
+  installs: ``parsecraft[docling]`` installs ``docling-rs``, which imports as
+  ``docling_rs``. Drift here is silent and remote — eligibility drops the
+  backend, so auto mode routes to a sibling without a word while a
+  ``--no-auto --backend X`` pin reports X ineligible on the very host where it
+  works. The extras contract test binds every mapped module to that extra's own
+  requirements through `packages_distributions`, so a rename or a swap fails the
+  suite instead. `_UNPROVABLE_IMPORTS` (test-side) records the entries no
+  requirement can prove today; it is a bug list (pc-5m9), not a licence, and the
+  test fails when one starts resolving.
 - **Meta extras get no `EXTRA_IMPORTS` entry** (they import nothing, so they
   cannot prove anything): installing one installs the extras it names, and
   those are detected individually. A meta extra is a packaging convenience,

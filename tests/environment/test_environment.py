@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import tomllib
 from collections.abc import Callable
+from importlib.metadata import packages_distributions
 from pathlib import Path
 from subprocess import TimeoutExpired
 
@@ -39,6 +41,13 @@ _TORCH = "torch"
 
 _ASSET_CONTENT = b"ocr-ovis-weights"
 _ASSET_DIGEST = hashlib.sha256(_ASSET_CONTENT).hexdigest()
+
+
+#: Map entries no requirement of the extra can prove, with the reason, as
+#: ``(extra, module)`` pairs — a KNOWN defect (pc-5m9), not a licence to drift.
+#: The contract test fails as soon as one of these starts resolving, so the
+#: exemption cannot outlive the bug it records.
+_UNPROVABLE_IMPORTS: frozenset[tuple[str, str]] = frozenset({("mineru", "mineru"), ("pdf-full", "mineru")})
 
 
 class _Completed:
@@ -393,6 +402,60 @@ def _declared_extras() -> tuple[str, ...]:
     pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
     data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
     return tuple(data["project"]["optional-dependencies"])
+
+
+def test_extra_imports_maps_every_extra_to_a_module_its_requirements_install() -> None:
+    """The map's module must be one the extra's OWN requirements can install (pc-wl3.3).
+
+    ``EXTRA_IMPORTS`` names an import package, and an import package is not
+    always the distribution's name: ``parsecraft[docling]`` installs the
+    distribution ``docling-rs``, which imports as ``docling_rs``. When a
+    distribution is renamed or swapped and the map is not revisited, the extra
+    becomes undetectable — and that failure is silent and remote: eligibility
+    drops the backend, so auto mode routes to a sibling without a word while a
+    ``--no-auto --backend X`` pin claims X is ineligible on the very host where
+    it is installed and working.
+
+    The link is established through the installed metadata
+    (``packages_distributions``), so a rename is caught by the name change and
+    a swap is caught by the provider change — no hand-maintained second table.
+    """
+    requirements = _declared_requirements()
+    providers = packages_distributions()
+    for extra, modules in EXTRA_IMPORTS.items():
+        declared = requirements.get(extra)
+        if declared is None:
+            continue  # bring-your-own dependency group (ADR-0006): no requirements to bind to
+        distributions = {_requirement_name(line) for line in declared}
+        for module in modules:
+            installed_as = {_canonical(name) for name in providers.get(module, ())}
+            provable = _canonical(module) in distributions or bool(installed_as & distributions)
+            if (extra, module) in _UNPROVABLE_IMPORTS:
+                assert not provable, f"EXTRA_IMPORTS[{extra!r}] now resolves {module!r}: drop {extra!r}/{module!r} from _UNPROVABLE_IMPORTS (pc-5m9)"
+                continue
+            assert provable, (
+                f"EXTRA_IMPORTS[{extra!r}] names {module!r}, which no requirement of that extra installs "
+                f"({sorted(distributions)}): the extra is undetectable, so its backend is silently ineligible"
+            )
+
+
+def _declared_requirements() -> dict[str, tuple[str, ...]]:
+    """Extra name -> its requirement lines, straight from pyproject.toml."""
+    pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    return {name: tuple(lines) for name, lines in data["project"]["optional-dependencies"].items()}
+
+
+def _requirement_name(requirement: str) -> str:
+    """The distribution name a PEP 508 requirement line installs (markers stripped)."""
+    match = re.match(r"[A-Za-z0-9][A-Za-z0-9._-]*", requirement.strip())
+    assert match is not None, requirement
+    return _canonical(match.group(0))
+
+
+def _canonical(name: str) -> str:
+    """PEP 503 normalisation — `docling-rs`, `docling_rs`, `docling.rs` are one dist."""
+    return re.sub(r"[-_.]+", "-", name).lower()
 
 
 # ── Offline flag and determinism ────────────────────────────────────────────────
