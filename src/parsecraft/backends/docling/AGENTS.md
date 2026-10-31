@@ -64,6 +64,14 @@ mapping is engine-independent.
   substring of the real `ConversionError`, verified with an empty model
   cache). Models are never downloaded implicitly (about 1.4 GB measured
   into the docling.rs model cache, not the ~700 MB upstream claims).
+  **This covers the LAYOUT models only.** A cache with the layout models but
+  without the OCR ones does not raise at all: docling-rs prints a warning on
+  stderr, continues without OCR, and returns pages with zero blocks, so a
+  scanned page arrives as an empty page with no failure (pc-04u, verified
+  2026-10-31 by deleting only `ocr_*` from a full cache — a text PDF through
+  the same cache is unaffected, so the two paths differ and only one is
+  typed). The fragment guard matches the layout wording, so it would not
+  catch an OCR wording change either.
 - Bounds are honored between items: cancellation, `timeout_s` (checked after
   the single blocking pass), and `max_output_chars`. Failures stay typed
   (`CANCELLED`, `TIMEOUT`, `BUDGET_EXCEEDED`, `BACKEND_ERROR`), never raw.
