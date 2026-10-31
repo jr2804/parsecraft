@@ -9,7 +9,7 @@ capabilities in `backends/` descriptors.
 ## Ownership
 
 - `models.py` — `EnvironmentInfo` (frozen value object).
-- `probe.py` — `probe_environment()`, `cuda_runtime_note()` and`EXTRA_IMPORTS` (the declared
+- `probe.py` — `probe_environment()`, `cuda_runtime_note()` and `EXTRA_IMPORTS` (the declared
   extra → import-package map).
 - `constraints.py` — `constraints_from_environment()` bridge: host facts plus
   the plan inputs `formats`, `allow_ocr`, `max_passes`, and `preference`.
