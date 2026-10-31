@@ -13,6 +13,11 @@ description = "GPU tier: OCR adapters on real weights (opt-in; needs an isolated
 run = ".venv-gpu/bin/python -m pytest tests/backends/test_ocr_gpu.py -m gpu --run-gpu"
 run_windows = ".venv-gpu/Scripts/python -m pytest tests/backends/test_ocr_gpu.py -m gpu --run-gpu"
 
+[tasks.test-docling]
+description = "Docling-live tier: real docling-rs engine + model caches (opt-in; needs an isolated .venv-docling)"
+run = ".venv-docling/bin/python -m pytest tests/backends/test_docling_live.py -m docling_live --run-live-docling"
+run_windows = ".venv-docling/Scripts/python -m pytest tests/backends/test_docling_live.py -m docling_live --run-live-docling"
+
 [tasks.test-judge]
 description = "Judge tier: live typesafe-ai/jev-latest (TYPESAFE_API_KEY), zen/<model> (OPENCODE_API_KEY), or the semi-live local ollama/<model> — typesafe-sdk is a core dependency, so only the credential is needed (run: uv run pytest -m judge --run-judge)"
 run = "uv run pytest -m judge --run-judge"

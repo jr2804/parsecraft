@@ -35,6 +35,7 @@ nul
 # Virtual environments
 .venv
 .venv-gpu
+.venv-docling
 *.env
 uv.lock
 

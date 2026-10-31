@@ -120,6 +120,13 @@ basenames may repeat across groups (`cli/test_config.py` vs
     `.venv-gpu` (torch/transformers live only there, never in `.venv`);
     heavy deps load via `importlib.import_module` inside test bodies so the
     default run never touches them.
+  - `docling_live` — skipped unless `pytest --run-live-docling`; runs inside
+    the isolated `.venv-docling` (the real `docling-rs` engine plus a
+    downloaded model cache, `mise run test-docling`). Tests in this tier
+    never import the engine in the pytest process — each conversion runs in
+    its own child process (pc-04u) — and they probe for the engine with
+    `importlib.util.find_spec`, never a module-level `pytest.importorskip`:
+    a collected `Skipped` is an ERROR to the collection-safety sweep.
   - Corpus downloads live under `tests/downloads/`. Pinned sources cache
     content-addressed (`sha256-filename`) and fail loudly on drift; re-pin
     deliberately after review. Live endpoints are marked `mutable = true`:
@@ -135,6 +142,9 @@ basenames may repeat across groups (`cli/test_config.py` vs
 
 `mise test` (100% coverage) · `mise run all` (test + lint + spell + format +
 format-md + docs) · `mise run test-corpus` (network tier, ≤ 15 min cold).
+Isolated opt-in tiers run from their own env, never from `.venv`:
+`mise run test-gpu` (`.venv-gpu`), `mise run test-docling`
+(`.venv-docling`).
 
 ## Child DOX Index
 
