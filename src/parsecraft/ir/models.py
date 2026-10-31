@@ -233,6 +233,10 @@ class PageSignal(BaseModel):
     has_native_text: bool
     text_chars: int = Field(ge=0)
     image_count: int = Field(ge=0)
+    #: No native text (nothing survived stripping) — deliberately NOT "nothing
+    #: on the page": an image-only scan is ``blank`` with ``image_count > 0``.
+    #: The two are different situations and the router distinguishes them: only
+    #: ``blank and image_count == 0`` means there is nothing to lose.
     blank: bool
     replacement_char_ratio: float | None = Field(default=None, ge=0, le=1)
     #: Optional classifier verdict: ``True`` = OCR needed. Augment-only — the

@@ -87,12 +87,17 @@ identical plan.
   instead of failing a valid document. Two shapes may degrade: a page with
   native text, and a **blank** page (pc-ztq — nothing to read, so the empty
   native page is the honest result; refusing there once failed whole documents
-  over a page with no content). A page that visibly holds content but has no
-  text layer keeps raising `NoEligibleBackendError`: native would silently emit
-  an empty page for a scan. Rule lives in `rules.can_degrade_to_native`;
-  classification itself is unchanged, so blank pages still route to OCR
-  whenever an OCR backend is eligible. Codes: `degraded-garbled-text`,
-  `degraded-short-text`, `degraded-blank-page` (score 0.0).
+  over a page with no content). A blank page with no images degrades even when
+  the OCR family IS eligible — nothing to read is not a reason to spend a VLM
+  pass — and then the reason carries **no cause clause** ("page 1: blank page:
+  no text or images to lose; first pass native-text"): OCR was available and
+  skipped, so blaming the host would be false. A page that visibly holds
+  content but has no text layer keeps raising `NoEligibleBackendError`: native
+  would silently emit an empty page for a scan. Rule lives in
+  `rules.can_degrade_to_native`; classification itself is unchanged, so blank
+  pages still route to OCR whenever an OCR backend is eligible. Codes:
+  `degraded-garbled-text`, `degraded-short-text`, `degraded-blank-page` (score
+  0.0).
 - Language detection is an injectable seam the same way:
   `language.LanguageDetector` (`detect_language(text) -> str | None`). The
   requested language arrives as plain data on `RoutingConstraints.language`

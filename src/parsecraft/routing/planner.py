@@ -69,7 +69,7 @@ def plan_route(
         # for one page and not another, and the cap must follow the family.
         lead_tier_cap = _lead_tier_cap(constraints, family)
         degraded = False
-        unavailable = ""
+        unavailable: str | None = None
         degradation_code: str | None = None
         degradation_score: float | None = None
         if not family and intent is not Intent.NATIVE and can_degrade_to_native(signal, eligible):
@@ -86,10 +86,10 @@ def plan_route(
         elif _nothing_to_lose(signal) and intent is not Intent.NATIVE and can_degrade_to_native(signal, eligible):
             # A blank page with no images has nothing an OCR pass could return:
             # sending it to a VLM is pure cost (measured: 527 s of ocr-ovis for
-            # an empty page). Degrade it even when the OCR family IS available —
-            # the reason string records it exactly as it does without a GPU.
+            # an empty page). Degrade it even when the OCR family IS available.
+            # No cause is recorded: OCR is not unavailable here, the page is
+            # simply empty, and consumers quote this reason verbatim.
             degraded = True
-            unavailable = "blank page: no text or images to lose"
             degradation_code, degradation_score = degradation_for(signal)
             intent = Intent.NATIVE
             family = [descriptor for descriptor in eligible if in_intent_family(intent, descriptor)]
@@ -313,17 +313,27 @@ def _ocr_unavailable_cause(backends: Sequence[BackendDescriptor], constraints: R
     return "no eligible OCR backend (missing extras, OCR disabled, or no usable GPU)"
 
 
-def _degraded_reason(signal: PageSignal, chosen: str, cause: str) -> str:
-    """Recorded when an OCR-intent page falls back to native (no OCR family).
+def _degraded_reason(signal: PageSignal, chosen: str, cause: str | None) -> str:
+    """Recorded when an OCR-intent page falls back to native.
 
-    The parenthetical says WHY native could stand in, and that is genuinely
+    Two shapes, and the difference is who is at fault. ``cause`` is set when OCR
+    *could not* run (no family, missing engine) — the reason then says so and
+    names what native could still keep. ``cause`` is ``None`` when OCR was
+    available and the page was simply not worth a pass: prefixing "OCR
+    unavailable" there claimed a host defect for a page that has no content, and
+    repeated the same clause twice (consumers quote this verbatim).
+
+    ``_what_native_kept`` says WHY native could stand in, and that is genuinely
     three different situations, not two. A blank page has nothing to lose; a
-    SCANNED page has no text layer but a pageful of pixels to lose; and a
-    thin-text page has a little text. Collapsing the scan into "blank" made the
-    one message whose whole purpose is honesty assert something false about the
-    very pages OCR exists for (pc-svr).
+    SCANNED page has no text layer but a pageful of pixels; and a thin-text page
+    has a little text. Collapsing the scan into "blank" made the one message
+    whose whole purpose is honesty assert something false about the very pages
+    OCR exists for (pc-svr).
     """
-    return f"page {signal.page_number}: OCR unavailable ({cause}); degraded to native ({_what_native_kept(signal)}); first pass {chosen}"
+    kept = _what_native_kept(signal)
+    if cause is None:
+        return f"page {signal.page_number}: {kept}; first pass {chosen}"
+    return f"page {signal.page_number}: OCR unavailable ({cause}); degraded to native ({kept}); first pass {chosen}"
 
 
 def _what_native_kept(signal: PageSignal) -> str:

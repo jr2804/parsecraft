@@ -1154,6 +1154,8 @@ def test_blank_page_without_images_degrades_even_when_ocr_is_eligible() -> None:
     assert page.chosen == "native-text"
     assert page.degradation_code == DEGRADED_BLANK_PAGE_CODE
     assert page.degradation_score == 0.0
+    # OCR was available and skipped, so the reason must not blame the host.
+    assert page.reason == "page 1: blank page: no text or images to lose; first pass native-text"
 
 
 def test_blank_page_with_images_keeps_its_ocr_intent() -> None:
