@@ -39,6 +39,13 @@ anything. The formatters themselves run only locally — a gate that only
 reformats cannot detect drift, it just leaves it in the working tree for the
 next run to rewrite again.
 
+`mise typecheck` is part of the local gate but **not yet a CI step** (pc-180).
+Adding it is not a one-line job: ty's verdict depends on which extras are
+installed, so the same commit types clean in the `mise dev` environment and dirty
+in an all-extras one — the `# ty: ignore[unresolved-import]` markers on the heavy
+imports are load-bearing there and invert to `unused-ignore-comment` once the
+extra is present. The job must pin the environment it types against and say so.
+
 The test matrix:
 
 | Python | OS | Notes |
