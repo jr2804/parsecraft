@@ -191,6 +191,49 @@ Reading rules:
   `selected: true` + `failures: [backend_error]` row means “planner picked
   it, then it could not load in this transformers” — not a planner bug.
 
+## GPU OCR five-way with ocr-surya (2026-10-31, design first)
+
+Definition written **before** the run (pc-6ev item 2; the three decisions are
+binding):
+
+- **Corpus**: 2-page fixtures cut from the same three staged corpus PDFs
+  (pages 1–2) — identical bounded inputs to the 2026-09-28 GPU legs above;
+  full-corpus OCR stays a dated deferral. Fixtures are cut from the
+  sha-pinned corpus files into the repo's gitignored `.tmp/` scratch space
+  and are never committed.
+- **Comparison set**: the five GPU OCR backends — `ocr-ovis`, `ocr-surya`,
+  `ocr-tele`, `ocr-qianfan`, `ocr-unlimited` — on the **same fixtures in one
+  environment** (`.venv-gpu`: one `transformers>=5.17,<6` window; tele and
+  unlimited load their vendored modeling, so no second pass is needed).
+  CPU backends are out of the comparison (they measure a different task);
+  native/pymupdf rows may appear in the artifact because the runner measures
+  every eligible backend and are read as sanity anchors, not comparators.
+- **Headlines**: pages/s per (fixture, backend) from the harness `elapsed_s`
+  (model load included — same reading rule as above). **Not** a peak-VRAM
+  headline — see the WDDM paragraph below for the measurement that killed it.
+- **text_coverage is not a headline**: these pages have no ground truth;
+  coverage stays recorded in the artifact only.
+- **Host scope**: this run is on an **RTX 2070 8 GB** — a different host from
+  the 2026-09-28 A2000 8 GB table above, so absolute times are **not**
+  comparable across those tables. The same-host five-way is the deliverable
+  and carries `ocr-surya`'s first measured rows.
+- **Generation budgets**: the harness defaults (the test tier's tighter
+  `_MAX_NEW_TOKENS` caps do not apply to benchmark runs).
+
+**Why there is no peak-VRAM column (measured 2026-10-31).** A first draft of
+this definition promised one, sampled outside the harness with `nvidia-smi
+--query-gpu=memory.used`. Two measurements killed it. First, the harness cannot
+carry it: `peak_memory_bytes` is `tracemalloc`, host Python only, so it never
+sees device memory. Second, neither can a sampler on this host: surya's 2-page
+ETSI cell reports `torch.cuda.max_memory_allocated()` of **9155 MiB on an 8191
+MiB card**, and a synthetic `torch.empty` loop reached **12288 MiB allocated**
+while `mem_get_info()` reported `free = 0`. Windows/WDDM backs past physical
+VRAM with shared system memory, so any number here measures what PyTorch asked
+for — it can exceed the card, is not comparable across hosts, and cannot
+support a "fits in 8 GB" claim. VRAM therefore stays in *Deferred runs* below
+with that caveat; measuring it honestly needs per-cell
+`reset_peak_memory_stats()` plus an `nvidia-smi` cross-check on a Linux host.
+
 ## Deferred runs
 
 The legs below were **deliberately deferred on 2026-09-28**, with the reason
@@ -205,7 +248,7 @@ the full-corpus runs only cost machine time.
 | Full-corpus OCR, all four models (re-affirmed) | 2026-10-31 | Cost/time only — unchanged from 2026-09-28; no GPU env in the 2026-10-31 run | same OCR command above |
 | Full-corpus docling (re-affirmed) | 2026-10-31 | Runtime budget — unchanged from 2026-09-28; not an automated check | same docling command above |
 | PyMuPDF extraction on the 2026-10-31 corpus | 2026-10-31 | Scope/env: PyMuPDF was absent from the measured env; historical numbers stay in the 2026-09-27 snapshot | In an isolated checkout, `uv sync --extra web --extra pymupdf --reinstall-package parsecraft`, then run the benchmark command from the [recipe](#reproduce) |
-| GPU VRAM measurement | 2026-10-31 | Out of scope: peak bytes are `tracemalloc` host-Python allocations; no GPU env in this run | — |
+| GPU VRAM measurement | 2026-10-31 | Out of scope on this host: peak bytes are `tracemalloc` host-Python allocations, and WDDM lets `torch.cuda.max_memory_allocated()` exceed the card (9155 MiB reported on 8191 MiB; a synthetic loop reached 12288 MiB with `free = 0`), so a number here would not be a VRAM measurement | On Linux: per-cell `reset_peak_memory_stats()` plus an `nvidia-smi` cross-check |
 | Full-corpus docling | 2026-09-28 | Runtime budget: docling is ≈ 8–15 s/page warm on this laptop → ≈ 1.8 h for NIST SP 800-53r5 alone, and the incident shape (>1 h on 113 pp) says hours. Not an automated check | [Full-corpus docling](#full-corpus-docling-command) |
 | Quantised variants (int8 / 4-bit) | 2026-09-28 | Out of scope by design: quantisation is a backend-installation choice, not a harness dimension | — |
 
