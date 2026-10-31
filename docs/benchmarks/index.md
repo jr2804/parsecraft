@@ -23,8 +23,8 @@ Documents (all local, never fetched at run time):
 | `etsi-ts-103558.pdf` (licensed, 2.7 MiB) | application/pdf | 68 |
 | `…-nist-sp-800-53r5.pdf` (5.8 MiB) | application/pdf | 492 |
 
-`wikidata-q42.json` (316.1 KiB) is staged but unsupported — recorded as
-an honest skip, never silently dropped.
+`wikidata-q42.json` (316.1 KiB) was staged but unsupported in this run —
+recorded as a skip, never silently dropped.
 
 Backends (2026-10-31 run): `native-text`, `native-markdown`, `native-html`,
 `native-csv` (CPU), plus `liteparse`, `pdf-inspector`, and `trafilatura`
@@ -297,7 +297,7 @@ parsecraft benchmark fixtures/*.pdf --json > benchmark-docling-vs-native.json
 expectations.
 - **No quantisation variants** were benchmarked — model quantisation stays
   a backend-installation concern, not a harness dimension.
-- **`wikidata-q42.json` is still skipped** (unsupported source suffix,
+- **`wikidata-q42.json` was skipped in this run** (unsupported source suffix,
   recorded in the report, not hidden). `exoplanets.csv` was a skip in the
   2026-09-27 snapshot and has been measured since 2026-10-31 (`native-csv`,
   one TABLE chunk, coverage 1.212 — an unbounded ratio, see
