@@ -1,6 +1,6 @@
 """Docling backend: light/heavy boundary, verified formats, bound-checked convert.
 
-Fully offline: the heavy ``docling`` / ``docling_core`` / ``pypdfium2`` imports
+Fully offline: the heavy ``docling_rs`` / ``docling_core`` / ``pypdfium2`` imports
 are satisfied by stub modules in ``sys.modules`` before ``_impl`` loads — the
 same pattern as the LiteParse and OCR families.
 """
@@ -10,7 +10,6 @@ from __future__ import annotations
 import hashlib
 import importlib
 import io
-import os
 import re
 import sys
 import time
@@ -21,7 +20,6 @@ from pathlib import Path
 import pytest
 
 from parsecraft.backends.docling import docling as docling_module
-from parsecraft.backends.docling.libreoffice import LIBREOFFICE_ENV
 from parsecraft.backends.errors import BackendError, DependencyUnavailableError
 from parsecraft.backends.protocol import BackendConfig, BackendResult, ConversionRequest, DocumentBackend, SourceDocument
 from parsecraft.ir.models import ChunkKind, FailureCode, PageRange, PassKind
@@ -409,6 +407,18 @@ def test_convert_reports_conversion_errors_as_typed_failures(docling_stub: _Stat
     assert "RuntimeError: pdfium exploded" in failure.detail
 
 
+def test_convert_missing_models_names_the_download_helper(docling_stub: _State) -> None:
+    docling_stub.convert_error = RuntimeError(
+        "parse error: pdf: layout: model not found at .models/layout_heron.onnx — PDF/image conversion needs the ONNX models"
+    )
+    result = _convert(_backend())
+    assert result.pages == []
+    failure = result.failures[0]
+    assert failure.code is FailureCode.BACKEND_ERROR
+    assert "docling_rs.download_models()" in failure.detail
+    assert "never downloaded implicitly" in failure.detail
+
+
 def _backend() -> DocumentBackend:
     return docling_module.factory(BackendConfig(name="docling"))
 
@@ -442,20 +452,6 @@ def test_source_bytes_reads_local_files_and_wraps_errors(tmp_path: Path, docling
         impl.source_bytes(SourceDocument(uri=(tmp_path / "missing.txt").absolute().as_uri()))
 
 
-@pytest.fixture(autouse=True)
-def _isolate_libreoffice_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """Keep ``DOCLING_LIBREOFFICE_CMD`` out of this module — and out of the suite.
-
-    ``create()`` calls ``configure_libreoffice_env()``, which writes the process
-    environment on purpose (docling reads that variable). Without this, a host
-    that HAS LibreOffice leaks the value past the test that set it, and later
-    tests inherit a declaration they never made.
-    """
-    monkeypatch.delenv(LIBREOFFICE_ENV, raising=False)
-    yield
-    os.environ.pop(LIBREOFFICE_ENV, None)
-
-
 @pytest.fixture
 def docling_stub(monkeypatch: pytest.MonkeyPatch) -> Iterator[_State]:
     """Install the stub package tree and force a fresh heavy-impl import."""
@@ -479,16 +475,10 @@ def _install_stub_modules(state: _State, monkeypatch: pytest.MonkeyPatch) -> Non
     pypdfium2 = module("pypdfium2")
     pypdfium2.PdfDocument = lambda _data: _PdfDocument(state)  # ty: ignore[unresolved-attribute]
 
-    docling = module("docling")
-    datamodel = module("docling.datamodel")
-    base_models = module("docling.datamodel.base_models")
-    document_mod = module("docling.datamodel.document")
-    converter_mod = module("docling.document_converter")
-    docling.datamodel = datamodel  # ty: ignore[unresolved-attribute]
-    datamodel.document = document_mod  # ty: ignore[unresolved-attribute]
-    document_mod.ConversionResult = _ConversionResult  # ty: ignore[unresolved-attribute]
-    converter_mod.DocumentConverter = lambda: _Converter(state)  # ty: ignore[unresolved-attribute]
-    base_models.DocumentStream = _DocumentStream  # ty: ignore[unresolved-attribute]
+    docling_rs = module("docling_rs")
+    docling_rs.ConversionResult = _ConversionResult  # ty: ignore[unresolved-attribute]
+    docling_rs.DocumentConverter = lambda: _Converter(state)  # ty: ignore[unresolved-attribute]
+    docling_rs.DocumentStream = _DocumentStream  # ty: ignore[unresolved-attribute]
 
     docling_core = module("docling_core")
     types_mod = module("docling_core.types")

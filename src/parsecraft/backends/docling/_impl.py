@@ -1,9 +1,15 @@
-"""Heavy Docling implementation — ``docling`` imported at top level.
+"""Heavy Docling implementation — ``docling_rs`` imported at top level.
 
 Loaded only from the light factory at instantiation (``importlib``-based,
-never an inline import). Conversion-verified against docling 2.130.0 on
-2026-09-28 for PDF and HTML (Markdown/plain-text withdrawn 2026-10-30:
-marko table-matcher CPU spin — see ``_DECLINED_MEDIA_TYPES``).
+never an inline import). Conversion-verified against docling.rs 2.55.4 on
+2026-10-31 for PDF, HTML and DOCX (Markdown/plain-text withdrawn 2026-10-30:
+marko table-matcher CPU spin — see ``_DECLINED_MEDIA_TYPES``; the guard is
+kept unchanged until retested against the Rust engine).
+
+PDF/image conversion needs the ONNX layout models (about 1.4 GB measured
+into the docling.rs model cache): without them the converter raises, and
+``convert()`` maps that to a typed ``BACKEND_ERROR`` naming
+``docling_rs.download_models()``. Models are never downloaded implicitly.
 
 Design notes:
 - ``analyze()`` stays cheap: PDFs are probed with ``pypdfium2`` (a docling
@@ -25,13 +31,10 @@ from pathlib import Path
 from time import monotonic
 
 import pypdfium2 as pdfium  # base dependency (ADR-0008 d10), not an extra
-from docling.datamodel.document import ConversionResult  # ty: ignore[unresolved-import]
-from docling.document_converter import DocumentConverter  # ty: ignore[unresolved-import]
 from docling_core.types.doc.document import DoclingDocument, TableItem, TextItem  # ty: ignore[unresolved-import]
-from docling_core.types.io import DocumentStream  # ty: ignore[unresolved-import]
+from docling_rs import ConversionResult, DocumentConverter, DocumentStream  # ty: ignore[unresolved-import]
 
 from parsecraft.backends.docling.docling import DESCRIPTOR, DOCLING_BACKEND_VERSION
-from parsecraft.backends.docling.libreoffice import configure_libreoffice_env
 from parsecraft.backends.errors import BackendError
 from parsecraft.backends.protocol import (
     AnalysisResult,
@@ -56,6 +59,8 @@ from parsecraft.ir.models import (
 )
 
 #: docling item label -> IR chunk kind (default ``PARAGRAPH`` for text items).
+#: ``result.document`` is a genuine docling-core ``DoclingDocument`` either
+#: way, so this mapping is engine-independent.
 _LABEL_KINDS: dict[str, ChunkKind] = {
     "title": ChunkKind.HEADING,
     "section_header": ChunkKind.HEADING,
@@ -75,14 +80,23 @@ _LABEL_KINDS: dict[str, ChunkKind] = {
 
 _PDF_MEDIA_TYPE = "application/pdf"
 
-#: Text types this backend declines at ``convert()``: both reach docling's
-#: marko table matcher, which spins without timeout on pipe-heavy content
-#: (2026-10-30), so they route to the dependency-free native family instead.
+#: Text types this backend declines at ``convert()``: under the Python engine
+#: both reach the marko table matcher, which spins without timeout on
+#: pipe-heavy content (2026-10-30), so they route to the dependency-free
+#: native family instead. Kept unchanged until retested against Rust.
 #: The value names the redirect target for the failure detail.
 _DECLINED_MEDIA_TYPES: dict[str, str] = {
     "text/markdown": "native-markdown",
     "text/plain": "native-text",
 }
+#: Substring of the docling.rs ``ConversionError`` raised when the ONNX layout
+#: models are absent (verified against the real package with an empty model
+#: cache): the message names ``.models/layout_heron.onnx`` and the
+#: ``DOCLING_LAYOUT_ONNX`` override.
+# Fragment, not the full sentence: the real error embeds a platform-dependent
+# model-cache path (`.models/...` vs an absolute cache dir), so exact-match is
+# rejected and matching stays on this stable core.
+_MODEL_NOT_FOUND_FRAGMENTS = "model not found at"
 _CONVERTER: DocumentConverter | None = None
 
 
@@ -121,8 +135,15 @@ class DoclingBackend:
         data = source_bytes(request.source)
         try:
             result = _convert(data, request)
-        except Exception as exc:  # docling load/parse boundary — typed, never raw
-            detail = f"docling conversion failed: {type(exc).__name__}: {exc}"
+        except Exception as exc:  # docling_rs load/parse boundary — typed, never raw
+            if _MODEL_NOT_FOUND_FRAGMENTS in str(exc):
+                detail = (
+                    "docling-rs layout models are missing: run docling_rs.download_models() once "
+                    "(about 1.4 GB into the docling.rs model cache); PDF/image conversion needs "
+                    f"them and models are never downloaded implicitly; original error: {exc}"
+                )
+            else:
+                detail = f"docling conversion failed: {type(exc).__name__}: {exc}"
             return _result(reference, [], [_failure(request, started, FailureCode.BACKEND_ERROR, detail)], started)
         if request.timeout_s is not None and monotonic() - started > request.timeout_s:
             return _result(reference, [], [_failure(request, started, FailureCode.TIMEOUT, "conversion exceeded timeout_s")], started)
@@ -156,9 +177,9 @@ class DoclingBackend:
 
 def create(config: BackendConfig) -> DocumentBackend:
     """Instantiate the backend — the sanctioned heavy-import boundary."""
-    # Docling reads DOCLING_LIBREOFFICE_CMD for its office path; discovery is
-    # best-effort and silent, because no declared format needs LibreOffice.
-    configure_libreoffice_env()
+    # docling.rs parses office formats natively in Rust (verified: a real DOCX
+    # converts with DOCLING_LIBREOFFICE_CMD pointing at garbage), so there is
+    # no LibreOffice discovery and nothing to configure here.
     return DoclingBackend(config)
 
 
@@ -190,7 +211,7 @@ def _pdf_signals(data: bytes) -> list[PageSignal]:
 
 
 def _convert(data: bytes, request: ConversionRequest) -> ConversionResult:
-    """Run one docling pass; ``page_range`` is passed only for PDFs."""
+    """Run one docling.rs pass; ``page_range`` is passed only for PDFs."""
     uri = request.source.uri
     name = (_local_path(uri) if uri.startswith("file://") else Path(uri)).name or "document"
     stream = DocumentStream(name=name, stream=BytesIO(data))
@@ -200,7 +221,7 @@ def _convert(data: bytes, request: ConversionRequest) -> ConversionResult:
 
 
 def _converter() -> DocumentConverter:
-    """Process-wide converter; docling pipelines load lazily inside it."""
+    """Process-wide converter; docling.rs pipelines load lazily inside it."""
     global _CONVERTER  # noqa: PLW0603 — one converter per process is the docling contract
     if _CONVERTER is None:
         _CONVERTER = DocumentConverter()
@@ -243,7 +264,7 @@ def _select(
 
 
 def _item_content(item: object, document: DoclingDocument) -> tuple[str, ChunkKind, tuple[tuple[str, ...], ...] | None, dict[str, str]]:
-    """Text + chunk kind for one docling item (tables export to Markdown).
+    """Text + chunk kind for one docling.rs item (tables export to Markdown).
 
     Table cells come from ``TableItem.data.grid`` — the structured grid
     backs the chunk's ``rows`` while ``content`` stays the Markdown export

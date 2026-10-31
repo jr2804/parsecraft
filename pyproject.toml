@@ -41,7 +41,7 @@ dependencies = [
 # lives in the ADRs, not here.
 [project.optional-dependencies]
 web = ["httpx>=0.27", "trafilatura>=2.3.1"]
-docling = ["docling>=2.130"]
+docling = ["docling-rs>=2.55"]
 # Native MinerU2.5 VLM stack (ADR-0007): stock transformers on the pinned
 # Apache-2.0 checkpoint — no `mineru` pip dependency, so the openai<3 cap
 # cannot reach this graph. torchvision feeds the processor's image backend.

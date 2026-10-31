@@ -15,7 +15,7 @@ from pathlib import Path
 #: them outright.
 _HEAVY_RUNTIME_ROOTS: frozenset[str] = frozenset(
     {
-        "docling",
+        "docling_rs",
         "huggingface_hub",
         "liteparse",
         "marker",
@@ -131,7 +131,7 @@ _COLLECTION_SCRIPT = textwrap.dedent(
     # scope before the gate runs, so "inline" is not a safe haven.
     BLOCKED = {
         "marker",
-        "docling",
+        "docling_rs",
         "liteparse",
         "mineru",
         "pypandoc",

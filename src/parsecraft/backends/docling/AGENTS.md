@@ -1,12 +1,15 @@
 # AGENTS.md — src/parsecraft/backends/docling/
 
 Docling backend family: MIT, CPU, layout-aware parsing behind the optional
-`docling` extra.
+`docling` extra (engine: docling.rs via the `docling-rs` PyPI package, MIT;
+upstream labels the Python bindings experimental).
 
 ## Purpose
 
-Expose `docling` (2.130.0) as a `DocumentBackend`: cheap structural `analyze()`
+Expose docling.rs (2.55.x) as a `DocumentBackend`: cheap structural `analyze()`
 plus a bound-checked `convert()` that maps docling items to typed IR chunks.
+`result.document` is a genuine docling-core `DoclingDocument`, so the item
+mapping is engine-independent.
 
 ## Ownership
 
@@ -14,10 +17,14 @@ plus a bound-checked `convert()` that maps docling items to typed IR chunks.
   `DESCRIPTOR`, `DOCLING_BACKEND_VERSION`. Imports no docling code.
 - `libreoffice.py` — LibreOffice discovery (`find_libreoffice_cmd`,
   `resolve_libreoffice_cmd`, `configure_libreoffice_env`,
-  `LibreOfficeUnavailableError`); light and stdlib-only, so discovery is
-  testable without the `docling` extra.
+  `LibreOfficeUnavailableError`); light and stdlib-only. RETIRED from the
+  convert path 2026-10-31 (pc-wl3.3): docling.rs parses office formats
+  natively in Rust — verified with a real DOCX converting while
+  `DOCLING_LIBREOFFICE_CMD` pointed at garbage — so `create()` no longer
+  calls it. The module and its tests stay (pure stdlib, still passing)
+  until a follow-up removes them.
 - `_impl.py` — heavy implementation (`DoclingBackend`, `create`); the only
-  module that imports `docling`, `docling_core`, and `pypdfium2`.
+  module that imports `docling_rs`, `docling_core`, and `pypdfium2`.
 - `__init__.py` — package docstring only (entry point lives in `docling.py`).
 
 ## Local Contracts
@@ -30,22 +37,16 @@ plus a bound-checked `convert()` that maps docling items to typed IR chunks.
   load through `importlib.import_module` at instantiation, never inline
   (`pyreorder` would hoist an inline import to module level and break the
   offline-import gate).
-- **LibreOffice discovery (pc-ct9)** lives in `libreoffice.py` and follows the
-  environment-probe discipline: detect, never estimate. The operator's
-  `DOCLING_LIBREOFFICE_CMD` is taken VERBATIM (a declaration is a decision,
-  never probed); Windows then scans a bounded set of Program Files locations
-  (`LibreOffice*/program/soffice.exe` — two roots, one non-recursive listing
-  each, no drive-letter guessing); every other platform is PATH-only. Docling
-  reads that variable itself, so setting it is the entire wiring — `create()`
-  calls `configure_libreoffice_env()`, which never raises: no DECLARED format
-  needs LibreOffice, because DOCX is read natively by docling (declared
-  2026-10-17, verified on a real Word-generated report) and the remaining office
-  formats stay undeclared until verified the same way. A missing LibreOffice
-  only matters for a format that would need it, which is why nothing here
-  depends on it today.
+- **LibreOffice discovery (pc-ct9)** lives in `libreoffice.py` but is RETIRED
+  from the convert path (pc-wl3.3, see Ownership): docling.rs parses office
+  formats natively in Rust and ignores `DOCLING_LIBREOFFICE_CMD` (verified
+  2026-10-31 - a real DOCX converts with the variable pointing at garbage),
+  so `create()` no longer calls `configure_libreoffice_env()`. No declared
+  format needs LibreOffice.
 - `supported_formats` lists only inputs **conversion-verified** against the
-  real library (PDF/HTML: 2026-09-28, docling 2.130.0; DOCX:
-  2026-10-17, a Word-generated report read through this backend's CLI).
+  real library (PDF/HTML/DOCX: re-verified 2026-10-31 against docling.rs
+  2.55.4 through this backend — PDF with models installed, page_range
+  honored exactly).
   Markdown and plain text were verified the same way but are withdrawn
   (2026-10-30): both reach docling's marko table matcher, which spins without
   timeout on pipe-heavy content, so they route to ``native-markdown`` /
@@ -65,19 +66,26 @@ plus a bound-checked `convert()` that maps docling items to typed IR chunks.
   title `"1"`, sections `item.level` verbatim clamped to 6, never the tree
   depth from `iterate_items()`), and returns every
   requested page — empty `PageResult`s included — so the executor's exact
-  page-number check holds.
+  page-number check holds (`page_range=(1, 1)` yields page 1 only, verified
+  against the real package).
+- **Missing models** map to a typed `BACKEND_ERROR` naming
+  `docling_rs.download_models()` (matched on the `model not found at`
+  substring of the real `ConversionError`, verified with an empty model
+  cache). Models are never downloaded implicitly (about 1.4 GB measured
+  into the docling.rs model cache, not the ~700 MB upstream claims).
 - Bounds are honored between items: cancellation, `timeout_s` (checked after
   the single blocking pass), and `max_output_chars`. Failures stay typed
   (`CANCELLED`, `TIMEOUT`, `BUDGET_EXCEEDED`, `BACKEND_ERROR`), never raw.
 - Rule 10: the `docling` extra must resolve jointly with every other extra —
-  no `[tool.uv] conflicts`, no exception pins. Verified by dry-run resolution
-  at `transformers==5.17.0` / `torch==2.14.0` (2026-09-28); re-verify if
-  docling's pins move.
+  no `[tool.uv] conflicts`, no exception pins (`docling-rs>=2.55` needs only
+  `docling-core>=2.0` + `pydantic>=2.6,<3`; re-verify by dry-run resolution
+  if its pins move).
 
 ## Verification
 
-`mise test` — `tests/backends/test_docling.py` (offline; the heavy import is a
-stub in `sys.modules`) and `tests/backends/test_docling_libreoffice.py` (pure
+`mise test` — `tests/backends/test_docling.py` (offline; the heavy
+`docling_rs` / `docling_core` / `pypdfium2` imports are stubs in
+`sys.modules`) and `tests/backends/test_docling_libreoffice.py` (pure
 stdlib, no extra needed). Live smoke: `uv run --isolated --extra docling
 parsecraft convert FIXTURE` in a throwaway environment — dependencies are never
 installed with `uv pip install`, the project routes dependency changes through
