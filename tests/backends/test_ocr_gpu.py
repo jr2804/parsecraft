@@ -5,10 +5,15 @@ inside the isolated ``.venv-gpu`` environment — never the shared ``.venv``.
 Every case converts page 1 of a real PDF from ``tests/downloads/`` and asserts
 typed IR comes back, not tensors.
 
-Version matrix validated by the pc-5gf smoke run (2026-09-27, RTX A2000 8 GB):
-- ``ocr-ovis`` / ``ocr-qianfan`` / ``ocr-surya`` → transformers 5.x (5.17 verified)
-- ``ocr-tele`` / ``ocr-unlimited`` → transformers 4.57.x (their own pins; both
-  ship custom remote code that transformers 5.x rejects)
+Version matrix, re-measured on 2026-10-31 (RTX 2070 8 GB, transformers 5.22.1):
+all five cases run on the shared ``transformers>=5.17,<6`` window —
+``ocr-ovis`` / ``ocr-qianfan`` / ``ocr-surya`` load upstream code, and
+``ocr-tele`` / ``ocr-unlimited`` load the vendored modeling in
+``backends/ocr/_vendored`` (pc-4u7.36), so no second environment is needed.
+The older split (tele/unlimited on 4.57.x "custom remote code") was the
+pre-vendoring arrangement and is recorded in the pc-5gf smoke run; the
+tele and unlimited rows both passed here, tele in 207 s and unlimited in
+122 s.
 A warm run takes a few minutes (model loads); the first run downloads weights.
 """
 
@@ -38,8 +43,9 @@ from parsecraft.ir.models import PageRange
 
 #: (backend name, light factory, required transformers major — from pc-5gf runs).
 _GPU_CASES: tuple[tuple[str, Callable[[BackendConfig], DocumentBackend], int], ...] = (
-    # All four run on the unified window (pc-4u7.36): tele/unlimited load the
-    # vendored modeling in backends/ocr/_vendored — no trust_remote_code.
+    # All five run on the unified window (pc-4u7.36): ovis/qianfan/surya load
+    # upstream modeling; tele/unlimited load the vendored modeling in
+    # backends/ocr/_vendored — no trust_remote_code.
     ("ocr-ovis", ovis_factory, 5),
     ("ocr-surya", surya_factory, 5),
     ("ocr-tele", tele_factory, 5),
