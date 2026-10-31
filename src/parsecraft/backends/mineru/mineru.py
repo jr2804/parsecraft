@@ -147,6 +147,9 @@ CAPABILITIES = BackendCapabilities(
     optional_dependency_group=_EXTRA,
     convert_extra=_EXTRA,
     model_asset=MINERU_ASSET,
+    # The higher-effort VLM path reads scanned pages; the default flash effort is
+    # a text-layer path, so this is a capability, not a precondition.
+    ocr_capable=True,
 )
 
 DESCRIPTOR = BackendDescriptor(

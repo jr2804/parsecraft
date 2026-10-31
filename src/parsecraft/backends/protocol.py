@@ -116,6 +116,14 @@ class BackendCapabilities(BaseModel):
     #: never appear here (ADR-0004 A10).
     convert_extra: str | None = None
     model_asset: ModelAssetDescriptor | None = None
+    #: True when the backend reads pages that carry no text layer of their own —
+    #: it runs OCR/VLM recognition, whatever else it can do. This is an ADMISSION
+    #: fact (an OCR-intent page may be routed here), never a ranking fact: the
+    #: backend keeps its extraction tier, its ``allow_ocr`` gate and its judge
+    #: family, because ``is_ocr`` answers "is this an OCR harness", not "can this
+    #: backend read a scan". A backend whose *name* says it is an OCR harness
+    #: declares nothing here; the predicate already sees it.
+    ocr_capable: bool = False
     #: BCP-47 tags this backend declares support for; empty = language-agnostic.
     languages: tuple[str, ...] = ()
     #: External engine this backend cannot run without — an OS package or other

@@ -45,6 +45,7 @@ CAPABILITIES = BackendCapabilities(
     optional_dependency_group=_EXTRA,
     convert_extra=_EXTRA,
     model_asset=None,  # models download at converter creation (ADR-0006)
+    ocr_capable=True,  # marker's document-VLM stack reads scanned pages
 )
 
 DESCRIPTOR = BackendDescriptor(

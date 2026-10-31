@@ -149,15 +149,17 @@ def extraction_tier(descriptor: BackendDescriptor) -> int:
 
 
 def in_intent_family(intent: Intent, descriptor: BackendDescriptor) -> bool:
-    """OCR intents accept only OCR backends; NATIVE admits native + OCR fallbacks.
+    """OCR intents accept only backends that can read a scan; NATIVE admits them all.
 
-    Membership here is necessary, not sufficient: for a NATIVE page an OCR
-    backend is a *fallback*, and ``plan_route`` keeps it behind every
-    native-capable candidate (``_validate_order``).
+    "Can read a scan" is :func:`serves_ocr_intent` — an OCR harness, or a parser
+    that OCRs text-free pages internally (docling, mineru, marker). Membership
+    here is necessary, not sufficient: for a NATIVE page such a backend is a
+    *fallback*, and ``plan_route`` keeps it behind every native-capable candidate
+    (``_validate_order``).
     """
     if intent is Intent.NATIVE:
         return True
-    return is_ocr(descriptor)
+    return serves_ocr_intent(descriptor)
 
 
 def degradation_for(signal: PageSignal) -> tuple[str, float]:
@@ -201,6 +203,23 @@ def is_ocr(descriptor: BackendDescriptor) -> bool:
     """Whether a backend is an OCR/VLM route (by name or dependency group)."""
     group = descriptor.capabilities.optional_dependency_group
     return descriptor.name.startswith("ocr-") or (group is not None and group.startswith("ocr-"))
+
+
+def serves_ocr_intent(descriptor: BackendDescriptor) -> bool:
+    """Whether a backend may be routed a page that needs OCR.
+
+    Wider than :func:`is_ocr` on purpose: a parser can read a text-free page
+    without belonging to the OCR family. docling OCRs internally, mineru's VLM
+    effort reads scans, marker's document-VLM stack does the same — yet all three
+    are also native extractors, so reclassifying them as OCR harnesses would move
+    them to tier 2, bar them from native pages when ``allow_ocr`` is off, and
+    change the judge's family label for documents they parse perfectly well.
+
+    Without this distinction an OCR-intent page could never reach them
+    (pc-04u sibling: a 1-page scan went to ``liteparse`` and came back empty while
+    docling read it in the same wall time).
+    """
+    return is_ocr(descriptor) or descriptor.capabilities.ocr_capable
 
 
 def classify_page(signal: PageSignal, page_count: int, hints: FeatureHints) -> Intent:

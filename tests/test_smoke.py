@@ -287,6 +287,7 @@ def test_backends_json_capability_schema_is_exact(monkeypatch: pytest.MonkeyPatc
         "convert_extra",
         "delegated_analysis",
         "model_asset",
+        "ocr_capable",
         "languages",
         "required_engine",
     }

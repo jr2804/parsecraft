@@ -72,6 +72,9 @@ CAPABILITIES = BackendCapabilities(
     # docling_rs.download_models() (about 1.4 GB measured) — never shipped with
     # the package and never downloaded implicitly by this backend.
     model_asset=None,
+    # docling.rs OCRs images and text-free pages on its own (OCR models are part
+    # of the same one-time model fetch), so a scanned page can be routed here.
+    ocr_capable=True,
 )
 
 DESCRIPTOR = BackendDescriptor(

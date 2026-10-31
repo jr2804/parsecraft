@@ -42,10 +42,12 @@ from parsecraft.routing.rules import (
     can_degrade_to_native,
     classify_page,
     extract_hints,
+    extraction_tier,
     in_intent_family,
     is_hard_eligible,
     is_ocr,
     page_needs_ocr,
+    serves_ocr_intent,
 )
 
 ALL_FORMATS = {"text/plain", "text/markdown", "text/html", "application/pdf", "text/csv", "application/json"}
@@ -147,6 +149,28 @@ def test_is_ocr_detection() -> None:
     assert is_ocr(make_desc("ocr-tele", ALL_FORMATS)) is True
     assert is_ocr(make_desc("other", ALL_FORMATS, group="ocr-special")) is True
     assert is_ocr(make_desc("native-text")) is False
+
+
+def test_ocr_capable_parser_serves_ocr_intents_without_becoming_an_ocr_backend() -> None:
+    """docling/mineru/marker read scans but are not OCR-harness backends (pc-04u sibling).
+
+    Flipping them into ``is_ocr`` would cost their tier, their ``allow_ocr``
+    independence and their judge family for documents they extract natively, so the
+    admission is a separate fact.
+    """
+    hybrid = make_desc("docling", ALL_FORMATS, group="docling", ocr_capable=True)
+    plain = make_desc("liteparse", ALL_FORMATS)
+
+    assert is_ocr(hybrid) is False
+    assert serves_ocr_intent(hybrid) is True
+    assert extraction_tier(hybrid) == 1
+    assert in_intent_family(Intent.OCR_GENERAL, hybrid) is True
+    assert in_intent_family(Intent.OCR_TABLES, hybrid) is True
+    assert in_intent_family(Intent.OCR_VISION, hybrid) is True
+    assert in_intent_family(Intent.NATIVE, hybrid) is True
+
+    assert serves_ocr_intent(plain) is False
+    assert in_intent_family(Intent.OCR_GENERAL, plain) is False
 
 
 def test_missing_extra_is_ineligible() -> None:
@@ -1502,6 +1526,7 @@ def make_desc(
     with_asset: bool = False,
     required_engine: str | None = None,
     convert_extra: str | None = None,
+    ocr_capable: bool = False,
 ) -> BackendDescriptor:
     asset = (
         ModelAssetDescriptor(
@@ -1524,5 +1549,6 @@ def make_desc(
             model_asset=asset,
             required_engine=required_engine,
             convert_extra=convert_extra,
+            ocr_capable=ocr_capable,
         ),
     )
