@@ -297,6 +297,52 @@ def test_extra_imports_map_covers_the_declared_ocr_and_pdf_groups() -> None:
         assert EXTRA_IMPORTS[group]
 
 
+def test_probe_reports_the_ocr_backends_the_installed_extras_can_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    """pc-r22: installing ``[ocr]`` must permit OCR, which an ``ocr-`` prefix denied.
+
+    The shipped extras are ``ocr`` and ``surya``; a predicate looking for an
+    ``ocr-`` extra prefix matched neither, so ``allow_ocr`` was False in a venv
+    whose five OCR backends were installed and working.
+    """
+    _patch_entry_points(
+        monkeypatch,
+        [_descriptor("ocr-ovis", "ocr"), _descriptor("native-text")],
+    )
+    _patch_find_spec(monkeypatch, {"transformers"})
+    environment = probe_environment()
+
+    assert environment.installed_extras == frozenset({"ocr"})
+    assert environment.ocr_backends == ("ocr-ovis",)
+    assert constraints_from_environment(environment).allow_ocr is True
+
+
+def test_probe_reports_an_ocr_backend_whose_engine_is_present(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An engine-backed harness needs no extra: its engine is its dependency."""
+    _patch_entry_points(monkeypatch, [_descriptor("ocr-tesseract", required_engine="tesseract")])
+    _patch_find_spec(monkeypatch, set())
+    monkeypatch.setitem(probe_module.ENGINE_DISCOVERY, "tesseract", lambda: "C:/Program Files/Tesseract/tesseract.exe")
+    environment = probe_environment()
+
+    assert environment.ocr_backends == ("ocr-tesseract",)
+    assert constraints_from_environment(environment).allow_ocr is True
+
+
+def test_an_engine_no_ocr_backend_declares_does_not_permit_ocr(monkeypatch: pytest.MonkeyPatch) -> None:
+    """pc-r22's other half: pandoc on PATH made OCR permitted with no OCR backend.
+
+    The engine set stays informative (a parser may declare pandoc), but it is not
+    a licence to run OCR: only an OCR-family backend that could use it counts.
+    """
+    _patch_entry_points(monkeypatch, [_descriptor("native-pandoc", "pandoc-extra", required_engine="pandoc")])
+    _patch_find_spec(monkeypatch, set())
+    _patch_which(monkeypatch, {"pandoc"})
+    environment = probe_environment()
+
+    assert environment.engines == frozenset({"pandoc"})
+    assert environment.ocr_backends == ()
+    assert constraints_from_environment(environment).allow_ocr is False
+
+
 # ── Engines (ADR-0008 decision 13) ────────────────────────────────────────────
 
 
@@ -610,30 +656,42 @@ def test_constraints_default_to_the_balanced_preference() -> None:
 
 def test_allow_ocr_derivation_and_override() -> None:
     """An explicit value always wins over the derivation (both directions)."""
-    no_ocr = _environment(installed_extras=frozenset(set()), engines=frozenset())
+    no_ocr = _environment(installed_extras=frozenset(set()), engines=frozenset(), ocr_backends=())
     assert constraints_from_environment(no_ocr).allow_ocr is False
     assert constraints_from_environment(no_ocr, allow_ocr=True).allow_ocr is True
-    ocr_present = _environment(installed_extras=frozenset({"ocr-tele"}))
+    ocr_present = _environment(ocr_backends=("ocr-tele",))
+    assert constraints_from_environment(ocr_present).allow_ocr is True
     assert constraints_from_environment(ocr_present, allow_ocr=False).allow_ocr is False
 
 
-def test_a_usable_engine_permits_ocr_without_any_ocr_extra() -> None:
-    """Decision 12: the base backend must not be excluded on a base-only host.
+def test_a_runnable_ocr_backend_permits_ocr_on_a_host_with_no_engine() -> None:
+    """Decision 12: an OCR backend that can run here is enough on a base-only host.
 
-    Deriving OCR permission from the heavyweight extras alone switched OCR off
-    for exactly the hosts decision 1 exists for — a consumer with no ``ocr-*``
-    extra and a working engine had nothing to OCR with.
+    The fact is ``ocr_backends`` — a registered OCR-family backend whose own
+    dependency group is installed or whose required engine is usable — not a list
+    of extra names and not a list of programs the host happens to carry (pc-r22).
     """
-    base_only = _environment(installed_extras=frozenset(set()), engines=frozenset({"tesseract"}))
+    base_only = _environment(installed_extras=frozenset(set()), engines=frozenset(), ocr_backends=("ocr-tesseract",))
 
     assert constraints_from_environment(base_only).allow_ocr is True
-    # ...and the same host with no engine is back to the honest answer:
-    assert constraints_from_environment(_environment(installed_extras=frozenset(set()), engines=frozenset())).allow_ocr is False
+    # ...and the same host with no runnable OCR backend is back to the honest answer:
+    assert constraints_from_environment(_environment(installed_extras=frozenset(set()), engines=frozenset(), ocr_backends=())).allow_ocr is False
 
 
-def test_an_explicit_allow_ocr_still_overrides_the_engine_fact() -> None:
-    """An operator banning OCR wins even where a usable engine would permit it."""
-    banned = _environment(installed_extras=frozenset({"ocr-tele"}), engines=frozenset({"tesseract"}))
+def test_an_unrelated_engine_does_not_permit_ocr() -> None:
+    """pc-r22: pandoc on PATH made ``allow_ocr`` true while no OCR backend could run.
+
+    An engine counts only through a backend that declares it, so the flag stays a
+    capability fact rather than "this host has some binaries".
+    """
+    pandoc_only = _environment(installed_extras=frozenset(), engines=frozenset({"pandoc"}), ocr_backends=())
+
+    assert constraints_from_environment(pandoc_only).allow_ocr is False
+
+
+def test_an_explicit_allow_ocr_still_overrides_the_runnable_fact() -> None:
+    """An operator banning OCR wins even where a runnable backend would permit it."""
+    banned = _environment(installed_extras=frozenset({"ocr"}), engines=frozenset({"tesseract"}), ocr_backends=("ocr-tele",))
 
     assert constraints_from_environment(banned, allow_ocr=False).allow_ocr is False
 
@@ -647,7 +705,11 @@ def test_permitting_ocr_cannot_admit_a_backend_whose_engine_is_missing() -> None
     cannot run. This test pins that composition, since the two rules live in
     different modules.
     """
-    host = _environment(installed_extras=frozenset(set()), engines=frozenset({"some-other-engine"}))
+    host = _environment(
+        installed_extras=frozenset(set()),
+        engines=frozenset({"some-other-engine"}),
+        ocr_backends=("ocr-tesseract",),
+    )
     constraints = constraints_from_environment(host)
     backend = BackendDescriptor(
         name="ocr-tesseract",
@@ -797,6 +859,7 @@ def _environment(**overrides: object) -> EnvironmentInfo:
         "vram_budget_gb": 8.0,
         "offline": True,
         "engines": frozenset({"tesseract"}),
+        "ocr_backends": ("ocr-ovis",),
     }
     base.update(overrides)
     return EnvironmentInfo.model_validate(base)

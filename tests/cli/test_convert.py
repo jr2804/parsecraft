@@ -247,14 +247,22 @@ def test_analysis_backend_prefers_native_then_name_and_errors() -> None:
 
 
 def test_build_constraints_from_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The extra is the shipped group ``ocr``, not a backend name: pc-r22 was exactly
+    # this confusion, where the derivation looked for an ``ocr-`` extra prefix that
+    # no real extra carries.
     monkeypatch.setattr(
         convert_module,
         "probe_environment",
-        lambda: EnvironmentInfo(installed_extras=frozenset({"ocr-ovis"}), vram_budget_gb=8.0, offline=False),
+        lambda: EnvironmentInfo(
+            installed_extras=frozenset({"ocr"}),
+            vram_budget_gb=8.0,
+            offline=False,
+            ocr_backends=("ocr-ovis",),
+        ),
     )
     derived = convert_module.build_constraints("application/pdf", max_passes=2, allow_ocr=None)
     assert derived.formats == {"application/pdf"}
-    assert derived.installed_extras == {"ocr-ovis"}
+    assert derived.installed_extras == {"ocr"}
     assert derived.vram_budget_gb == 8.0
     assert derived.offline is False
     assert derived.allow_ocr is True
@@ -543,7 +551,12 @@ def test_convert_image_prefers_installed_claimer(tmp_path: Path, monkeypatch: py
     monkeypatch.setattr(
         convert_module,
         "probe_environment",
-        lambda: EnvironmentInfo(installed_extras=frozenset({"ocr-ovis"}), vram_budget_gb=8.0, offline=False),
+        lambda: EnvironmentInfo(
+            installed_extras=frozenset({"ocr-ovis"}),
+            vram_budget_gb=8.0,
+            offline=False,
+            ocr_backends=("zzz-ocr",),
+        ),
     )
     path = tmp_path / "scan.png"
     # The 8-byte signature is LOAD-BEARING, not a placeholder: the stub models an
@@ -895,6 +908,7 @@ def test_convert_preference_quality_flips_the_lead_within_a_family(
             vram_budget_gb=8.0,
             gpu_usable=True,
             offline=True,
+            ocr_backends=("ocr-ovis", "ocr-unlimited"),
         ),
     )
     source = str(_source_file(tmp_path, text="hi"))  # below NATIVE_MIN_TEXT_CHARS -> OCR intent
@@ -1193,9 +1207,10 @@ def test_convert_timeout_s_zero_and_negative_are_usage_errors(pdf_registry: Path
 def pdf_registry(registry: BackendRegistry, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A PDF source plus two native candidates and one OCR candidate (all PDF).
 
-    An OCR extra is reported as installed so ``allow_ocr`` derives ``True`` — the
-    host shape in which an OCR route is reachable at all. Two native candidates
-    let a judge demonstrate re-ranking without crossing the NATIVE contract.
+    An OCR backend is reported as runnable so ``allow_ocr`` derives ``True`` — the
+    host shape in which an OCR route is reachable at all (``ocr_backends`` is the
+    fact behind that flag, pc-r22). Two native candidates let a judge demonstrate
+    re-ranking without crossing the NATIVE contract.
     """
     _register(registry, _descriptor("aaa-native", ("application/pdf",)), content="aaa native content")
     _register(registry, _descriptor("pymupdf", ("application/pdf",)), content="native content")
@@ -1203,7 +1218,7 @@ def pdf_registry(registry: BackendRegistry, tmp_path: Path, monkeypatch: pytest.
     monkeypatch.setattr(
         convert_module,
         "probe_environment",
-        lambda: EnvironmentInfo(installed_extras=frozenset({"ocr-stub"}), vram_budget_gb=0.0, offline=False),
+        lambda: EnvironmentInfo(installed_extras=frozenset({"ocr-stub"}), vram_budget_gb=0.0, offline=False, ocr_backends=("ocr-stub",)),
     )
     path = tmp_path / "doc.pdf"
     path.write_bytes(minimal_pdf([[_LONG_TEXT]]))

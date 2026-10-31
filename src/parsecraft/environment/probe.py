@@ -21,9 +21,10 @@ from parsecraft.assets.manager import AssetManager
 from parsecraft.assets.models import AssetPin
 from parsecraft.backends.ocr._models import TESSERACT_ENGINE, TESSERACT_ENV
 from parsecraft.backends.ocr.tesseract import find_tesseract_cmd
-from parsecraft.backends.protocol import ModelAssetDescriptor
+from parsecraft.backends.protocol import BackendDescriptor, ModelAssetDescriptor
 from parsecraft.backends.registry import BackendRegistry
 from parsecraft.environment.models import EnvironmentInfo
+from parsecraft.routing.rules import is_ocr
 
 _ABSENT_CUDA_VALUES = frozenset({"None", "''", '""'})
 
@@ -126,14 +127,16 @@ def probe_environment() -> EnvironmentInfo:
     cuda_note = cuda_runtime_note()
     required_engines = {d.capabilities.required_engine for d in descriptors if d.capabilities.required_engine is not None}
     required_assets = [d.capabilities.model_asset for d in descriptors if d.capabilities.model_asset is not None]
+    engines = _detect_engines(required_engines)
     return EnvironmentInfo(
         backends=backends,
         installed_extras=installed,
         vram_budget_gb=vram_budget_gb,
         gpu_usable=vram_budget_gb > 0 and cuda_note is None,
         offline=_declared_offline(),
-        engines=_detect_engines(required_engines),
+        engines=engines,
         cached_assets=_detect_cached_assets(required_assets),
+        ocr_backends=_detect_ocr_backends(descriptors, installed, engines),
     )
 
 
@@ -194,6 +197,36 @@ def _detect_engines(required: Collection[str]) -> frozenset[str]:
     discovery — see :func:`_engine_available`.
     """
     return frozenset(name for name in required if _engine_available(name))
+
+
+def _detect_ocr_backends(
+    descriptors: Collection[BackendDescriptor],
+    installed: Collection[str],
+    engines: Collection[str],
+) -> tuple[str, ...]:
+    """The registered OCR-family backends whose dependencies this host satisfies.
+
+    Asked of the descriptors rather than of extra names (pc-r22): the OCR family
+    is ``is_ocr`` — a name/dependency-group fact the router already owns — and a
+    member can run here when the dependency group it declares is installed or the
+    external engine it requires is usable. Extra names cannot answer this at all:
+    the shipped extras are ``ocr`` and ``surya``, while the predicate in use asked
+    for an ``ocr-`` prefix that no extra carries, so installing ``[ocr]`` never
+    permitted OCR and an unrelated engine (pandoc) did.
+
+    Deliberately narrow where it must be: an engine only counts through a backend
+    that declares it, so the answer stays a capability fact rather than a list of
+    programs this host happens to have.
+    """
+    runnable = set[str]()
+    for descriptor in descriptors:
+        if not is_ocr(descriptor):
+            continue
+        capabilities = descriptor.capabilities
+        group = capabilities.optional_dependency_group
+        if (group is not None and group in installed) or (capabilities.required_engine is not None and capabilities.required_engine in engines):
+            runnable.add(descriptor.name)
+    return tuple(sorted(runnable))
 
 
 def _detect_cached_assets(assets: Collection[ModelAssetDescriptor]) -> frozenset[str]:

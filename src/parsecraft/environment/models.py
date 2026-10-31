@@ -33,6 +33,15 @@ class EnvironmentInfo(BaseModel):
     some backend declares are checked; probing is a pure cache read — no
     network, no re-hash — and an unverifiable asset counts as absent
     (fail-safe).
+
+    ``ocr_backends`` names the registered OCR-family backends that could actually
+    run here: their dependency group is installed, or the external engine they
+    require is usable. It is the fact behind ``RoutingConstraints.allow_ocr``
+    (pc-r22): deriving that flag from extra-name prefixes asked the wrong
+    question — the extras are ``ocr`` and ``surya`` today, so no name matched and
+    installing ``[ocr]`` did not permit OCR, while an unrelated engine on PATH
+    did. Deriving it from descriptors keeps the answer honest without
+    special-casing a name (ADR-0008 decision 13).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -44,3 +53,4 @@ class EnvironmentInfo(BaseModel):
     offline: bool = False
     engines: frozenset[str] = Field(default_factory=frozenset)
     cached_assets: frozenset[str] = Field(default_factory=frozenset)
+    ocr_backends: tuple[str, ...] = ()

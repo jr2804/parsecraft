@@ -165,7 +165,7 @@ def convert(
         float | None,
         typer.Option("--timeout-s", help="Per-request backend deadline in seconds (bounds each attempt, not the whole run)"),
     ] = None,
-    no_ocr: Annotated[bool, typer.Option("--no-ocr", help="Forbid OCR backends")] = False,
+    no_ocr: Annotated[bool, typer.Option("--no-ocr", help="Forbid OCR harnesses; a parser that OCRs internally stays eligible")] = False,
     use_cache: Annotated[bool, typer.Option("--cache/--no-cache", help="Reuse a content-addressed conversion cache")] = False,
     backend_option: Annotated[
         list[str] | None,
@@ -242,7 +242,7 @@ def inspect(
     *,
     as_json: args.JsonFlag = False,
     max_passes: Annotated[int, typer.Option("--max-passes", min=1, help="Fallback passes per page group")] = 1,
-    no_ocr: Annotated[bool, typer.Option("--no-ocr", help="Forbid OCR backends")] = False,
+    no_ocr: Annotated[bool, typer.Option("--no-ocr", help="Forbid OCR harnesses; a parser that OCRs internally stays eligible")] = False,
     verbose: args.VerboseFlag = False,
 ) -> None:
     """Analyze a source and preview the routing decision."""
@@ -373,7 +373,7 @@ def benchmark(
         float | None,
         typer.Option("--timeout-s", help="Per-request backend deadline in seconds (bounds each attempt, not the whole run)"),
     ] = None,
-    no_ocr: Annotated[bool, typer.Option("--no-ocr", help="Forbid OCR backends")] = False,
+    no_ocr: Annotated[bool, typer.Option("--no-ocr", help="Forbid OCR harnesses; a parser that OCRs internally stays eligible")] = False,
     verbose: args.VerboseFlag = False,
 ) -> None:
     """Benchmark eligible backends over local documents (offline)."""

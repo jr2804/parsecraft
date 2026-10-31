@@ -51,9 +51,22 @@ capabilities in `backends/` descriptors.
   ``--no-auto --backend X`` pin reports X ineligible on the very host where it
   works. The extras contract test binds every mapped module to that extra's own
   requirements through `packages_distributions`, so a rename or a swap fails the
-  suite instead. `_UNPROVABLE_IMPORTS` (test-side) records the entries no
-  requirement can prove today; it is a bug list (pc-5m9), not a licence, and the
-  test fails when one starts resolving.
+  suite instead. An extra that cannot be proved that way is declared in
+  `EXTRA_DECLARATIONS` (keyed by extra, honoured only when the operator sets its
+  variable — ADR-0010), and the same test requires every declared extra to be
+  composite: each of its requirements is also required by a sibling extra. One
+  that grows a distinctive requirement is provable again and the declaration
+  must go. There is no test-side exemption list any more (pc-5m9).
+- `EnvironmentInfo.ocr_backends` is the fact behind `allow_ocr`: the OCR
+  harnesses this host can actually run, derived from the descriptors (`is_ocr`
+  whose `optional_dependency_group` is installed, or whose required engine is
+  present) and never from extra names or engine presence. Both cheaper
+  derivations were wrong in shipped builds (pc-r22): matching extras against an
+  `ocr-` prefix matched no real extra (`[ocr]` and `[surya]` are the names), so
+  installing `[ocr]` permitted nothing, while `or bool(engines)` let pandoc —
+  a markup converter — permit OCR. Deriving from descriptors also keeps the
+  decision out of the name space, which ADR-0008 decision 13 forbids
+  special-casing.
 - **Meta extras get no `EXTRA_IMPORTS` entry** (they import nothing, so they
   cannot prove anything): installing one installs the extras it names, and
   those are detected individually. A meta extra is a packaging convenience,

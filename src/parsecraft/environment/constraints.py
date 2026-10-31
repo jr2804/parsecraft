@@ -7,9 +7,6 @@ from collections.abc import Collection
 from parsecraft.environment.models import EnvironmentInfo
 from parsecraft.routing.models import RoutingConstraints, RoutingPreference
 
-#: Detected extras starting with this prefix mean an OCR backend can run here.
-_OCR_EXTRA_PREFIX = "ocr-"
-
 
 def constraints_from_environment(
     environment: EnvironmentInfo,
@@ -58,18 +55,18 @@ def constraints_from_environment(
 
 
 def _ocr_possible(environment: EnvironmentInfo) -> bool:
-    """Whether an OCR pass could run here: an ``ocr-*`` extra, or a usable engine.
+    """Whether an OCR pass could run here — read off the probed OCR backends.
 
-    Deriving this from the heavyweight extras alone excluded the base backend on
-    exactly the hosts ADR-0008 decision 1 exists for: a base-only consumer has no
-    ``ocr-*`` extra, so OCR was switched off before the engine was ever consulted
-    and a scanned page degraded with nothing to degrade to.
+    The fact is ``EnvironmentInfo.ocr_backends``: registered OCR-family backends
+    whose dependency group is installed or whose required engine is usable
+    (pc-r22). Two earlier derivations were wrong in opposite directions: asking
+    for an ``ocr-`` extra prefix answered False on every real host (the extras are
+    ``ocr`` and ``surya``), and the ``or bool(environment.engines)`` arm that
+    replaced it answered True for a host carrying pandoc and no OCR backend at all.
 
-    The OR is deliberately permissive, and decision 13's eligibility gate is what
-    keeps it honest — a backend whose engine is absent is ineligible whatever
-    ``allow_ocr`` says, so permitting OCR can never route a page into a family
-    that then cannot run. That is also why this bridge needs no OCR-specific
-    filter over ``engines``: such a filter would have to know which backends are
-    OCR, which is the name special-casing decision 13 rules out.
+    Nothing here judges eligibility. A backend whose group is installed may still
+    be ineligible (no GPU, missing weights) — decision 13's eligibility gate is
+    what keeps this permissive fact honest, so permitting OCR can never route a
+    page into a family that then cannot run.
     """
-    return any(extra.startswith(_OCR_EXTRA_PREFIX) for extra in environment.installed_extras) or bool(environment.engines)
+    return bool(environment.ocr_backends)
