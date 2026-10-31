@@ -42,14 +42,28 @@ _ABSENT_CUDA_VALUES = frozenset({"None", "''", '""'})
 EXTRA_IMPORTS: dict[str, tuple[str, ...]] = {
     "docling": ("docling_rs",),  # distribution `docling-rs`, not `docling` (pc-wl3.3)
     "marker": ("marker",),  # bring-your-own dependency (ADR-0006): no declared extra
-    "mineru": ("mineru",),
     "ocr": ("transformers",),
     "surya": ("transformers",),
-    "pdf-full": ("pymupdf", "mineru"),  # union bundle: detected iff both contents import
     "pymupdf": ("pymupdf",),
     "vllm": ("vllm",),
     "web": ("httpx", "trafilatura"),
 }
+
+#: Extra name -> the environment variable that DECLARES it, for an extra no import
+#: can prove. Same shape and rule as :data:`ENGINE_DECLARATIONS` (ADR-0008 decision
+#: 2): a declaration is honoured verbatim and never probed, keyed by the extra, and
+#: nothing is special-cased by backend name.
+#:
+#: `mineru` is the case that forces this: the native MinerU2.5 rework (ADR-0007)
+#: dropped the `mineru` wrapper package, and the extra now installs torch,
+#: transformers and torchvision — EXACTLY the `surya` requirements and a subset of
+#: `ocr`'s. Probing any of those modules would report the extra present on a host
+#: that installed a sibling, and a false positive routes pages into a pass that can
+#: only fail; probing the removed `mineru` package reported it absent on every host,
+#: including the ones that installed it (pc-5m9). Composite extras are absent here
+#: on purpose: a bundle (`pdf-full`) gates nothing, its contents each report
+#: themselves.
+EXTRA_DECLARATIONS: dict[str, str] = {"mineru": "PARSECRAFT_MINERU"}
 
 #: Engine name -> the environment variable that DECLARES it. A declaration is
 #: honoured verbatim and never probed (ADR-0008 decision 2): an operator who
@@ -70,6 +84,9 @@ ENGINE_DISCOVERY: dict[str, Callable[[], str | None]] = {TESSERACT_ENGINE: find_
 
 _OFFLINE_ENV = "PARSECRAFT_OFFLINE"
 _OFFLINE_TRUE_VALUES = frozenset({"1", "true", "yes"})
+#: Shared truthiness for operator declarations (offline, declared extras): the same
+#: spellings a shell user types, and the same ones `PARSECRAFT_OFFLINE` accepts.
+_DECLARED_TRUE_VALUES = _OFFLINE_TRUE_VALUES
 _NVIDIA_SMI_QUERY = ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader"]
 _SMI_TIMEOUT_S = 10.0
 _MIB_PER_GIB = 1024
@@ -149,7 +166,15 @@ def cuda_runtime_note() -> str | None:
 
 
 def extra_present(group: str) -> bool:
-    """Detected, not declared: every import package of the extra resolves."""
+    """Whether an extra is installed: a declaration if it has one, else every import resolves.
+
+    Declared groups are unprovable by construction (see :data:`EXTRA_DECLARATIONS`),
+    so the declaration is the only source of truth for them — never a fallback that
+    could disagree with a successful probe.
+    """
+    declared = EXTRA_DECLARATIONS.get(group)
+    if declared is not None:
+        return os.environ.get(declared, "").strip().lower() in _DECLARED_TRUE_VALUES
     modules = EXTRA_IMPORTS.get(group)
     if modules is None:  # unknown group is not detectable — extend EXTRA_IMPORTS
         return False

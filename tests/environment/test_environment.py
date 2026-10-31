@@ -29,7 +29,7 @@ from parsecraft.backends.registry import default_registry
 from parsecraft.environment import probe as probe_module
 from parsecraft.environment.constraints import constraints_from_environment
 from parsecraft.environment.models import EnvironmentInfo
-from parsecraft.environment.probe import EXTRA_IMPORTS, probe_environment
+from parsecraft.environment.probe import EXTRA_DECLARATIONS, EXTRA_IMPORTS, extra_present, probe_environment
 from parsecraft.routing.models import RoutingConstraints, RoutingPreference
 from parsecraft.routing.rules import is_hard_eligible
 
@@ -47,7 +47,6 @@ _ASSET_DIGEST = hashlib.sha256(_ASSET_CONTENT).hexdigest()
 #: ``(extra, module)`` pairs — a KNOWN defect (pc-5m9), not a licence to drift.
 #: The contract test fails as soon as one of these starts resolving, so the
 #: exemption cannot outlive the bug it records.
-_UNPROVABLE_IMPORTS: frozenset[tuple[str, str]] = frozenset({("mineru", "mineru"), ("pdf-full", "mineru")})
 
 
 class _Completed:
@@ -386,7 +385,8 @@ def test_every_declared_extra_is_detectable() -> None:
     """
     declared = set(_declared_extras())
     assert declared, "pyproject declares no extras — the reader is wrong"
-    assert declared <= set(EXTRA_IMPORTS)
+    composites = _composite_extras(_declared_requirements())
+    assert declared <= set(EXTRA_IMPORTS) | set(EXTRA_DECLARATIONS) | composites
     assert all(EXTRA_IMPORTS[group] for group in EXTRA_IMPORTS)  # every map entry is useful
     undeclared = set(EXTRA_IMPORTS) - declared
     descriptor_groups = {
@@ -402,6 +402,45 @@ def _declared_extras() -> tuple[str, ...]:
     pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
     data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
     return tuple(data["project"]["optional-dependencies"])
+
+
+def _composite_extras(requirements: dict[str, tuple[str, ...]]) -> set[str]:
+    """Extras that only bundle requirements other extras already declare.
+
+    ``pdf-full`` is the live case: it adds no distribution of its own, so no import
+    can prove it. It also gates nothing — no backend declares it as its dependency
+    group — so the map does not have to name it (its contents report themselves).
+    """
+    named = {extra: {_requirement_name(line) for line in lines} for extra, lines in requirements.items()}
+    return {extra for extra, own in named.items() if not own - set().union(*(other for name, other in named.items() if name != extra))}
+
+
+def test_declared_extras_are_unprovable_by_construction() -> None:
+    """A declared extra must be one no import could prove, or the map is lying twice.
+
+    ``mineru`` is declared because its requirements are exactly ``surya``'s: the same
+    torch/transformers/torchvision stack, so any module probe reports the wrong extra
+    (a false negative on its own host, a false positive on a sibling's). If somebody
+    later gives the extra a distinctive requirement, this test sends the probe back to
+    ``EXTRA_IMPORTS`` — the declaration cannot quietly outlive the reason for it.
+    """
+    assert not set(EXTRA_IMPORTS) & set(EXTRA_DECLARATIONS), "an extra is detected or declared, never both"
+    composite = _composite_extras(_declared_requirements())
+    for extra in EXTRA_DECLARATIONS:
+        assert extra in composite, f"{extra!r} declares requirements no sibling shares: import-probe it instead"
+
+
+def test_a_declared_extra_is_installed_only_by_its_own_variable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The declaration is the only source of truth: no probe, no leakage between extras."""
+    for extra, variable in EXTRA_DECLARATIONS.items():
+        monkeypatch.delenv(variable, raising=False)
+        assert extra_present(extra) is False
+        monkeypatch.setenv(variable, "1")
+        assert extra_present(extra) is True
+        monkeypatch.delenv(variable, raising=False)
+
+    monkeypatch.setenv("PARSECRAFT_MINERU", "true")
+    assert "mineru" in probe_environment().installed_extras
 
 
 def test_extra_imports_maps_every_extra_to_a_module_its_requirements_install() -> None:
@@ -430,9 +469,6 @@ def test_extra_imports_maps_every_extra_to_a_module_its_requirements_install() -
         for module in modules:
             installed_as = {_canonical(name) for name in providers.get(module, ())}
             provable = _canonical(module) in distributions or bool(installed_as & distributions)
-            if (extra, module) in _UNPROVABLE_IMPORTS:
-                assert not provable, f"EXTRA_IMPORTS[{extra!r}] now resolves {module!r}: drop {extra!r}/{module!r} from _UNPROVABLE_IMPORTS (pc-5m9)"
-                continue
             assert provable, (
                 f"EXTRA_IMPORTS[{extra!r}] names {module!r}, which no requirement of that extra installs "
                 f"({sorted(distributions)}): the extra is undetectable, so its backend is silently ineligible"
