@@ -22,8 +22,9 @@ way - the same contract LiteParse follows.
 DOCX arrived here because a consumer's Word sources had only two candidates, both
 broken for them: pandoc converts Word but drops every table (0 tables in that same
 9-page guide), and PyMuPDF's office importer ignores the page-range contract (it
-returned all 9 pages for a one-page request). docling.rs reads Word natively in Rust (no LibreOffice; verified with a
-garbage ``DOCLING_LIBREOFFICE_CMD``), and the
+returned all 9 pages for a one-page request). docling.rs reads Word natively in Rust (no
+LibreOffice; verified by pointing the retired ``DOCLING_LIBREOFFICE_CMD``
+variable at garbage), and the
 consumer already installs ``parsecraft[docling]``.
 """
 
