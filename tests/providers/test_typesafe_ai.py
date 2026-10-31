@@ -98,7 +98,7 @@ def test_spec_error_outranks_a_missing_credential(monkeypatch: pytest.MonkeyPatc
 
 
 def test_file_endpoint_reaches_the_sdk(jev_sdk: StubSdk, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The kompend-shaped alias section configures the endpoint offline."""
+    """The consumer-style alias section configures the endpoint offline."""
     config_file = tmp_path / "global" / "config.toml"
     config_file.parent.mkdir(parents=True, exist_ok=True)
     config_file.write_text('[providers.typesafe]\nbase_url = "https://file.invalid"\napi_key = "${TS_FILE_KEY}"\n', encoding="utf-8")

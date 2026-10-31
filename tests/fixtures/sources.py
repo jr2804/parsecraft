@@ -151,7 +151,7 @@ def load_sources(path: Path = MANIFEST_PATH) -> SourcesManifest:
 def synthetic_pipe_heavy_markdown(*, items: int = 30) -> str:
     """Deterministic Markdown reproducing the docling-marko trigger shape.
 
-    The proven trigger (kompend-1, narrowed 2026-10-30 — retracting the
+    The proven trigger (consumer session, narrowed 2026-10-30 — retracting the
     earlier 93-byte "last block, no trailing blank line" shape, which
     measured docling import time, not parse): an outer list item, a NESTED
     item one level deeper, and a following continuation at the nested indent

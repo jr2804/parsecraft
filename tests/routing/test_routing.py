@@ -1063,7 +1063,7 @@ def good_native(signals_count: int = 1) -> list[PageSignal]:
 def test_native_pdf_is_demoted_when_pdf_extra_absent() -> None:
     """A host without ``parsecraft[pymupdf]`` must not be led by ``pymupdf``.
 
-    knox-1 measured the cost this removes: on the 2026.10.3 tier model,
+    The consumer session measured the cost this removes: on the 2026.10.3 tier model,
     ``pymupdf`` led every ``application/pdf`` NATIVE page because its
     ``analyze()`` runs on core pypdf, while its ``convert()`` needs PyMuPDF —
     so each document paid one failed lead attempt before falling through.
@@ -1139,10 +1139,10 @@ def test_existing_tier_ordering_preserved_when_all_convert_extras_satisfied() ->
     assert list(judge.rank(Intent.NATIVE, candidates)) == ["pymupdf", "docling", "liteparse", "ocr-ovis"]
 
 
-def test_max_passes_1_does_not_waste_a_native_pdf_lead_on_knox_config() -> None:
-    """The knox-1 shape, offline: one pass, no ``[pdf]`` — the lead is deliverable.
+def test_max_passes_1_does_not_waste_a_native_pdf_lead_on_consumer_config() -> None:
+    """The consumer shape, offline: one pass, no ``[pdf]`` — the lead is deliverable.
 
-    knox-1 ran ``[auto,docling,liteparse,mineru,ocr,pandoc,web]`` (licence-
+    The consumer ran ``[auto,docling,liteparse,mineru,ocr,pandoc,web]`` (licence-
     consciously omitting ``[pdf]``) and every PDF paid the failed ``pymupdf``
     lead before ``mineru`` converted it. With A10 the single pass goes straight
     to the first installed extra-backed parser.
@@ -1202,7 +1202,7 @@ def test_native_pages_get_distinct_memo_keys_by_density() -> None:
 def test_density_normalized_to_reference() -> None:
     """text_chars / DENSITY_REFERENCE_CHARS, saturated to [0.0, 1.0] (A9).
 
-    The anchors are the knox-1 corpus range (gh#6): 121 chars/page sparse
+    The anchors are the consumer corpus range (gh#6): 121 chars/page sparse
     median, 6066 dense max — the 17× resolution the ≥40 binary used to throw
     away. Calibration may move when the corpus rerun lands.
     """
@@ -1214,9 +1214,9 @@ def test_density_normalized_to_reference() -> None:
         return context.density
 
     assert _density(0) == 0.0
-    assert _density(121) == pytest.approx(0.121)  # knox-1 sparse median
+    assert _density(121) == pytest.approx(0.121)  # consumer sparse median
     assert _density(DENSITY_REFERENCE_CHARS) == 1.0
-    assert _density(6066) == 1.0  # knox-1 dense max saturates
+    assert _density(6066) == 1.0  # consumer dense max saturates
     assert _density(20_000) == 1.0  # saturation, not unbounded growth
 
 

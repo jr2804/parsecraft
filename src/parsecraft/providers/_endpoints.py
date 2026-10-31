@@ -37,8 +37,8 @@ from parsecraft.cli.config import JudgeSettings, ProviderEndpoint, TextClassifie
 from parsecraft.config import ConfigError
 from parsecraft.routing.judge_providers import JudgeProviderUnavailableError
 
-#: Section-name aliases: the file spells kompend's provider names, the token
-#: is this package's provider name. An exact provider token always works too.
+#: Section-name aliases: the file spells consumer-style provider names, the
+#: token is this package's provider name. An exact provider token works too.
 SECTION_ALIASES: dict[str, str] = {"typesafe": "typesafe-ai", "ollama-cloud": "ollama"}
 
 #: Generic env vars — the only judge-specific env vars this package defines.
@@ -86,8 +86,8 @@ def select_text_classifier_spec() -> str | None:
     no ``[judge]`` fallback, and no CLI flag (pc-2) — the extract only reads
     configuration, so a flag value could never reach it and would key cache
     entries on a choice the extract never sees. A routing judge's existence
-    must never switch on document shaping (kompend-1: "opt-in means opt-in
-    by me"), so the dedicated section is the only activation signal.
+    must never switch on document shaping (consumer ruling: "opt-in means
+    opt-in by me"), so the dedicated section is the only activation signal.
     """
     from_file = (_text_classifier_section().model or "").strip()
     return from_file or None

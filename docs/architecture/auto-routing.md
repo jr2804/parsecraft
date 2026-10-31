@@ -316,7 +316,7 @@ and can reject it, so a decision model can never widen eligibility.
    `PARSECRAFT_JUDGE_API_KEY`, then the `[providers.<name>]` section of
    `~/.config/parsecraft/config.toml`, then the default (the legacy
    `TYPESAFE_API_KEY` / `OPENCODE_API_KEY` env vars, or no credential for the
-   local daemon). The config-file spells kompend's provider names
+   local daemon). The config-file spells consumer-style provider names
    (`[providers.typesafe]` is `typesafe-ai`, `[providers.ollama-cloud]` is
    `ollama`); `api_key` takes a `${VAR_NAME}` reference, never a literal.
    The local `ollama/<model>` needs no credential — pull a scoring-capable model

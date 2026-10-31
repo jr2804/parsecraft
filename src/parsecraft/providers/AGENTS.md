@@ -98,7 +98,7 @@ by `routing/judge_providers.py` (each turns a `JudgeSpec` into a
   allowed (offline, lazy — inside the resolve functions, never at import).
   The default model is selected the same way by `select_judge_spec`:
   `--judge` beats `PARSECRAFT_JUDGE_MODEL` beats `[judge] model`.
-  Config-file sections use kompend-shaped names (`[providers.typesafe]` is
+  Config-file sections use consumer-style names (`[providers.typesafe]` is
   `typesafe-ai`, `[providers.ollama-cloud]` is `ollama`; exact tokens work
   too) — the alias map lives in `parsecraft.providers._endpoints`, never in
   `routing/` (which must never import a provider).

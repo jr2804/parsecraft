@@ -45,7 +45,7 @@ class ProviderEndpoint(BaseModel):
     """One judge provider's endpoint: base URL and credential (pc-66v).
 
     The section name is the provider token (``[providers.zen]``) or a
-    kompend-shaped alias (``[providers.typesafe]`` means ``typesafe-ai``,
+    consumer-style alias (``[providers.typesafe]`` means ``typesafe-ai``,
     ``[providers.ollama-cloud]`` means ``ollama``). ``api_key`` must reference
     a secret (``api_key = "${TYPESAFE_API_KEY}"``), never a literal — the
     config engine refuses literal secrets the same way it refuses literal

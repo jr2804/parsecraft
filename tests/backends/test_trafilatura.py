@@ -1,6 +1,6 @@
 """Offline tests for the trafilatura backend (the library is stubbed).
 
-The behaviour contract these pin is the knox call shape — ``extract`` runs with
+The behaviour contract these pin is the consumer call shape — ``extract`` runs with
 ``output_format="markdown", include_tables=True, include_links=False,
 no_fallback=False`` and an empty Markdown result falls back to plain text — plus
 the projection of that Markdown into typed chunks.
@@ -101,10 +101,10 @@ def test_analyze_reads_file_uri(tmp_path: Path, trafilatura_stub: dict[str, Any]
     assert analysis.signals[0].text_chars == len(b"<html>on disk</html>")
 
 
-# ── convert: the knox call shape ───────────────────────────────────────────
+# ── convert: the consumer call shape ────────────────────────────────────────
 
 
-def test_convert_uses_the_knox_call_shape(trafilatura_stub: dict[str, Any]) -> None:
+def test_convert_uses_the_consumer_call_shape(trafilatura_stub: dict[str, Any]) -> None:
     backend = factory(_CONFIG)
     result = backend.convert(make_request())
     assert result.failures == []

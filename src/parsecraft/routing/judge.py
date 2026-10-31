@@ -33,7 +33,7 @@ PREFERRED_BACKENDS: dict[Intent, str | None] = {
 
 #: Chars/page at which the A9 density fact saturates to 1.0. Deliberately NOT
 #: ``NATIVE_MIN_TEXT_CHARS`` (40) — that constant is the classification's
-#: ≥-chars binary and must not move. Calibrated on the knox-1 corpus range
+#: ≥-chars binary and must not move. Calibrated on the consumer corpus range
 #: (121 sparse median … 6066 dense max, a 17× range): 1000 ≈ one full typeset
 #: page of prose, so sparse pages land ≈0.12 and only genuinely dense pages
 #: saturate. May be re-calibrated when the 2026.10.3 corpus rerun lands.

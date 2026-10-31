@@ -1,10 +1,11 @@
 """Regression pins for pc-3vo: pipe-heavy fixture guard, list fidelity, frontmatter.
 
 The trigger: a 9 KB pipe-heavy Markdown file hung docling's marko parser at
-98.5% CPU for over an hour (kompend production incident, docling 2.142.1 /
-marko 2.2.4, reproduced on 2.145.0 / 2.2.5). Root cause, narrowed by
-kompend-1 — retracting the earlier 93-byte "last block, no trailing blank"
-shape, which measured docling import time, not parse: nesting opens the
+98.5% CPU for over an hour (a downstream production incident, docling
+2.142.1 / marko 2.2.4, reproduced on 2.145.0 / 2.2.5). Root cause, narrowed
+by the consumer session — retracting the earlier 93-byte "last block, no
+trailing blank" shape, which measured docling import time, not parse:
+nesting opens the
 recursion (an outer list item, a nested item one level deeper, then a
 continuation at the nested indent containing any ``|``), and the pipe merely
 feeds marko's ``Table.match`` via the patched ``break_paragraph``. The
@@ -54,14 +55,15 @@ _GUARD_SCRIPT = (
 
 
 # Flat-list characterisation (NOT the trigger — the hang needs nesting, see
-# above). kompend-1's retracted 93-byte shape, kept as parsing-behaviour
+# above). The consumer session's retracted 93-byte shape, kept as parsing-behaviour
 # pins: our adapter must treat trailing-blank / sibling variants identically,
 # and a future regression names the variant that changed.
 _FLAT_SHAPE_TEXT = "- Constant-delay indicator: mean over frames start+2..stop of\n  |delay[i] - delay[i-2]| ms where < 10 ms."
 
 
-# kompend-1's matrix (2026-10-30), transcribed verbatim — 11 of the 12
-# reported cases (the 12th is unreconstructable; ask kompend-1, don't invent
+# The consumer session's matrix (2026-10-30), transcribed verbatim — 11 of
+# the 12 reported cases (the 12th is unreconstructable; ask the consumer
+# session, don't invent
 # it). Harness: real `DocumentConverter`, timer strictly around `convert()`,
 # stack dumped on timeout, process killed at 60 s. "patched" = docling's
 # `_GfmParagraph.break_paragraph` monkey-patch; "plain gfm" = bare marko.
