@@ -29,6 +29,7 @@ and delete only the ``ocr_*`` files, then point
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import subprocess
@@ -38,9 +39,11 @@ from typing import cast
 
 import pytest
 
-pytestmark = pytest.mark.docling_live
-
-pytest.importorskip("docling_rs", reason="docling-live tier needs the real docling-rs engine")
+#: Collection-safe engine probe: ``find_spec`` answers without importing.
+#: A module-level ``pytest.importorskip`` cannot be used here — it raises
+#: ``Skipped``, which the collection-safety sweep records as an ERROR (no
+#: heavy import happened, so the sweep has no violation to attribute it to).
+_HAVE_ENGINE = importlib.util.find_spec("docling_rs") is not None
 
 _PARTIAL_CACHE_ENV = "PARSECRAFT_DOCLING_PARTIAL_CACHE"
 
@@ -71,6 +74,11 @@ print("VERDICT " + json.dumps({
 """
 
 _PARTIAL_CACHE_PREFIX = 'import os\nos.environ["DOCLING_RS_CACHE_DIR"] = os.environ["PARSECRAFT_DOCLING_PARTIAL_CACHE"]\n'
+
+pytestmark = [
+    pytest.mark.docling_live,
+    pytest.mark.skipif(not _HAVE_ENGINE, reason="docling-live tier needs the real docling-rs engine"),
+]
 
 
 def test_scan_ocrs_when_models_are_present() -> None:

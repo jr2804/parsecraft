@@ -34,12 +34,14 @@ _PDF_SOURCE = SourceDocument(uri="file:///doc.pdf", media_type="application/pdf"
 
 # Verbatim docling-rs 2.55.4 warning for a partial model cache (layout models
 # present, OCR models absent) — captured from the real engine, fd 2, pc-04u.
+# Built from text and encoded: a bytes literal cannot hold the em dash, and the
+# bytes must stay verbatim or the fragment check would silently stop matching.
 _OCR_WARNING = (
-    b"warning: OCR model unavailable (ocr: load .models/ocr_rec_en.onnx: File at "
-    b"`.models/ocr_rec_en.onnx` does not exist); continuing without OCR \u2014 scanned "
-    b"pages and text inside images will come back empty (run scripts/install/"
-    b"download_dependencies.sh for the model)\n"
-)
+    "warning: OCR model unavailable (ocr: load .models/ocr_rec_en.onnx: File at "
+    "`.models/ocr_rec_en.onnx` does not exist); continuing without OCR \u2014 scanned "
+    "pages and text inside images will come back empty (run scripts/install/"
+    "download_dependencies.sh for the model)\n"
+).encode()
 
 
 # ── Stubs: heavy packages faked through sys.modules ─────────────────────────────
@@ -462,6 +464,22 @@ def test_convert_replays_the_engine_warning_to_stderr(docling_stub: _State) -> N
         result = _convert(_backend())
     assert result.pages[0].diagnostics[0].code == "docling-ocr-unavailable"
     assert _OCR_WARNING in read()  # replayed to (this window's) fd 2 verbatim
+
+
+def test_convert_replays_the_engine_warning_when_the_pass_raises(docling_stub: _State) -> None:
+    """A raising pass still replays what the engine printed before it threw.
+
+    The replay must happen in the capture's ``finally``: putting it after the
+    block silently dropped these bytes, because the exception left the window
+    without replaying anything (pc-04u, measured against the branch).
+    """
+    docling_stub.stderr_warnings = [_OCR_WARNING]
+    docling_stub.convert_error = RuntimeError("model not found at .models/layout_heron.onnx")
+    window, read = _fd2_capture()
+    with window:
+        result = _convert(_backend())
+    assert [f.code for f in result.failures] == [FailureCode.BACKEND_ERROR]
+    assert _OCR_WARNING in read()
 
 
 def _fd2_capture() -> tuple[contextlib.AbstractContextManager[None], Callable[[], bytes]]:

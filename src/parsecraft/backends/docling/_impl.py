@@ -241,6 +241,12 @@ def _convert_and_watch(data: bytes, request: ConversionRequest) -> tuple[Convers
     call (process-global, hence ``_CAPTURE_LOCK``) and replays everything it
     caught back to the real stderr afterwards: parsecraft observes the
     warning, it never swallows it.
+
+    The replay sits inside the ``finally`` on purpose: a pass that RAISES has
+    already printed whatever the engine wanted to say, and moving the replay
+    after the capture block would drop exactly those bytes (measured: an
+    engine warning followed by a layout failure reached nothing on stderr
+    before this ordering, pc-04u).
     """
     blob = b""
     with _CAPTURE_LOCK:
@@ -255,8 +261,8 @@ def _convert_and_watch(data: bytes, request: ConversionRequest) -> tuple[Convers
                 os.close(backup)
                 sink.seek(0)
                 blob = sink.read()
-        if blob:
-            _replay_stderr(blob)
+                if blob:
+                    _replay_stderr(blob)
     return result, _OCR_UNAVAILABLE_FRAGMENT.encode() in blob
 
 
