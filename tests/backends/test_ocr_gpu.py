@@ -6,7 +6,7 @@ Every case converts page 1 of a real PDF from ``tests/downloads/`` and asserts
 typed IR comes back, not tensors.
 
 Version matrix validated by the pc-5gf smoke run (2026-09-27, RTX A2000 8 GB):
-- ``ocr-ovis`` / ``ocr-qianfan`` → transformers 5.x (5.17 verified)
+- ``ocr-ovis`` / ``ocr-qianfan`` / ``ocr-surya`` → transformers 5.x (5.17 verified)
 - ``ocr-tele`` / ``ocr-unlimited`` → transformers 4.57.x (their own pins; both
   ship custom remote code that transformers 5.x rejects)
 A warm run takes a few minutes (model loads); the first run downloads weights.
@@ -25,6 +25,7 @@ import pytest
 
 from parsecraft.backends.ocr.ovis import factory as ovis_factory
 from parsecraft.backends.ocr.qianfan import factory as qianfan_factory
+from parsecraft.backends.ocr.surya import factory as surya_factory
 from parsecraft.backends.ocr.tele import factory as tele_factory
 from parsecraft.backends.ocr.unlimited import factory as unlimited_factory
 from parsecraft.backends.protocol import (
@@ -40,6 +41,7 @@ _GPU_CASES: tuple[tuple[str, Callable[[BackendConfig], DocumentBackend], int], .
     # All four run on the unified window (pc-4u7.36): tele/unlimited load the
     # vendored modeling in backends/ocr/_vendored — no trust_remote_code.
     ("ocr-ovis", ovis_factory, 5),
+    ("ocr-surya", surya_factory, 5),
     ("ocr-tele", tele_factory, 5),
     ("ocr-qianfan", qianfan_factory, 5),
     ("ocr-unlimited", unlimited_factory, 5),
@@ -48,6 +50,7 @@ _GPU_CASES: tuple[tuple[str, Callable[[BackendConfig], DocumentBackend], int], .
 #: Generation caps: small enough for the laptop GPU budget, long enough to prove shape.
 _MAX_NEW_TOKENS: dict[str, int] = {
     "ocr-ovis": 256,
+    "ocr-surya": 256,  # HTML output proves shape without exhausting the 8 GB budget
     "ocr-tele": 128,
     "ocr-qianfan": 64,
     "ocr-unlimited": 700,
