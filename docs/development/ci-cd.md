@@ -117,6 +117,35 @@ reports most often. The fix is an operator run —
 `gh variable set OPENROUTER_MODEL -b "<vendor>/<model>"` against a slug from
 `https://openrouter.ai/api/v1/models` — never a workflow edit.
 
+**Being listed is not being callable.** Three failures arrive as a slug that
+looks fine in `/api/v1/models` and still refuses this step's request, all
+observed on 2026.11.1 while replacing a retired slug:
+
+| response | meaning |
+| -------- | ------- |
+| `403` `… is only available on agentic harnesses` | the free endpoint is gated to OpenRouter's app integrations; a workflow call never qualifies |
+| `429` `temporarily rate-limited upstream` | the provider's own limit, shared anonymously — free capacity, not a config error |
+| `503` `no upstreams available` | the provider was absent at call time |
+
+So probe a candidate before setting the variable, with the request shape this
+step uses (a single user message, no system prompt, no tools) and the same
+quality guard — at least 200 characters carrying a heading or a list item:
+
+```powershell
+# OPENROUTER_API_KEY in the environment; MODEL from /api/v1/models
+$prompt = 'Write release notes in Markdown with a heading and a bullet list from: - fix a bug'
+$body = @{ model = $env:MODEL; messages = @(@{ role = 'user'; content = $prompt }) } |
+  ConvertTo-Json -Depth 5
+Invoke-RestMethod -Uri https://openrouter.ai/api/v1/chat/completions -Method Post `
+  -Headers @{ Authorization = "Bearer $env:OPENROUTER_API_KEY" } `
+  -ContentType application/json -Body $body |
+  ForEach-Object { $_.choices[0].message.content }
+```
+
+A slug that answers there answers in the workflow. `nvidia/nemotron-3-ultra-550b-a55b:free`
+is the slug in use as of 2026.11.1 for exactly this reason: it was the first
+candidate that returned usable notes for a plain call.
+
 Packaging reads the version through `uv-dynamic-versioning`; `[tool.uv.dynamic-versioning]`
 declares the bare CalVer tag pattern because the default expects a `v` prefix.
 The distribution version and `parsecraft --version` both come from the installed
