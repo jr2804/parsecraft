@@ -44,7 +44,7 @@ run = "uv run --extra docling --extra pymupdf scripts/bench_docling.py .tmp/docl
 description = "Run all quality checks (format-check and lint-check gate the tree; nothing rewrites it)"
 depends = [
   "format-check",
-    "smoke",
+  "smoke",
   "test",
   "typecheck",
   "lint-check",
