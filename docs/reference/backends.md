@@ -269,7 +269,9 @@ source's media type. The OCR backends declare `application/pdf`,
 A parser that reads scans is not automatically one of them. `docling`, `mineru`
 and `marker` OCR text-free pages inside their own conversion and also extract
 native text, so they declare `ocr_capable` instead of joining the `ocr-*`
-family: an OCR-intent page can route to them, while `--no-ocr` keeps them
+backend family (the names are `ocr-ovis`, `ocr-tele` and siblings; the
+dependency groups behind them are `ocr` and `surya`): an OCR-intent page can
+route to them, while `--no-ocr` keeps them
 eligible and their extraction tier stays 1 (ADR-0010).
 
 Model licences apply to the weights; the ParseCraft adapter code is MIT.
@@ -294,8 +296,8 @@ and otherwise from a pinned, checksum-verified download into the managed cache.
 pushed set so it is available, but v1 never selects it automatically: page-type
 dependent engine selection would be a new routing primitive for a bounded gain,
 and `equ` recognition is weak enough that promising it would overstate what this
-backend does. For formula-critical documents use the heavyweight `ocr-*` extras,
-which are geometry-aware.
+backend does. For formula-critical documents use the heavyweight `ocr` /
+`surya` backend family, whose extraction is geometry-aware.
 
 ## Interpreter and platform availability
 
