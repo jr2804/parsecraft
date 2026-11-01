@@ -111,6 +111,22 @@ the MinerU2.5 checkpoint itself (Apache-2.0 weights, MIT code), and the
 `onnxruntime`-carrying GIL-builds-only install constraint — is no longer a
 dependency. See ADR-0007's amendment.
 
+## Upgrading
+
+Releases are CalVer (`YYYY.M.N`); pin an exact version when you depend on
+anything beyond the CLI. The table lists the changes that need work on your
+side — if you do not touch the named surface, a plain upgrade is safe.
+
+| If you use | Changed in | What to do |
+| ---------- | ---------- | ---------- |
+| `parsecraft.backends.docling.libreoffice` (`LIBREOFFICE_ENV`, `find_libreoffice_cmd`, `resolve_libreoffice_cmd`, `configure_libreoffice_env`, `LibreOfficeUnavailableError`) | 2026.10.16 | Copy the helpers you need, or pin `parsecraft==2026.10.15`. The module is gone, not renamed; the backend stopped calling it in 2026.10.15 and no declared format needs LibreOffice. |
+| `DOCLING_LIBREOFFICE_CMD` | 2026.10.15 | Nothing — the backend stopped reading it. Office formats are already parsed natively by `docling-rs` and the variable has no effect. |
+| `"docling" in installed_extras` | 2026.10.15 only | Pin `parsecraft==2026.10.14`, or upgrade to `>=2026.10.16`. That single release installed `docling-rs` while probing for the old `docling` distribution, so `parsecraft[docling]` reported the extra as absent and the docling backend as ineligible for every source. |
+
+Per-release behaviour changes are in the GitHub release body. The body is written
+by an opt-in AI step; when that step is not configured it carries only the
+compare link, which still lists every commit and its message.
+
 ## From source
 
 Use a checkout when contributing or testing unreleased changes. Clone and sync:
