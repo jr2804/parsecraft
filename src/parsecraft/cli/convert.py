@@ -38,7 +38,7 @@ from parsecraft.pipeline.analysis import (
     media_type_for,
     sniff_text_plain,
 )
-from parsecraft.pipeline.executor import RequestOptions
+from parsecraft.pipeline.executor import DEGRADED_EMPTY_OUTPUT_CODE, RequestOptions
 from parsecraft.providers._endpoints import override_endpoint, select_judge_spec, select_text_classifier_spec
 from parsecraft.routing import (
     JudgeViolationError,
@@ -415,6 +415,26 @@ def warn_text_encoding_notes(document: DocumentResult) -> None:
             if diagnostic.code == encoding_code and diagnostic.message not in seen:
                 seen.add(diagnostic.message)
                 typer.echo(f"warning: {diagnostic.message}", err=True)
+
+
+def warn_empty_output_notes(document: DocumentResult) -> None:
+    """Echo each empty-output quality entry once on stderr (pc-8ti).
+
+    The Markdown projection carries no quality signals, so an OCR-capable parser
+    that returned nothing would reach a default CLI user as a successful, empty
+    document. ``convert --json`` already ships the entries (they live on the IR),
+    and library callers read them there; this is the human channel, the same
+    shape as :func:`warn_text_encoding_notes`.
+    """
+    seen: set[tuple[int | None, str]] = set()
+    for signal in document.quality:
+        if signal.name != DEGRADED_EMPTY_OUTPUT_CODE or signal.detail is None:
+            continue
+        key = (signal.page_number, signal.detail)
+        if key in seen:  # defensive: one entry per page is the contract, not a promise
+            continue
+        seen.add(key)
+        typer.echo(f"warning: page {signal.page_number}: {signal.detail}", err=True)
 
 
 def build_constraints(

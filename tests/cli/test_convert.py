@@ -31,7 +31,7 @@ from parsecraft.backends.protocol import (
 from parsecraft.cli import config as cli_config
 from parsecraft.cli.app import app
 from parsecraft.environment import EnvironmentInfo
-from parsecraft.ir import ChunkKind, Diagnostic, DiagnosticLevel, DocumentMetadata, DocumentResult, PageResult, PageSignal, StructuredChunk
+from parsecraft.ir import ChunkKind, Diagnostic, DiagnosticLevel, DocumentMetadata, DocumentResult, PageResult, PageSignal, QualitySignal, StructuredChunk
 from parsecraft.pipeline.analysis import NoAnalyzerError, UnsupportedSourceError, choose_analyzer, media_type_for
 from parsecraft.providers import _endpoints as endpoints
 from parsecraft.routing import Intent, MachineProfile, PageContext, RoutingConstraints, RoutingJudge, RoutingPreference
@@ -465,6 +465,59 @@ def test_warn_text_encoding_notes_dedupes_per_message(capsys: pytest.CaptureFixt
     captured = capsys.readouterr()
     assert captured.err.count("heuristic note") == 1
     assert captured.out == ""
+
+
+def test_warn_empty_output_notes_dedupes_per_page(capsys: pytest.CaptureFixture[str]) -> None:
+    """One stderr line per affected page; unrelated quality entries stay silent."""
+    note = "scan-reader returned no content for a page that needs OCR"
+    document = DocumentResult(
+        metadata=DocumentMetadata(
+            source_uri="mem://empty",
+            source_hash="0" * 64,
+            format="application/pdf",
+            page_count=2,
+            produced_at=datetime.now(UTC),
+            package_version="0.0.0-test",
+        ),
+        pages=[PageResult(page_number=1), PageResult(page_number=2)],
+        quality=[
+            QualitySignal(name="degraded-empty-output", score=0.0, detail=note, page_number=1),
+            QualitySignal(name="degraded-empty-output", score=0.0, detail=note, page_number=1),
+            QualitySignal(name="degraded-empty-output", score=0.0, detail=note, page_number=2),
+            QualitySignal(name="degraded-blank-page", score=0.0, detail=None, page_number=2),
+            QualitySignal(name="degraded-short-text", score=0.5, detail="short", page_number=2),
+        ],
+    )
+    convert_module.warn_empty_output_notes(document)
+    captured = capsys.readouterr()
+    assert captured.err == f"warning: page 1: {note}\nwarning: page 2: {note}\n"
+    assert captured.out == ""
+
+
+def test_convert_echoes_the_empty_output_note_on_stderr(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, registry: BackendRegistry) -> None:
+    """pc-8ti end to end: the default Markdown path must say a scan came back empty.
+
+    ``--json`` already carried the page diagnostics; the Markdown projection carries
+    no quality content, so without this line an empty page and a clean one printed
+    exactly the same thing.
+    """
+    note = "scan-reader returned no content for a page that needs OCR"
+    document = DocumentResult(
+        metadata=DocumentMetadata(
+            source_uri="mem://wired",
+            source_hash="0" * 64,
+            format="application/pdf",
+            page_count=1,
+            produced_at=datetime.now(UTC),
+            package_version="0.0.0-test",
+        ),
+        pages=[PageResult(page_number=1)],
+        quality=[QualitySignal(name="degraded-empty-output", score=0.0, detail=note, page_number=1)],
+    )
+    monkeypatch.setattr("parsecraft.cli.commands.convert_source", lambda *args, **kwargs: document)
+    result = runner.invoke(app, ["convert", str(_source_file(tmp_path))])
+    assert result.exit_code == 0
+    assert f"warning: page 1: {note}" in result.output
 
 
 def test_convert_missing_file_is_usage_error(tmp_path: Path, registry: BackendRegistry) -> None:

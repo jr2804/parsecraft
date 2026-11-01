@@ -32,6 +32,7 @@ from parsecraft.cache import ConversionCache
 from parsecraft.ir import to_markdown
 from parsecraft.ir.models import (
     ChunkKind,
+    Diagnostic,
     DiagnosticLevel,
     FailureCode,
     PageRange,
@@ -61,6 +62,7 @@ from parsecraft.pipeline import PIPELINE_TIMEOUT_CODE as public_timeout_code
 from parsecraft.pipeline.analysis import apply_classifier
 from parsecraft.pipeline.executor import (
     ALL_PASSES_FAILED_CODE,
+    DEGRADED_EMPTY_OUTPUT_CODE,
     PIPELINE_TIMEOUT_CODE,
     RequestOptions,
     _all_attempts_timed_out,
@@ -1200,6 +1202,67 @@ def test_non_degraded_document_has_empty_quality(monkeypatch: pytest.MonkeyPatch
     assert result.document.quality == []
 
 
+def test_an_ocr_capable_parser_that_returns_nothing_is_flagged(monkeypatch: pytest.MonkeyPatch) -> None:
+    """pc-8ti: a scan-reading parser produced no blocks — say so, do not exit silently.
+
+    Before this, the plan admitted docling to an OCR-intent page (ADR-0010) and a
+    zero-block result was byte-identical to a page with no content: exit 0,
+    ``quality == []``, nothing in the trace.
+    """
+    registry = make_registry(monkeypatch)
+    add_stub(registry, make_descriptor("scan-reader", ocr_capable=True), empty_page)
+
+    result = execute(_scan_analysis(), registry, make_constraints(), make_source(), produced_at=PRODUCED)
+
+    assert pipeline_failure(result.document) is None  # an empty page is not a failed document
+    quality = result.document.quality
+    assert [signal.name for signal in quality] == [DEGRADED_EMPTY_OUTPUT_CODE]
+    assert quality[0].page_number == 1
+    assert quality[0].score == 0.0
+    assert quality[0].detail == "scan-reader returned no content for a page that needs OCR"
+
+
+def test_an_adapter_diagnosis_is_not_repeated_as_a_quality_entry(monkeypatch: pytest.MonkeyPatch) -> None:
+    """pc-04u composes with this instead of duplicating: one voice per page."""
+    registry = make_registry(monkeypatch)
+    add_stub(registry, make_descriptor("scan-reader", ocr_capable=True), empty_page_with_a_note)
+
+    result = execute(_scan_analysis(), registry, make_constraints(), make_source(), produced_at=PRODUCED)
+
+    assert result.document.quality == []
+    assert result.document.pages[0].diagnostics[0].code == "docling-ocr-unavailable"
+
+
+def test_an_ocr_harness_returning_nothing_adds_no_empty_output_entry(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A harness is not the ``ocr_capable`` seam: its emptiness has its own record."""
+    registry = make_registry(monkeypatch)
+    add_stub(registry, make_descriptor("ocr-stub", group="ocr-stub"), empty_page)
+
+    result = execute(_scan_analysis(), registry, make_constraints(), make_source(), produced_at=PRODUCED)
+
+    assert result.document.quality == []
+
+
+def _scan_analysis(images: int = 1) -> AnalysisResult:
+    """One image-only page: OCR intent, nothing native to lose, not blank."""
+    return AnalysisResult(
+        source_hash="0" * 64,
+        page_count=1,
+        signals=[_PS(page_number=1, has_native_text=False, text_chars=0, image_count=images, blank=False, replacement_char_ratio=None)],
+        diagnostics=[],
+    )
+
+
+def test_a_native_page_from_an_ocr_capable_parser_is_not_flagged(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The flag is about OCR intent: native pages have their own degradation path."""
+    registry = make_registry(monkeypatch)
+    add_stub(registry, make_descriptor("scan-reader", ocr_capable=True), empty_page)
+
+    result = execute(make_analysis(1), registry, make_constraints(), make_source(), produced_at=PRODUCED)
+
+    assert result.document.quality == []
+
+
 def test_all_attempts_timed_out_requires_at_least_one_attempt() -> None:
     """The empty case is defensive, not reachable through ``execute``: no attempts is not a timeout.
 
@@ -1777,6 +1840,7 @@ def make_caps(
     gpu: bool = False,
     vram: float | None = None,
     group: str | None = None,
+    ocr_capable: bool = False,
 ) -> BackendCapabilities:
     return BackendCapabilities(
         supported_formats=list(formats),
@@ -1785,8 +1849,32 @@ def make_caps(
         gpu_requirement=1.0 if gpu else 0.0,
         estimated_vram_gb=vram,
         optional_dependency_group=group,
+        ocr_capable=ocr_capable,
     )
 
 
 def no_pages(request: ConversionRequest, name: str) -> BackendResult:
     return BackendResult(backend=BackendRef(name=name, version=_VERSION), pages=[], elapsed_s=0.01)
+
+
+def empty_page_with_a_note(request: ConversionRequest, name: str) -> BackendResult:
+    """The pc-04u shape: empty, but the adapter said why — no second voice needed."""
+    note = Diagnostic(level=DiagnosticLevel.WARNING, code="docling-ocr-unavailable", message="OCR models missing")
+    page_range = request.page_range
+    numbers = list(range(page_range.start, page_range.end + 1)) if page_range is not None else [1]
+    return BackendResult(
+        backend=BackendRef(name=name, version=_VERSION),
+        pages=[PageResult(page_number=number, diagnostics=[note]) for number in numbers],
+        elapsed_s=0.01,
+    )
+
+
+def empty_page(request: ConversionRequest, name: str) -> BackendResult:
+    """Pages that exist and hold nothing: the silent-empty shape pc-8ti is about."""
+    page_range = request.page_range
+    numbers = list(range(page_range.start, page_range.end + 1)) if page_range is not None else [1]
+    return BackendResult(
+        backend=BackendRef(name=name, version=_VERSION),
+        pages=[PageResult(page_number=number) for number in numbers],
+        elapsed_s=0.01,
+    )

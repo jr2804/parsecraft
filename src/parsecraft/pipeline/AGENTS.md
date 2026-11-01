@@ -61,6 +61,19 @@ a `DocumentResult` with `TraceEntry` records — no silent drops.
   control flow keeps reading `ALL_PASSES_FAILED_CODE` alone, and the extra code
   is for wording. Mixed causes (a timeout then a missing extra) keep the single
   diagnostic exactly, and `CANCELLED` is never a timeout.
+- Silent emptiness is a signal, not a success (pc-8ti): when the chosen
+  backend of a page declares `capabilities.ocr_capable` (it read a scan —
+  docling, `mineru`, vendor parsers) and its page has **zero blocks**, the
+  document gains `QualitySignal(name="degraded-empty-output", score=0.0,
+  detail="<backend> returned no content for a page that needs OCR",
+  page_number=N)`. It is a quality entry, never a `FailureCode`: an empty page
+  is not a failed document, and `--json` already ships it. Skipped when the
+  page carries a diagnostic of its own (pc-04u: the adapter said why — one
+  voice per page) and for OCR *harnesses* (an `ocr-*` name/extra is not this
+  seam; their emptiness has its own record). The default Markdown projection
+  carries no quality signals, so the CLI echoes these on stderr via
+  `cli.convert.warn_empty_output_notes` — the human channel, same shape as the
+  text-encoding notes.
 - One backend instance at a time (8 GB VRAM ceiling): instances are created
   per attempt and dropped (`del backend`) before the next one — no pool.
   Marked with a `ponytail:` comment at the creation site.

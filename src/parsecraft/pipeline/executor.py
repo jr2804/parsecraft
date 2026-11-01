@@ -65,6 +65,16 @@ ALL_PASSES_FAILED_CODE = "pipeline-all-passes-failed"
 #: Published here, beside its sibling, so consumers import one module for both.
 PIPELINE_TIMEOUT_CODE = "pipeline-timeout"
 
+#: Emitted when an OCR-intent page was planned onto a parser that reads scans
+#: internally (``capabilities.ocr_capable``) and came back with no blocks at all
+#: (pc-8ti). The pipeline seam of the pair: the adapter seam (pc-04u) records
+#: WHY its own models could not run, this one guarantees a caller who planned an
+#: OCR-capable parser is never told nothing at all. A zero-block page from such a
+#: backend is indistinguishable from a page with no content, so it must not exit
+#: 0 silently — and it is deliberately NOT a failure, because a legitimately
+#: empty page is a valid document.
+DEGRADED_EMPTY_OUTPUT_CODE = "degraded-empty-output"
+
 
 class CacheProtocol(Protocol):
     """Injectable conversion-cache seam (see ``parsecraft.cache``)."""
@@ -155,7 +165,7 @@ def execute(
         produced_at=produced_at if produced_at is not None else utcnow(),
         package_version=_package_version(),
     )
-    document = DocumentResult(metadata=metadata, pages=pages, trace=trace, quality=_document_quality(plan, pages, trace))
+    document = DocumentResult(metadata=metadata, pages=pages, trace=trace, quality=_document_quality(plan, pages, trace, registry))
     if cache is not None and key is not None and pipeline_failure(document) is None:
         cache.put(key, document)
     return PipelineResult(document=document, plan=plan, groups=groups)
@@ -181,9 +191,11 @@ def _document_quality(
     plan: RoutingPlan,
     pages: Sequence[PageResult],
     trace: Sequence[TraceEntry],
+    registry: BackendRegistry,
 ) -> list[QualitySignal]:
-    """Plan degradations plus, when nothing converted, one document-level diagnosis."""
+    """Plan degradations, empty OCR-capable output, and the total-failure diagnosis."""
     quality = _quality_from_plan(plan)
+    quality.extend(_empty_output_signals(plan, pages, registry))
     failure = _total_failure(pages, trace)
     if failure is not None:
         quality.append(_all_passes_failed_signal(failure, len(pages)))
@@ -333,6 +345,41 @@ def _quality_from_plan(plan: RoutingPlan) -> list[QualitySignal]:
             )
         )
     return quality
+
+
+def _empty_output_signals(
+    plan: RoutingPlan,
+    pages: Sequence[PageResult],
+    registry: BackendRegistry,
+) -> list[QualitySignal]:
+    """One signal per OCR-intent page an ``ocr_capable`` parser returned empty.
+
+    The pipeline half of pc-8ti. Two conditions keep it out of pc-04u's way: the
+    page must carry NO diagnostic of its own (the adapter already stated a cause,
+    and a second voice would hide which layer said what), and the planned backend
+    must be ``ocr_capable`` rather than an OCR harness (harnesses fail with a
+    typed ``ALL_PASSES_FAILED_CODE`` instead of returning an empty page, and their
+    emptiness is already recorded).
+    """
+    by_number = {page.page_number: page for page in pages}
+    signals: list[QualitySignal] = []
+    for route in plan.pages:
+        if route.intent is Intent.NATIVE:
+            continue
+        page = by_number.get(route.page_number)
+        if page is None or page.blocks or page.diagnostics:
+            continue
+        if not registry.get(route.chosen).capabilities.ocr_capable:
+            continue
+        signals.append(
+            QualitySignal(
+                name=DEGRADED_EMPTY_OUTPUT_CODE,
+                score=0.0,
+                detail=f"{route.chosen} returned no content for a page that needs OCR",
+                page_number=route.page_number,
+            )
+        )
+    return signals
 
 
 def _package_version() -> str:
