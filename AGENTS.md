@@ -119,7 +119,11 @@ _Always-injected_ — keep minimal. Everything else → `.agents/` files.
    in `.beads/` (issue prefix `pc`); workflow in `.agents/skills/beads/`.
    No markdown TODO lists.
 9. **No references to external consumer/predecessor projects by name** —
-   parsecraft is independent; describe their behavior generically.
+   parsecraft is independent; describe their behavior generically. The scope is
+   every published surface, not just importable code: the wheel, the sdist, the
+   docs site, **and the issue board**, which is published to `refs/dolt/data` on
+   the public origin by `bd dolt push` / `bd sync`. A bead body is a shipped
+   artifact there; rule 9 applies to what you write in it, and no gate greps it.
 10. **Every optional extra must resolve jointly** —
     `uv sync -U --all-extras --all-groups --all-packages` must succeed; never
     declare extras mutually exclusive. If a dependency cannot coexist, do not
