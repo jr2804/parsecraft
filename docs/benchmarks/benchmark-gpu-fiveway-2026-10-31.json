@@ -1,0 +1,750 @@
+{
+  "package_version": "2026.10.16.post8.dev0+9cbb645",
+  "results": [
+    {
+      "analyzer_text_chars": 3366,
+      "backend": "liteparse",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 7,
+        "list": 0,
+        "paragraph": 13,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "etsi-ts-103558-p1-2.pdf",
+      "elapsed_s": 0.23208,
+      "emitted_chars": 3254,
+      "failures": [],
+      "pages": 2,
+      "pages_per_second": 8.617718,
+      "peak_memory_bytes": 1016000,
+      "selected": true,
+      "text_coverage": 0.966726
+    },
+    {
+      "analyzer_text_chars": 3366,
+      "backend": "ocr-ovis",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 0,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "etsi-ts-103558-p1-2.pdf",
+      "elapsed_s": 1391.588772,
+      "emitted_chars": 0,
+      "failures": [
+        {
+          "code": "backend_error",
+          "detail": "page 1: OutOfMemoryError: CUDA out of memory. Tried to allocate 52.66 GiB. GPU 0 has a total capacity of 8.00 GiB of which 4.21 GiB is free. Of the allocated memory 2.65 GiB is allocated by PyTorch, and 101.53 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)"
+        },
+        {
+          "code": "backend_error",
+          "detail": "page 2: OutOfMemoryError: CUDA out of memory. Tried to allocate 52.66 GiB. GPU 0 has a total capacity of 8.00 GiB of which 4.21 GiB is free. Of the allocated memory 2.65 GiB is allocated by PyTorch, and 101.53 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)"
+        }
+      ],
+      "pages": 0,
+      "pages_per_second": null,
+      "peak_memory_bytes": 757031641,
+      "selected": false,
+      "text_coverage": 0.0
+    },
+    {
+      "analyzer_text_chars": 3366,
+      "backend": "ocr-qianfan",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 2,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "etsi-ts-103558-p1-2.pdf",
+      "elapsed_s": 939.408211,
+      "emitted_chars": 3376,
+      "failures": [],
+      "pages": 2,
+      "pages_per_second": 0.002129,
+      "peak_memory_bytes": 3716664895,
+      "selected": false,
+      "text_coverage": 1.002971
+    },
+    {
+      "analyzer_text_chars": 3366,
+      "backend": "ocr-surya",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 0,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "etsi-ts-103558-p1-2.pdf",
+      "elapsed_s": 1080.750753,
+      "emitted_chars": 0,
+      "failures": [
+        {
+          "code": "backend_error",
+          "detail": "page 1: OutOfMemoryError: CUDA out of memory. Tried to allocate 52.66 GiB. GPU 0 has a total capacity of 8.00 GiB of which 2.41 GiB is free. Of the allocated memory 2.36 GiB is allocated by PyTorch, and 2.19 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)"
+        },
+        {
+          "code": "backend_error",
+          "detail": "page 2: OutOfMemoryError: CUDA out of memory. Tried to allocate 52.66 GiB. GPU 0 has a total capacity of 8.00 GiB of which 2.41 GiB is free. Of the allocated memory 2.36 GiB is allocated by PyTorch, and 2.19 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)"
+        }
+      ],
+      "pages": 0,
+      "pages_per_second": null,
+      "peak_memory_bytes": 196043146,
+      "selected": false,
+      "text_coverage": 0.0
+    },
+    {
+      "analyzer_text_chars": 3366,
+      "backend": "ocr-tele",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 0,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "etsi-ts-103558-p1-2.pdf",
+      "elapsed_s": 45.263506,
+      "emitted_chars": 0,
+      "failures": [
+        {
+          "code": "backend_error",
+          "detail": "page 1: OutOfMemoryError: CUDA out of memory. Tried to allocate 118.03 GiB. GPU 0 has a total capacity of 8.00 GiB of which 2.21 GiB is free. Of the allocated memory 4.33 GiB is allocated by PyTorch, and 424.17 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)"
+        },
+        {
+          "code": "backend_error",
+          "detail": "page 2: OutOfMemoryError: CUDA out of memory. Tried to allocate 118.03 GiB. GPU 0 has a total capacity of 8.00 GiB of which 2.00 GiB is free. Of the allocated memory 4.33 GiB is allocated by PyTorch, and 642.17 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)"
+        }
+      ],
+      "pages": 0,
+      "pages_per_second": null,
+      "peak_memory_bytes": 318631752,
+      "selected": false,
+      "text_coverage": 0.0
+    },
+    {
+      "analyzer_text_chars": 3366,
+      "backend": "ocr-unlimited",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 1,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "etsi-ts-103558-p1-2.pdf",
+      "elapsed_s": 434.422893,
+      "emitted_chars": 9440,
+      "failures": [
+        {
+          "code": "backend_error",
+          "detail": "page 1: RuntimeError: infer_multi returned 0 page segments for 2 pages"
+        }
+      ],
+      "pages": 1,
+      "pages_per_second": 0.002302,
+      "peak_memory_bytes": 698669143,
+      "selected": false,
+      "text_coverage": 2.804516
+    },
+    {
+      "analyzer_text_chars": 3366,
+      "backend": "pdf-inspector",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 2,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "etsi-ts-103558-p1-2.pdf",
+      "elapsed_s": 0.247051,
+      "emitted_chars": 3509,
+      "failures": [],
+      "pages": 2,
+      "pages_per_second": 8.095485,
+      "peak_memory_bytes": 87545,
+      "selected": false,
+      "text_coverage": 1.042484
+    },
+    {
+      "analyzer_text_chars": 3366,
+      "backend": "pymupdf",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 22,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "etsi-ts-103558-p1-2.pdf",
+      "elapsed_s": 7.188551,
+      "emitted_chars": 3259,
+      "failures": [],
+      "pages": 2,
+      "pages_per_second": 0.27822,
+      "peak_memory_bytes": 16982944,
+      "selected": false,
+      "text_coverage": 0.968212
+    },
+    {
+      "analyzer_text_chars": 1647,
+      "backend": "liteparse",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 6,
+        "list": 0,
+        "paragraph": 7,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "itu-t-p863-p1-2.pdf",
+      "elapsed_s": 0.136741,
+      "emitted_chars": 1547,
+      "failures": [],
+      "pages": 2,
+      "pages_per_second": 14.626159,
+      "peak_memory_bytes": 148522,
+      "selected": true,
+      "text_coverage": 0.939284
+    },
+    {
+      "analyzer_text_chars": 1647,
+      "backend": "ocr-ovis",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 0,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "itu-t-p863-p1-2.pdf",
+      "elapsed_s": 1099.364928,
+      "emitted_chars": 0,
+      "failures": [
+        {
+          "code": "backend_error",
+          "detail": "page 1: OutOfMemoryError: CUDA out of memory. Tried to allocate 52.66 GiB. GPU 0 has a total capacity of 8.00 GiB of which 2.26 GiB is free. Of the allocated memory 2.68 GiB is allocated by PyTorch, and 2.02 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)"
+        },
+        {
+          "code": "backend_error",
+          "detail": "page 2: OutOfMemoryError: CUDA out of memory. Tried to allocate 52.66 GiB. GPU 0 has a total capacity of 8.00 GiB of which 2.26 GiB is free. Of the allocated memory 2.68 GiB is allocated by PyTorch, and 2.02 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)"
+        }
+      ],
+      "pages": 0,
+      "pages_per_second": null,
+      "peak_memory_bytes": 589909488,
+      "selected": false,
+      "text_coverage": 0.0
+    },
+    {
+      "analyzer_text_chars": 1647,
+      "backend": "ocr-qianfan",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 2,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "itu-t-p863-p1-2.pdf",
+      "elapsed_s": 762.049636,
+      "emitted_chars": 2172,
+      "failures": [],
+      "pages": 2,
+      "pages_per_second": 0.002625,
+      "peak_memory_bytes": 3715697375,
+      "selected": false,
+      "text_coverage": 1.318761
+    },
+    {
+      "analyzer_text_chars": 1647,
+      "backend": "ocr-surya",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 0,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "itu-t-p863-p1-2.pdf",
+      "elapsed_s": 932.948529,
+      "emitted_chars": 0,
+      "failures": [
+        {
+          "code": "backend_error",
+          "detail": "page 1: OutOfMemoryError: CUDA out of memory. Tried to allocate 52.66 GiB. GPU 0 has a total capacity of 8.00 GiB of which 0 bytes is free. Of the allocated memory 7.83 GiB is allocated by PyTorch, and 163.26 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)"
+        },
+        {
+          "code": "backend_error",
+          "detail": "page 2: OutOfMemoryError: CUDA out of memory. Tried to allocate 52.66 GiB. GPU 0 has a total capacity of 8.00 GiB of which 0 bytes is free. Of the allocated memory 7.83 GiB is allocated by PyTorch, and 162.85 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)"
+        }
+      ],
+      "pages": 0,
+      "pages_per_second": null,
+      "peak_memory_bytes": 195994953,
+      "selected": false,
+      "text_coverage": 0.0
+    },
+    {
+      "analyzer_text_chars": 1647,
+      "backend": "ocr-tele",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 0,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "itu-t-p863-p1-2.pdf",
+      "elapsed_s": 59.544998,
+      "emitted_chars": 0,
+      "failures": [
+        {
+          "code": "backend_error",
+          "detail": "page 1: OutOfMemoryError: CUDA out of memory. Tried to allocate 118.03 GiB. GPU 0 has a total capacity of 8.00 GiB of which 1.18 GiB is free. Of the allocated memory 4.20 GiB is allocated by PyTorch, and 1.59 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)"
+        },
+        {
+          "code": "backend_error",
+          "detail": "page 2: OutOfMemoryError: CUDA out of memory. Tried to allocate 118.03 GiB. GPU 0 has a total capacity of 8.00 GiB of which 1.00 GiB is free. Of the allocated memory 4.20 GiB is allocated by PyTorch, and 1.58 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)"
+        }
+      ],
+      "pages": 0,
+      "pages_per_second": null,
+      "peak_memory_bytes": 327903208,
+      "selected": false,
+      "text_coverage": 0.0
+    },
+    {
+      "analyzer_text_chars": 1647,
+      "backend": "ocr-unlimited",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 1,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "itu-t-p863-p1-2.pdf",
+      "elapsed_s": 11706.258197,
+      "emitted_chars": 64323,
+      "failures": [
+        {
+          "code": "backend_error",
+          "detail": "page 1: NotImplementedError: Cannot copy out of meta tensor; no data!"
+        }
+      ],
+      "pages": 1,
+      "pages_per_second": 8.5e-05,
+      "peak_memory_bytes": 3069146279,
+      "selected": false,
+      "text_coverage": 39.054645
+    },
+    {
+      "analyzer_text_chars": 1647,
+      "backend": "pdf-inspector",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 2,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "itu-t-p863-p1-2.pdf",
+      "elapsed_s": 0.021635,
+      "emitted_chars": 1653,
+      "failures": [],
+      "pages": 2,
+      "pages_per_second": 92.441946,
+      "peak_memory_bytes": 8239,
+      "selected": false,
+      "text_coverage": 1.003643
+    },
+    {
+      "analyzer_text_chars": 1647,
+      "backend": "pymupdf",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 10,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "itu-t-p863-p1-2.pdf",
+      "elapsed_s": 0.046282,
+      "emitted_chars": 1553,
+      "failures": [],
+      "pages": 2,
+      "pages_per_second": 43.213531,
+      "peak_memory_bytes": 354151,
+      "selected": false,
+      "text_coverage": 0.942927
+    },
+    {
+      "analyzer_text_chars": 925,
+      "backend": "liteparse",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 11,
+        "list": 0,
+        "paragraph": 4,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "nist-sp-800-53r5-p1-2.pdf",
+      "elapsed_s": 0.323639,
+      "emitted_chars": 691,
+      "failures": [],
+      "pages": 2,
+      "pages_per_second": 6.179717,
+      "peak_memory_bytes": 72406,
+      "selected": true,
+      "text_coverage": 0.747027
+    },
+    {
+      "analyzer_text_chars": 925,
+      "backend": "ocr-ovis",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 0,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "nist-sp-800-53r5-p1-2.pdf",
+      "elapsed_s": 875.021666,
+      "emitted_chars": 0,
+      "failures": [
+        {
+          "code": "backend_error",
+          "detail": "page 1: OutOfMemoryError: CUDA out of memory. Tried to allocate 48.56 GiB. GPU 0 has a total capacity of 8.00 GiB of which 2.65 GiB is free. Of the allocated memory 2.62 GiB is allocated by PyTorch, and 1.69 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)"
+        },
+        {
+          "code": "backend_error",
+          "detail": "page 2: OutOfMemoryError: CUDA out of memory. Tried to allocate 48.56 GiB. GPU 0 has a total capacity of 8.00 GiB of which 2.65 GiB is free. Of the allocated memory 2.62 GiB is allocated by PyTorch, and 1.69 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)"
+        }
+      ],
+      "pages": 0,
+      "pages_per_second": null,
+      "peak_memory_bytes": 590921432,
+      "selected": false,
+      "text_coverage": 0.0
+    },
+    {
+      "analyzer_text_chars": 925,
+      "backend": "ocr-qianfan",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 2,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "nist-sp-800-53r5-p1-2.pdf",
+      "elapsed_s": 689.371411,
+      "emitted_chars": 933,
+      "failures": [],
+      "pages": 2,
+      "pages_per_second": 0.002901,
+      "peak_memory_bytes": 3713827708,
+      "selected": false,
+      "text_coverage": 1.008649
+    },
+    {
+      "analyzer_text_chars": 925,
+      "backend": "ocr-surya",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 0,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "nist-sp-800-53r5-p1-2.pdf",
+      "elapsed_s": 899.656743,
+      "emitted_chars": 0,
+      "failures": [
+        {
+          "code": "backend_error",
+          "detail": "page 1: OutOfMemoryError: CUDA out of memory. Tried to allocate 48.56 GiB. GPU 0 has a total capacity of 8.00 GiB of which 0 bytes is free. Of the allocated memory 7.80 GiB is allocated by PyTorch, and 141.61 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)"
+        },
+        {
+          "code": "backend_error",
+          "detail": "page 2: OutOfMemoryError: CUDA out of memory. Tried to allocate 48.56 GiB. GPU 0 has a total capacity of 8.00 GiB of which 0 bytes is free. Of the allocated memory 7.80 GiB is allocated by PyTorch, and 141.61 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)"
+        }
+      ],
+      "pages": 0,
+      "pages_per_second": null,
+      "peak_memory_bytes": 196495367,
+      "selected": false,
+      "text_coverage": 0.0
+    },
+    {
+      "analyzer_text_chars": 925,
+      "backend": "ocr-tele",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 0,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "nist-sp-800-53r5-p1-2.pdf",
+      "elapsed_s": 119.003536,
+      "emitted_chars": 0,
+      "failures": [
+        {
+          "code": "backend_error",
+          "detail": "page 1: OutOfMemoryError: CUDA out of memory. Tried to allocate 109.96 GiB. GPU 0 has a total capacity of 8.00 GiB of which 1.13 GiB is free. Of the allocated memory 4.06 GiB is allocated by PyTorch, and 1.77 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)"
+        },
+        {
+          "code": "backend_error",
+          "detail": "page 2: OutOfMemoryError: CUDA out of memory. Tried to allocate 109.96 GiB. GPU 0 has a total capacity of 8.00 GiB of which 963.08 MiB is free. Of the allocated memory 4.06 GiB is allocated by PyTorch, and 1.77 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)"
+        }
+      ],
+      "pages": 0,
+      "pages_per_second": null,
+      "peak_memory_bytes": 318124082,
+      "selected": false,
+      "text_coverage": 0.0
+    },
+    {
+      "analyzer_text_chars": 925,
+      "backend": "ocr-unlimited",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 1,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "nist-sp-800-53r5-p1-2.pdf",
+      "elapsed_s": 218.963487,
+      "emitted_chars": 4430,
+      "failures": [
+        {
+          "code": "backend_error",
+          "detail": "page 1: NotImplementedError: Cannot copy out of meta tensor; no data!"
+        }
+      ],
+      "pages": 1,
+      "pages_per_second": 0.004567,
+      "peak_memory_bytes": 3068728884,
+      "selected": false,
+      "text_coverage": 4.789189
+    },
+    {
+      "analyzer_text_chars": 925,
+      "backend": "pdf-inspector",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 2,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "nist-sp-800-53r5-p1-2.pdf",
+      "elapsed_s": 0.01776,
+      "emitted_chars": 847,
+      "failures": [],
+      "pages": 2,
+      "pages_per_second": 112.614515,
+      "peak_memory_bytes": 7425,
+      "selected": false,
+      "text_coverage": 0.915676
+    },
+    {
+      "analyzer_text_chars": 925,
+      "backend": "pymupdf",
+      "chunk_counts": {
+        "caption": 0,
+        "code": 0,
+        "figure": 0,
+        "footer": 0,
+        "formula": 0,
+        "header": 0,
+        "heading": 0,
+        "list": 0,
+        "paragraph": 11,
+        "quote": 0,
+        "table": 0,
+        "unknown": 0
+      },
+      "document": "nist-sp-800-53r5-p1-2.pdf",
+      "elapsed_s": 0.028128,
+      "emitted_chars": 696,
+      "failures": [],
+      "pages": 2,
+      "pages_per_second": 71.104285,
+      "peak_memory_bytes": 215831,
+      "selected": false,
+      "text_coverage": 0.752432
+    }
+  ],
+  "skips": []
+}

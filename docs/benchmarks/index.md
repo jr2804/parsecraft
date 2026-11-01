@@ -274,6 +274,69 @@ support a "fits in 8 GB" claim. VRAM therefore stays in *Deferred runs* below
 with that caveat; measuring it honestly needs per-cell
 `reset_peak_memory_stats()` plus an `nvidia-smi` cross-check on a Linux host.
 
+### Results (2026-10-31, `9cbb645`)
+
+One environment, one pass: `.venv-gpu` at `2026.10.16.post8.dev0+9cbb645`, three
+2-page fixtures × eight backends = **24 rows, zero skips, 5 h 47 m**, clean
+exit. Artifacts: [`benchmark-gpu-fiveway-2026-10-31.json`](benchmark-gpu-fiveway-2026-10-31.json)
+and [`.md`](benchmark-gpu-fiveway-2026-10-31.md) — the committed tables, not a
+summary of them.
+
+**The result this run actually establishes is not a speed ranking.** At the
+shipped `RASTER_DPI = 300`, four of the five OCR models cannot process a single
+A4 page on an 8 GB card: the harness recorded typed `backend_error` failures
+instead of output, and only `ocr-qianfan` completed all three fixtures.
+
+| fixture | qianfan | surya | ovis | tele | unlimited |
+| --- | --- | --- | --- | --- | --- |
+| etsi-ts-103558-p1-2 | 2 pages, 939.4 s | OOM | OOM | OOM | 1 page, then error |
+| itu-t-p863-p1-2 | 2 pages, 762.0 s | OOM | OOM | OOM | 1 page, then error |
+| nist-sp-800-53r5-p1-2 | 2 pages, 689.4 s | OOM | OOM | OOM | 1 page, then error |
+
+For the single model that ran, pages/s is the headline the definition promised:
+**0.0021 / 0.0026 / 0.0029** pages per second (roughly 345–470 s per page, model
+load included — and, per caveat 2 below, qianfan's weights were fetched during
+this same pass, so those seconds include the download). The other four rows have
+no pages/s because they produced no
+pages; their `failures` column is the result.
+
+The failures are the same allocation, not four bugs: `ovis` and `surya` both ask
+for **52.66 GiB** in one `Tried to allocate` (two different model families
+sharing one qwen3.5-class vision tower), `tele` asks for **118.03 GiB**, and
+`unlimited` returns `infer_multi returned 0 page segments for 2 pages` plus
+`Cannot copy out of meta tensor` after offloading. A 300 dpi A4 page is
+2480×3509 = 8.7 Mpx, which becomes 34 320 vision patches (≈ 8 580 tokens) for
+ovis/surya and 44 500 (≈ 11 125 tokens) for tele; the attention itself is
+small, and the blow-up is the image-token forward. Measured bracket on `tele`:
+100 dpi fine (351 s), 150 dpi fine (408 s), 200 dpi OOM at 5.86 GiB, 300 dpi
+OOM at 118.03 GiB. Two of these numbers are worth carrying away: the cost is
+**super-linear in pixels** (2.25× the pixels, ~20× the allocation), and the only
+surviving model priced the reduction experimentally — qianfan at 150 dpi took
+813 s and produced 3 401 characters where 300 dpi took 2 717 s and produced
+3 376, i.e. **3.34× the wall clock for 0.7 % fewer characters**.
+
+**Four caveats, all of which constrain what may be quoted from that table:**
+
+1. `elapsed_s` includes model load. `_measure` builds a fresh backend per
+   (document, backend), so no row is pure inference time.
+2. A mid-run weight download inflates a cell **silently** — no failure row, no
+   skip row, only a `downloading …` line on stderr. `surya` (1318.9 MB / 21
+   files) and `tele` (2714.3 MB / 29 files) were pre-cached and verified before
+   the pass; `ovis`, `qianfan` and `unlimited` were fetched during it, so those
+   three cells mix download with compute.
+3. VRAM spilled to host (`Some parameters are on the meta device because they
+   were offloaded to the cpu`), so even the rows that completed are not clean
+   GPU numbers.
+4. `coverage` is emitted/source length, not accuracy. It says nothing about
+   whether the text is right, and one artifact row shows how far it can drift:
+   `unlimited` on ITU records `coverage 39.05` off a single partial page. There
+   is no accuracy gate anywhere yet, which is why changing the raster default is
+   a tracked follow-up rather than something this run licenses.
+
+Cross-host reading is forbidden by construction: this host is an RTX 2070 8 GB
+and the 2026-09-28 table is an A2000 8 GB, in two different virtual
+environments. Compare rows **within** this table only.
+
 ## Deferred runs
 
 The legs below were **deliberately deferred on 2026-09-28**, with the reason
@@ -405,3 +468,5 @@ expectations.
 | [`benchmark-ocr-pass-a.json`](benchmark-ocr-pass-a.json) | GPU pass A (ovis + qianfan, transformers 5.17.0), 12 rows — schema-guarded |
 | [`benchmark-ocr-pass-b.json`](benchmark-ocr-pass-b.json) | GPU pass B (tele + unlimited, transformers 4.57.1), 15 rows — schema-guarded |
 | [`benchmark-docling-vs-native.json`](benchmark-docling-vs-native.json) | docling vs pymupdf, 2-page fixtures, 6 rows |
+| [`benchmark-gpu-fiveway-2026-10-31.md`](benchmark-gpu-fiveway-2026-10-31.md) | 2026-10-31 five-way GPU Markdown (`9cbb645`, 24 rows), schema-guarded with a writer round-trip |
+| [`benchmark-gpu-fiveway-2026-10-31.json`](benchmark-gpu-fiveway-2026-10-31.json) | the same five-way JSON |

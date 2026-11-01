@@ -33,6 +33,12 @@ _RESULT_FIELDS = {
 _OCR_PASS_A = _ARTIFACTS / "benchmark-ocr-pass-a.json"
 _OCR_PASS_B = _ARTIFACTS / "benchmark-ocr-pass-b.json"
 
+# ── GPU OCR five-way (single window, all five models on the shipped 300 dpi) ─
+
+_GPU_FIVEWAY = _ARTIFACTS / "benchmark-gpu-fiveway-2026-10-31.json"
+_GPU_FIVEWAY_MD = _ARTIFACTS / "benchmark-gpu-fiveway-2026-10-31.md"
+_FIVEWAY_OCR_BACKENDS = {"ocr-ovis", "ocr-qianfan", "ocr-surya", "ocr-tele", "ocr-unlimited"}
+
 
 def test_committed_json_matches_current_writer_byte_for_byte() -> None:
     # Round-trip guard: the committed artifact must be exactly what today's
@@ -96,6 +102,43 @@ def test_refresh_pins_csv_measurement_and_json_skip() -> None:
 
 def _report() -> BenchmarkReport:
     return BenchmarkReport.model_validate(json.loads(_JSON_PATH.read_text(encoding="utf-8")))
+
+
+def test_gpu_fiveway_artifacts_match_the_current_writer_byte_for_byte() -> None:
+    # The five-way ran on one commit in one environment; both artifacts are
+    # writer output for that one report, so a schema change must fail here
+    # rather than leaving a page quoting numbers whose shape we no longer emit.
+    report = BenchmarkReport.model_validate_json(_GPU_FIVEWAY.read_text(encoding="utf-8"))
+    assert _GPU_FIVEWAY.read_text(encoding="utf-8", newline="") == to_json(report)
+    assert _GPU_FIVEWAY_MD.read_text(encoding="utf-8", newline="") == to_markdown(report)
+
+
+def test_gpu_fiveway_covers_all_five_models_and_records_every_failure() -> None:
+    # Guards the 2026-10-31 five-way: one window for all five OCR models, three
+    # fixtures, and typed failures recorded for the models that could not run at
+    # the shipped raster. A factual test of this committed artifact.
+    report = BenchmarkReport.model_validate_json(_GPU_FIVEWAY.read_text(encoding="utf-8"))
+    rows = [(row.document, row.backend) for row in report.results]
+    assert rows == sorted(rows)
+    assert len(report.results) == 24, "three fixtures x eight backends"
+    assert report.skips == [], "every document and backend ran; nothing was skipped"
+    assert "9cbb645" in report.package_version
+    backends = {row.backend for row in report.results}
+    assert _FIVEWAY_OCR_BACKENDS <= backends
+    assert {"liteparse", "pdf-inspector", "pymupdf"} <= backends
+    won: dict[str, int] = dict.fromkeys(_FIVEWAY_OCR_BACKENDS, 0)
+    for row in report.results:
+        # "completed" = both fixture pages emitted with no typed failure. A model
+        # that returns one page and then errors did not complete the fixture.
+        if row.backend in won and row.pages == 2 and not row.failures:
+            won[row.backend] += 1
+    # qianfan was the only model that completed every fixture at 300 dpi; the
+    # other four are expected to fail here and MUST be recorded, not dropped.
+    assert won["ocr-qianfan"] == 3
+    for name in _FIVEWAY_OCR_BACKENDS - {"ocr-qianfan"}:
+        assert won[name] < 3, f"{name} unexpectedly completed all three fixtures — revisit the page"
+    failed = [row for row in report.results if row.backend in _FIVEWAY_OCR_BACKENDS and row.failures]
+    assert failed, "the OOM cells must carry their typed failures"
 
 
 def test_ocr_artifacts_validate_sort_and_cover_all_models() -> None:
