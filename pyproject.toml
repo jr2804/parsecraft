@@ -138,6 +138,24 @@ parsecraft = "parsecraft.cli.app:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/parsecraft"]
 
+# Hatchling honors the ROOT `.gitignore` but not nested ones, so a build in a
+# developer tree otherwise ships `.beads/backup/` (Dolt issue text, verbatim),
+# `.cache/`, `.rumdl_cache/` and the pytest cache — measured 959 members / 7.9 MB
+# against the 358 members / 893 KB a clean checkout produces for the same commit
+# (pc-1qz). The published artifacts are clean only because CI checks out fresh;
+# naming the directories here makes the exclusion a property of the project, not
+# of the machine that ran the build. `tests/test_sdist_manifest.py` fails when a
+# directory ignored only by a nested `.gitignore` is missing from this list.
+[tool.hatch.build.targets.sdist]
+exclude = [
+  ".beads",
+  ".cache",
+  ".ruff_cache",
+  ".rumdl_cache",
+  ".tmp",
+  "tests/test-cache",
+]
+
 [build-system]
 requires = ["hatchling", "uv-dynamic-versioning"]
 build-backend = "hatchling.build"
