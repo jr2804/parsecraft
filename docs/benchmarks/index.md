@@ -68,6 +68,44 @@ backend's `convert` and never reads the conversion cache, which would report
 `pymupdf` extraction needs the `pymupdf` extra (AGPL); without it the
 report records a typed `dependency_missing` row instead of crashing.
 
+### Launching a multi-hour run (Windows)
+
+The harness writes its report only when the run finishes, so an OCR leg that
+takes hours has to outlive the shell that started it. Three launch shapes were
+measured against the same five-way GPU run (pc-6ev, 2026-10-31), and only the
+third one finished:
+
+- **Child of the calling process tree** — dies with that call. Measured as a
+  0.1-minute run with 9 rows and **zero OCR rows**.
+- **Console attached, window closed** — aborts inside the torch/MKL Fortran
+  runtime: `forrtl: error (200): program aborting due to window-CLOSE event`.
+  That cost a 65-minute run.
+- **Detached, no console** — the run that completed (5 h 47 m, 24 rows).
+
+```python
+subprocess.Popen(
+    argv,
+    cwd=checkout,  # a detached child inherits the spawner's cwd and PATH
+    stdin=subprocess.DEVNULL,
+    stdout=log_file,
+    stderr=err_file,
+    creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
+)
+```
+
+`DETACHED_PROCESS` alone is not enough: without `CREATE_NO_WINDOW` the child
+still owns a console window, and closing it is the `forrtl` abort above.
+
+Because the child inherits the spawner's **PATH**, the environment probe reads
+that PATH — and `tesseract` and `pandoc` are binaries, not extras. Launch from
+a shell whose PATH contains every engine you expect the plan to consider, then
+check the `selected` column of the first rows before trusting a long run.
+
+Weights downloaded *during* a run are silent: a pre-cached backend and an
+uncached one differ only in `elapsed_s`, which includes the download. Warm the
+cache first (`parsecraft models install <backend>`) and record which backends
+were pre-cached, or the first rows carry a cost that is not the model's.
+
 ## Results (2026-10-31, `a546d73`)
 
 The full harness output is committed alongside this page:
