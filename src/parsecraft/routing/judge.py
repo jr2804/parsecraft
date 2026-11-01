@@ -24,6 +24,18 @@ from parsecraft.routing.models import Intent, RoutingPreference
 from parsecraft.routing.rules import FeatureHints, is_ocr
 
 #: Preferred backend per OCR flavor (code-owned naming contract).
+#:
+#: A FLAVOUR ranking, not a capacity ranking, and the distinction is load-bearing:
+#: an entry says "for this kind of page this backend is the best reader", never
+#: "this backend runs on this host". Whether one can run at all is decided before
+#: ranking, by :func:`parsecraft.routing.rules.is_hard_eligible` against the
+#: declared ``estimated_vram_gb``; this table is consulted only over the
+#: candidates that survived it. Do not repoint an entry at whichever backend
+#: survives a small card — measured 2026-10-31, the low-VRAM survivor returns
+#: roughly a third of the text of the preferred one and does so more slowly, and
+#: both paths succeed, so nothing flags the loss. The declared figures for the OCR
+#: four are known to understate real allocation on an 8 GiB card (pc-da0); that is
+#: a per-backend, per-page measurement and belongs in the eligibility gate.
 PREFERRED_BACKENDS: dict[Intent, str | None] = {
     Intent.NATIVE: None,
     Intent.OCR_GENERAL: None,
