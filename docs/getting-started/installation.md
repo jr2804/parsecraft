@@ -119,7 +119,7 @@ side — if you do not touch the named surface, a plain upgrade is safe.
 
 | If you use | Changed in | What to do |
 | ---------- | ---------- | ---------- |
-| `"docling" in installed_extras` | 2026.10.15 only | Pin `parsecraft==2026.10.14`, or upgrade to `>=2026.10.16`. That single release installed `docling-rs` while probing for the old `docling` distribution, so `parsecraft[docling]` reported the extra as absent and the docling backend was ineligible for every source — silently, with nothing in the run saying so. |
+| `"docling" in installed_extras` | 2026.10.15 only | Pin `parsecraft==2026.10.14`, or upgrade to `>=2026.10.16`. That single release installed `docling-rs` while probing for the old `docling` distribution, so `parsecraft[docling]` reported the extra as absent and the docling backend was ineligible for every source. In auto mode that is silent — the candidate is dropped before planning and no surface names it — while a `--backend docling` pin fails loudly with `pinned backend 'docling' is not eligible for this source`. |
 | `parsecraft.backends.docling.libreoffice` (`LIBREOFFICE_ENV`, `find_libreoffice_cmd`, `resolve_libreoffice_cmd`, `configure_libreoffice_env`, `LibreOfficeUnavailableError`) | 2026.10.16 | Copy the helpers you need, or pin `parsecraft==2026.10.15`. The module is gone, not renamed; the backend stopped calling it in 2026.10.15 and no declared format needs LibreOffice. |
 | `DOCLING_LIBREOFFICE_CMD` | 2026.10.15 | Nothing — the backend stopped reading it. Office formats are already parsed natively by `docling-rs` and the variable has no effect. |
 
