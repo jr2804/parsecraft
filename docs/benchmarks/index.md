@@ -374,8 +374,8 @@ the full-corpus runs only cost machine time.
 | Run | Deferred on | Reason | Command |
 | --- | --- | --- | --- |
 | Full-corpus OCR, all four models | 2026-09-28 | Cost/time only: the 2-page fixtures already take 82–1024 s per document, so the corpus is many hours of exclusive GPU time. Not an install conflict — the extras are jointly installable on one `transformers` window | [Full-corpus command](#full-corpus-ocr-command) |
-| Full-corpus `ocr-qianfan` | 2026-09-28 | Cost/time: ≈ 145 s/page measured → ≈ 20 h for NIST SP 800-53r5 alone. Weights are staged and sha-verified (20 GB cache), so the run is offline-ready | same command (qianfan is one of the measured backends) |
-| Full-corpus OCR, all four models (re-affirmed) | 2026-10-31 | Cost/time only — unchanged from 2026-09-28; no GPU env in the 2026-10-31 run | same OCR command above |
+| Full-corpus `ocr-qianfan` | 2026-09-28 | Cost/time. The original ≈ 145 s/page estimate is **revised upward** by the 2026-10-31 five-way run: 689–939 s per 2-page document at the shipped 300 dpi raster is 345–470 s/page, i.e. **≈ 47–64 h** for NIST SP 800-53r5 alone, not the ≈ 20 h first written here. Weights are staged and sha-verified (20 GB cache), so the run is offline-ready | same command (qianfan is one of the measured backends) |
+| Full-corpus OCR, all four `parsecraft[ocr]` models (re-affirmed) | 2026-10-31 | Cost/time only, and now priced by measurement rather than estimate: the five-way run on this date produced 345–470 s/page for the one model that survives 300 dpi, and hours of exclusive GPU time per corpus file. A GPU environment (`.venv-gpu`) did exist that day — the full corpus was deferred for cost, not for lack of hardware | same OCR command above |
 | Full-corpus docling (re-affirmed) | 2026-10-31 | Runtime budget — unchanged from 2026-09-28; not an automated check | same docling command above |
 | PyMuPDF extraction on the 2026-10-31 corpus | 2026-10-31 | Scope/env: PyMuPDF was absent from the measured env; historical numbers stay in the 2026-09-27 snapshot | In an isolated checkout, `uv sync --extra web --extra pymupdf --reinstall-package parsecraft`, then run the benchmark command from the [recipe](#reproduce) |
 | GPU VRAM measurement | 2026-10-31 | Out of scope on this host: peak bytes are `tracemalloc` host-Python allocations, and WDDM lets `torch.cuda.max_memory_allocated()` exceed the card (9155 MiB reported on 8191 MiB; a synthetic loop reached 12288 MiB with `free = 0`), so a number here would not be a VRAM measurement | On Linux: per-cell `reset_peak_memory_stats()` plus an `nvidia-smi` cross-check |
@@ -459,8 +459,9 @@ parsecraft benchmark fixtures/*.pdf --json > benchmark-docling-vs-native.json
   any OCR number here to a whole document would be fabricated. The dated
   deferral and exact commands are in [Deferred runs](#deferred-runs). The pinned
   licensed PDFs are hand-staged and never downloaded.
-- **Full-corpus `qianfan` is a dated deferral** (≈ 145 s/page measured; ≈ 20 h
-  for NIST alone) — see [Deferred runs](#deferred-runs). All four models are
+- **Full-corpus `qianfan` is a dated deferral** — see
+  [Deferred runs](#deferred-runs), which carries the current 345–470 s/page rate
+  from the five-way run (≈ 47–64 h for NIST alone). All four models are
   staged and sha-verified (20 GB cache), so the deferred run passes offline
   asset checks.
 - **VRAM is not measured here, and timings carry tracing overhead.** Peak
