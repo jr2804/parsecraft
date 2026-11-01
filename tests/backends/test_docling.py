@@ -95,8 +95,9 @@ class _ConversionResult:
 
 
 class _Converter:
-    def __init__(self, state: _State) -> None:
+    def __init__(self, state: _State, options: dict[str, str | int | float | bool] | None = None) -> None:
         self._state = state
+        self.options = dict(options or {})
 
     def convert(self, source: object, page_range: tuple[int, int] | None = None) -> _ConversionResult:
         self._state.convert_calls.append((getattr(source, "name", None), page_range))
@@ -166,6 +167,7 @@ class _State:
         self.convert_error: Exception | None = None
         self.delay_s = 0.0
         self.stderr_warnings: list[bytes] = []
+        self.converters: list[_Converter] = []
 
 
 def _grid_from_markdown(markdown: str) -> list[list[types.SimpleNamespace]]:
@@ -282,10 +284,61 @@ def test_convert_declines_plain_text_with_the_native_redirect(docling_stub: _Sta
     assert "native-text" in failure.detail
 
 
-def test_converter_is_created_once_per_process(docling_stub: _State) -> None:
+def test_converter_is_created_once_per_option_set(docling_stub: _State) -> None:
     impl = _impl()
-    first = impl._converter()
-    assert impl._converter() is first
+    first = impl._converter({})
+    assert impl._converter({}) is first
+
+
+def test_converter_is_rebuilt_for_a_different_option_set(docling_stub: _State) -> None:
+    """Two option sets must never share an engine (pc-fwn)."""
+    impl = _impl()
+    plain = impl._converter({})
+    quiet = impl._converter({"do_ocr": False})
+    assert quiet is not plain
+    assert plain.options == {}
+    assert quiet.options == {"do_ocr": False}
+    assert impl._converter({"do_ocr": False}) is quiet
+
+
+def test_backend_honours_do_ocr_from_the_config(docling_stub: _State) -> None:
+    """``--backend-option do_ocr=false`` reaches the engine (pc-fwn)."""
+    backend = docling_module.factory(BackendConfig(name="docling", options={"offline": False, "do_ocr": "false"}))
+    _convert(backend)
+    assert docling_stub.converters[-1].options == {"do_ocr": False}
+
+
+def test_backend_without_options_uses_the_bare_converter(docling_stub: _State) -> None:
+    _convert(_backend())
+    assert docling_stub.converters[-1].options == {}
+
+
+def test_unknown_option_is_rejected_naming_it(docling_stub: _State) -> None:
+    """A silently ignored option looks like success, so it must raise (pc-fwn)."""
+    with pytest.raises(BackendError, match="unknown docling option 'do_ocrr'"):
+        docling_module.factory(BackendConfig(name="docling", options={"do_ocrr": False}))
+
+
+def test_bad_option_type_is_rejected_naming_the_option(docling_stub: _State) -> None:
+    with pytest.raises(BackendError, match="'do_ocr' must be a boolean"):
+        docling_module.factory(BackendConfig(name="docling", options={"do_ocr": "maybe"}))
+    with pytest.raises(BackendError, match="'images_scale' must be a number"):
+        docling_module.factory(BackendConfig(name="docling", options={"images_scale": "big"}))
+    with pytest.raises(BackendError, match="'ocr_lang' must be text"):
+        docling_module.factory(BackendConfig(name="docling", options={"ocr_lang": True}))
+
+
+def test_injected_offline_option_is_dropped_not_forwarded(docling_stub: _State) -> None:
+    """The executor puts ``offline`` in every map; it is not a constructor keyword."""
+    assert _impl().converter_options({"offline": True}) == {}
+
+
+def test_numeric_option_is_coerced_to_a_float(docling_stub: _State) -> None:
+    assert _impl().converter_options({"images_scale": "2"}) == {"images_scale": 2.0}
+
+
+def test_text_option_passes_through(docling_stub: _State) -> None:
+    assert _impl().converter_options({"ocr_lang": "deu"}) == {"ocr_lang": "deu"}
 
 
 def test_convert_builds_typed_ir_per_page(docling_stub: _State) -> None:
@@ -531,6 +584,37 @@ def test_convert_without_ocr_warning_keeps_pages_clean(docling_stub: _State) -> 
     assert result.pages[0].diagnostics == []
 
 
+def test_pages_emptied_by_do_ocr_false_say_so(docling_stub: _State) -> None:
+    """The caller's own knob must not produce a silent empty page (pc-fwn).
+
+    docling.rs prints no warning at all when OCR is off, so the adapter has to
+    supply the diagnosis; the executor's ``degraded-empty-output`` skips any
+    page that already carries diagnostics, so the specific fact wins and the
+    two never double-speak.
+    """
+    docling_stub.items = [_TextItem("kept text", page_no=1)]
+    backend = docling_module.factory(BackendConfig(name="docling", options={"do_ocr": False}))
+    result = _convert(backend, page_range=PageRange(start=1, end=2))
+    kept, emptied = result.pages
+    assert [c.content for c in kept.blocks] == ["kept text"]
+    assert kept.diagnostics == []
+    assert emptied.blocks == []
+    (diagnostic,) = emptied.diagnostics
+    assert diagnostic.level.value == "warning"
+    assert diagnostic.code == "docling-ocr-disabled"
+    assert "do_ocr=false" in diagnostic.message
+    assert "came back empty" in diagnostic.message
+
+
+def test_do_ocr_false_reports_no_missing_models_and_no_pages_are_blank(docling_stub: _State) -> None:
+    """Nothing to say when the option is off but every page produced text."""
+    docling_stub.items = [_TextItem("hello", page_no=1)]
+    backend = docling_module.factory(BackendConfig(name="docling", options={"do_ocr": False}))
+    result = _convert(backend)
+    assert [c.content for c in result.pages[0].blocks] == ["hello"]
+    assert result.pages[0].diagnostics == []
+
+
 def _backend() -> DocumentBackend:
     return docling_module.factory(BackendConfig(name="docling"))
 
@@ -589,7 +673,13 @@ def _install_stub_modules(state: _State, monkeypatch: pytest.MonkeyPatch) -> Non
 
     docling_rs = module("docling_rs")
     docling_rs.ConversionResult = _ConversionResult  # ty: ignore[unresolved-attribute]
-    docling_rs.DocumentConverter = lambda: _Converter(state)  # ty: ignore[unresolved-attribute]
+
+    def _make_converter(**options: str | int | float | bool) -> _Converter:
+        converter = _Converter(state, options)
+        state.converters.append(converter)
+        return converter
+
+    docling_rs.DocumentConverter = _make_converter  # ty: ignore[unresolved-attribute]
     docling_rs.DocumentStream = _DocumentStream  # ty: ignore[unresolved-attribute]
 
     docling_core = module("docling_core")

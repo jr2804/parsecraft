@@ -34,6 +34,29 @@ mapping is engine-independent.
   `DOCLING_LIBREOFFICE_CMD` (verified — a real DOCX converts with the
   variable pointing at garbage), so no declared format needs LibreOffice
   and `create()` configures nothing.
+- **Constructor options are honoured (pc-fwn).** `BackendConfig.options`
+  reaches the engine through `_CONVERTER_OPTION_KEYS`, a curated subset of the
+  `DocumentConverter` keywords — not the ~80-key surface, so upstream additions
+  do not silently become our API (liteparse's rule). Unknown keys RAISE: a
+  dropped option looks like success, and an operator debugging a memory problem
+  would be reading a config that never arrived. Booleans coerce through
+  `backends.options.coerce_option_value` and are type-checked; `create()`
+  validates eagerly, so a bad value fails before a conversion starts.
+- **`offline` is injected into every backend's option map** by
+  `pipeline/executor.py` and is NOT a `DocumentConverter` keyword — forwarding
+  the map wholesale dies with `TypeError: … unexpected keyword argument
+  'offline'` (verified against docling-rs 2.55.4). `_INJECTED_OPTION_KEYS`
+  accepts and drops it; the structural fix (a typed field on `BackendConfig`)
+  is a separate, wider change.
+- **One converter per option set, not per process.** `_CONVERTERS` is keyed by
+  the resolved options: docling.rs loads its pipelines inside the converter, so
+  a shared instance would serve the second caller the first caller's switches.
+- **`do_ocr=false` empties scanned pages silently in the engine** (no warning at
+  all — verified), so the adapter supplies `docling-ocr-disabled` for exactly
+  the pages it emptied. Distinct from `docling-ocr-unavailable` (models
+  missing): the fix is a different one. The executor's
+  `degraded-empty-output` skips a page that already carries diagnostics, so the
+  specific fact wins and the two never double-speak.
 - `supported_formats` lists only inputs **conversion-verified** against the
   real library (PDF/HTML/DOCX: re-verified 2026-10-31 against docling.rs
   2.55.4 through this backend — PDF with models installed, page_range

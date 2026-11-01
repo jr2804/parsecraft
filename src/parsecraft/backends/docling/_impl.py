@@ -40,6 +40,7 @@ from docling_rs import ConversionResult, DocumentConverter, DocumentStream  # ty
 
 from parsecraft.backends.docling.docling import DESCRIPTOR, DOCLING_BACKEND_VERSION
 from parsecraft.backends.errors import BackendError
+from parsecraft.backends.options import coerce_option_value
 from parsecraft.backends.protocol import (
     AnalysisResult,
     BackendConfig,
@@ -86,6 +87,31 @@ _LABEL_KINDS: dict[str, ChunkKind] = {
 
 _PDF_MEDIA_TYPE = "application/pdf"
 
+#: ``DocumentConverter`` keywords this adapter forwards from
+#: ``BackendConfig.options`` (``--backend-option do_ocr=false`` and friends).
+#: Only these are forwarded — a curated subset, not the ~80-key constructor
+#: surface, so the documented contract stays small and upstream additions do
+#: not silently become our API (same rule as ``liteparse._FORMAT_OPTION_KEYS``).
+#: The value is the type the option must coerce to.
+_CONVERTER_OPTION_KEYS: dict[str, type] = {
+    "do_ocr": bool,
+    "do_table_structure": bool,
+    "force_full_page_ocr": bool,
+    "keep_picture_images": bool,
+    "do_picture_classification": bool,
+    "do_code_enrichment": bool,
+    "do_formula_enrichment": bool,
+    "images_scale": float,
+    "ocr_lang": str,
+}
+#: Options the executor injects into every backend's map and that are NOT
+#: docling constructor keywords. ``pipeline/executor.py`` builds
+#: ``{"offline": offline, **backend_options}``, so forwarding the map wholesale
+#: dies with ``TypeError: DocumentConverter.__init__() got an unexpected
+#: keyword argument 'offline'`` (verified). ``offline`` is a request fact
+#: smuggled through an untyped map; here it is accepted and dropped.
+_INJECTED_OPTION_KEYS: frozenset[str] = frozenset({"offline"})
+
 #: Text types this backend declines at ``convert()``: under the Python engine
 #: both reach the marko table matcher, which spins without timeout on
 #: pipe-heavy content (2026-10-30), so they route to the dependency-free
@@ -118,7 +144,14 @@ _OCR_UNAVAILABLE_FRAGMENT = "OCR model unavailable"
 #: so concurrent converts serialize their capture instead of interleaving
 #: each other's output (pc-04u).
 _CAPTURE_LOCK = threading.Lock()
-_CONVERTER: DocumentConverter | None = None
+#: One converter per option set, keyed by the resolved options: docling.rs loads
+#: its pipelines inside the converter, so two option sets sharing one instance
+#: would serve the second caller the first caller's switches (pc-fwn).
+_CONVERTERS: dict[tuple[tuple[str, str | int | float | bool], ...], DocumentConverter] = {}
+#: Diagnostic code for "the caller turned OCR off and this page came back
+#: empty" — distinct from ``docling-ocr-unavailable`` (models missing) because
+#: the fix is different: turn the option back on, not download anything.
+_OCR_DISABLED_CODE = "docling-ocr-disabled"
 
 
 class DoclingBackend:
@@ -129,11 +162,13 @@ class DoclingBackend:
 
     def __init__(self, config: BackendConfig) -> None:
         self._config = config
+        self._options = converter_options(config.options)
 
     def convert(self, request: ConversionRequest) -> BackendResult:
         """Bound-checked conversion into typed IR (never raises)."""
         started = monotonic()
         reference = BackendRef(name=self.name, version=DOCLING_BACKEND_VERSION)
+        ocr_disabled = self._options.get("do_ocr", True) is False
         redirect = _DECLINED_MEDIA_TYPES.get(request.source.media_type or "")
         if redirect is not None:
             return _result(
@@ -155,7 +190,7 @@ class DoclingBackend:
             return _result(reference, [], [_failure(request, started, FailureCode.CANCELLED, "cancelled before conversion")], started)
         data = source_bytes(request.source)
         try:
-            result, ocr_unavailable = _convert_and_watch(data, request)
+            result, ocr_unavailable = _convert_and_watch(data, request, self._options)
         except Exception as exc:  # docling_rs load/parse boundary — typed, never raw
             if _MODEL_NOT_FOUND_FRAGMENTS in str(exc):
                 detail = (
@@ -168,7 +203,7 @@ class DoclingBackend:
             return _result(reference, [], [_failure(request, started, FailureCode.BACKEND_ERROR, detail)], started)
         if request.timeout_s is not None and monotonic() - started > request.timeout_s:
             return _result(reference, [], [_failure(request, started, FailureCode.TIMEOUT, "conversion exceeded timeout_s")], started)
-        pages, failure = _select(request, result.document, started, ocr_unavailable=ocr_unavailable)
+        pages, failure = _select(request, result.document, started, ocr_unavailable=ocr_unavailable, ocr_disabled=ocr_disabled)
         failures = [] if failure is None else [failure]
         return _result(reference, pages, failures, started)
 
@@ -201,7 +236,50 @@ def create(config: BackendConfig) -> DocumentBackend:
     # docling.rs parses office formats natively in Rust (verified: a real DOCX
     # converts with DOCLING_LIBREOFFICE_CMD pointing at garbage), so there is
     # no LibreOffice discovery and nothing to configure here.
+    # Constructor options are validated eagerly: a bad option must fail here,
+    # naming it, not several minutes into a conversion.
+    converter_options(config.options)
     return DoclingBackend(config)
+
+
+def converter_options(options: dict[str, str | int | float | bool]) -> dict[str, str | int | float | bool]:
+    """The ``DocumentConverter`` keywords a caller may set, validated and coerced.
+
+    Unknown keys are rejected rather than ignored: a silent drop turns
+    ``--backend-option do_ocr=false`` into a no-op that looks like success.
+    ``_INJECTED_OPTION_KEYS`` are accepted and dropped — the executor puts
+    ``offline`` in every backend's map and it is not a constructor keyword.
+    """
+    resolved: dict[str, str | int | float | bool] = {}
+    for key, raw in options.items():
+        if key in _INJECTED_OPTION_KEYS:
+            continue
+        expected = _CONVERTER_OPTION_KEYS.get(key)
+        if expected is None:
+            accepted = ", ".join(sorted(_CONVERTER_OPTION_KEYS))
+            msg = f"unknown docling option {key!r}: accepted options are {accepted}"
+            raise BackendError(msg)
+        resolved[key] = _typed_option(key, raw, expected)
+    return resolved
+
+
+def _typed_option(key: str, raw: str | int | float | bool, expected: type) -> str | int | float | bool:
+    """Coerce one option to its declared type, or fail naming the option."""
+    value = coerce_option_value(raw)
+    if expected is bool:
+        if not isinstance(value, bool):
+            msg = f"docling option {key!r} must be a boolean (true/false), got {raw!r}"
+            raise BackendError(msg)
+        return value
+    if expected is float:
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            msg = f"docling option {key!r} must be a number, got {raw!r}"
+            raise BackendError(msg)
+        return float(value)
+    if not isinstance(value, str):
+        msg = f"docling option {key!r} must be text, got {raw!r}"
+        raise BackendError(msg)
+    return value
 
 
 def _pdf_signals(data: bytes) -> list[PageSignal]:
@@ -231,7 +309,11 @@ def _pdf_signals(data: bytes) -> list[PageSignal]:
         document.close()
 
 
-def _convert_and_watch(data: bytes, request: ConversionRequest) -> tuple[ConversionResult, bool]:
+def _convert_and_watch(
+    data: bytes,
+    request: ConversionRequest,
+    options: dict[str, str | int | float | bool],
+) -> tuple[ConversionResult, bool]:
     """One docling pass plus whether the engine warned about missing OCR models.
 
     docling-rs emits engine warnings on the process stderr (fd 2) only — no
@@ -254,7 +336,7 @@ def _convert_and_watch(data: bytes, request: ConversionRequest) -> tuple[Convers
         with tempfile.TemporaryFile() as sink:
             os.dup2(sink.fileno(), 2)
             try:
-                result = _convert(data, request)
+                result = _convert(data, request, options)
             finally:
                 sys.stderr.flush()
                 os.dup2(backup, 2)
@@ -266,14 +348,15 @@ def _convert_and_watch(data: bytes, request: ConversionRequest) -> tuple[Convers
     return result, _OCR_UNAVAILABLE_FRAGMENT.encode() in blob
 
 
-def _convert(data: bytes, request: ConversionRequest) -> ConversionResult:
+def _convert(data: bytes, request: ConversionRequest, options: dict[str, str | int | float | bool]) -> ConversionResult:
     """Run one docling.rs pass; ``page_range`` is passed only for PDFs."""
     uri = request.source.uri
     name = (_local_path(uri) if uri.startswith("file://") else Path(uri)).name or "document"
     stream = DocumentStream(name=name, stream=BytesIO(data))
+    converter = _converter(options)
     if request.source.media_type == _PDF_MEDIA_TYPE and request.page_range is not None:
-        return _converter().convert(stream, page_range=(request.page_range.start, request.page_range.end))
-    return _converter().convert(stream)
+        return converter.convert(stream, page_range=(request.page_range.start, request.page_range.end))
+    return converter.convert(stream)
 
 
 def _replay_stderr(blob: bytes) -> None:
@@ -284,12 +367,14 @@ def _replay_stderr(blob: bytes) -> None:
         view = view[written:]
 
 
-def _converter() -> DocumentConverter:
-    """Process-wide converter; docling.rs pipelines load lazily inside it."""
-    global _CONVERTER  # noqa: PLW0603 — one converter per process is the docling contract
-    if _CONVERTER is None:
-        _CONVERTER = DocumentConverter()
-    return _CONVERTER
+def _converter(options: dict[str, str | int | float | bool]) -> DocumentConverter:
+    """One converter per option set; docling.rs pipelines load lazily inside it."""
+    key = tuple(sorted(options.items()))
+    converter = _CONVERTERS.get(key)
+    if converter is None:
+        converter = DocumentConverter(**options)
+        _CONVERTERS[key] = converter
+    return converter
 
 
 def _select(
@@ -298,13 +383,16 @@ def _select(
     started: float,
     *,
     ocr_unavailable: bool = False,
+    ocr_disabled: bool = False,
 ) -> tuple[list[PageResult], PassFailure | None]:
     """Map docling items to typed chunks per page, honoring bounds."""
     blocks: dict[int, list[StructuredChunk]] = {}
     used_chars = 0
     for item, _level in document.iterate_items():
         if request.cancellation is not None and request.cancellation():
-            return _filled_pages(blocks, request.page_range, ocr_unavailable), _failure(request, started, FailureCode.CANCELLED, "cancelled between items")
+            return _filled_pages(blocks, request.page_range, ocr_unavailable, ocr_disabled), _failure(
+                request, started, FailureCode.CANCELLED, "cancelled between items"
+            )
         content, kind, rows, metadata = _item_content(item, document)
         if not content:
             continue
@@ -312,7 +400,7 @@ def _select(
         if request.page_range is not None and not (request.page_range.start <= page_number <= request.page_range.end):
             continue
         if request.max_output_chars is not None and used_chars + len(content) > request.max_output_chars:
-            return _filled_pages(blocks, request.page_range, ocr_unavailable), _failure(
+            return _filled_pages(blocks, request.page_range, ocr_unavailable, ocr_disabled), _failure(
                 request, started, FailureCode.BUDGET_EXCEEDED, "max_output_chars budget reached"
             )
         used_chars += len(content)
@@ -328,7 +416,7 @@ def _select(
                 metadata=metadata,
             )
         )
-    return _filled_pages(blocks, request.page_range, ocr_unavailable), None
+    return _filled_pages(blocks, request.page_range, ocr_unavailable, ocr_disabled), None
 
 
 def _item_content(item: object, document: DoclingDocument) -> tuple[str, ChunkKind, tuple[tuple[str, ...], ...] | None, dict[str, str]]:
@@ -374,6 +462,7 @@ def _filled_pages(
     blocks: dict[int, list[StructuredChunk]],
     page_range: PageRange | None,
     ocr_unavailable: bool = False,
+    ocr_disabled: bool = False,
 ) -> list[PageResult]:
     """Every requested page, empty when docling produced no chunks for it.
 
@@ -384,16 +473,45 @@ def _filled_pages(
     on both empty and OCR'd outcomes and cannot tell them apart, while this
     entry states the backend's capability state for exactly the pages the
     backend emptied (pc-04u).
+
+    ``ocr_disabled`` covers the caller's own switch (pc-fwn): docling.rs prints
+    no warning at all when ``do_ocr=False``, so without this a page the option
+    emptied would come back silent — the shape pc-04u and pc-8ti exist to
+    remove. The two never both fire: disabling OCR suppresses the warning.
     """
     numbers = sorted(blocks) or [1] if page_range is None else list(range(page_range.start, page_range.end + 1))
     return [
         PageResult(
             page_number=number,
             blocks=blocks.get(number, []),
-            diagnostics=[_ocr_unavailable_diagnostic()] if ocr_unavailable and not blocks.get(number) else [],
+            diagnostics=_page_diagnostics(number, blocks, ocr_unavailable=ocr_unavailable, ocr_disabled=ocr_disabled),
         )
         for number in numbers
     ]
+
+
+def _page_diagnostics(
+    number: int,
+    blocks: dict[int, list[StructuredChunk]],
+    *,
+    ocr_unavailable: bool,
+    ocr_disabled: bool,
+) -> list[Diagnostic]:
+    """The typed warnings a page that came back empty deserves, if any."""
+    if blocks.get(number):
+        return []
+    if ocr_disabled:
+        return [_ocr_disabled_diagnostic()]
+    return [_ocr_unavailable_diagnostic()] if ocr_unavailable else []
+
+
+def _ocr_disabled_diagnostic() -> Diagnostic:
+    """The typed per-page warning for a page the caller's ``do_ocr=false`` emptied."""
+    return Diagnostic(
+        level=DiagnosticLevel.WARNING,
+        code=_OCR_DISABLED_CODE,
+        message=("OCR disabled by backend option (do_ocr=false); this page has no text layer, so it came back empty — re-run with do_ocr=true to read it"),
+    )
 
 
 def _ocr_unavailable_diagnostic() -> Diagnostic:

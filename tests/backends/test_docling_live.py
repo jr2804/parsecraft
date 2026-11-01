@@ -20,6 +20,11 @@ on hosts without the engine).
   partial cache with the layout models present and the ``ocr_*`` models
   removed — the page must carry the typed ``docling-ocr-unavailable``
   warning instead of failing silently.
+- option case (`test_scan_reports_the_option_that_emptied_it`): the
+  caller's own ``do_ocr=false`` — the engine prints no warning at all in
+  that state (measured), so the adapter must supply
+  ``docling-ocr-disabled``; this is the end-to-end proof that
+  ``--backend-option`` reaches the engine (pc-fwn).
 
 Partial-cache recipe (from the pc-04u isolation): copy a full model cache
 and delete only the ``ocr_*`` files, then point
@@ -60,7 +65,7 @@ for index in range(3):
     draw.text((80, 120 + index * 110), f"SCANNED LINE {index + 1}: THE QUICK BROWN FOX", fill="black")
 buf = io.BytesIO(); img.save(buf, format="PDF", resolution=150)
 source = SourceDocument(uri="file:///scan.pdf", media_type="application/pdf", content=buf.getvalue())
-backend = docling_module.factory(BackendConfig(name="docling"))
+backend = docling_module.factory(BackendConfig(name="docling", options=OPTIONS))
 result = backend.convert(ConversionRequest(source=source))
 page = result.pages[0]
 print("VERDICT " + json.dumps({
@@ -70,6 +75,8 @@ print("VERDICT " + json.dumps({
     "text": " ".join(block.content for block in page.blocks),
     "codes": [d.code for d in page.diagnostics],
     "message": next((d.message for d in page.diagnostics if d.code == "docling-ocr-unavailable"), ""),
+    "disabled_message": next((d.message for d in page.diagnostics if d.code == "docling-ocr-disabled"), ""),
+    "converter_options": dict(getattr(backend, "_options", {})),
 }))
 """
 
@@ -109,8 +116,18 @@ def test_scan_warns_when_only_ocr_models_are_missing() -> None:
     assert "docling_rs.download_models()" in message
 
 
-def _run_child(prefix: str) -> dict[str, object]:
-    code = prefix + textwrap.dedent(_CHILD_CODE)
+def test_scan_reports_the_option_that_emptied_it() -> None:
+    """``do_ocr=false`` reaches the engine and the empty page says why (pc-fwn)."""
+    verdict = _run_child("", options={"do_ocr": False})
+    assert verdict["converter_options"] == {"do_ocr": False}
+    assert verdict["failures"] == []
+    assert verdict["blocks"] == 0  # no OCR: an image-only page has nothing to read
+    assert cast("list[str]", verdict["codes"]) == ["docling-ocr-disabled"]
+    assert "do_ocr=false" in cast("str", verdict["disabled_message"])
+
+
+def _run_child(prefix: str, options: dict[str, str | int | float | bool] | None = None) -> dict[str, object]:
+    code = prefix + textwrap.dedent(_CHILD_CODE).replace("OPTIONS", repr(options or {}))
     proc = subprocess.run(  # noqa: S603 - trusted local interpreter, fixed argv, no shell
         [sys.executable, "-c", code],
         capture_output=True,
