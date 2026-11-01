@@ -63,7 +63,9 @@ rounding, LF newlines, no wall-clock fields. Re-running on the same inputs
 yields the same schema and row set — the measured values (elapsed, pages/s,
 peak bytes) are run data and will vary. Benchmarking goes straight to the
 backend's `convert` and never reads the conversion cache, which would report
-~0 s and falsify the measurement.
+~0 s and falsify the measurement. Mind the asymmetry when comparing surfaces: a
+plain `parsecraft convert` does cache, so a repeated convert can look
+impossibly fast beside the same row here.
 
 `pymupdf` extraction needs the `pymupdf` extra (AGPL); without it the
 report records a typed `dependency_missing` row instead of crashing.
