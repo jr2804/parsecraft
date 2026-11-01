@@ -20,7 +20,10 @@ Always applicable. Boundaries, priorities, verification, checklist.
 - NEVER run destructive commands (`rm -rf`, `git reset --hard`,
   `git push --force`) without explicit confirmation.
 - NEVER delete or move files without explicit instruction.
-- NEVER create temp files in project root. Use dedicated temp dir.
+- NEVER create temp files in project root. Use the gitignored `.tmp/`
+  (one subdirectory per task or bead, e.g. `.tmp/pc04u/`). Never use
+  `C:\Windows\Temp` or any path outside the repository: the user has banned it
+  explicitly, and an off-repo scratch dir outlives the task that made it.
 
 ## Change constraints
 
@@ -195,9 +198,11 @@ the `ConversionRequest` (pc-9p6.5, pc-c54); the proof was two runs whose output
 files hashed identically with and without the flag.
 
 **Never `git add -A` or `git add .` here.** Stage explicit paths. Worker
-worktrees and the main checkout both carry `.tmp-*` scratch files by convention
+worktrees and the main checkout both carry `.tmp*` scratch files by convention
 (commit messages, bead bodies, probe scripts), and a blanket add commits them —
-it happened once and had to be amended out of history.
+it happened once and had to be amended out of history. Canonical scratch home is
+`.tmp/` (see the temp-file rule above); `.tmp*` covers older names still in
+circulation.
 
 **The release marker is a property of the HEAD commit message, not of a push.**
 `release.yml` tags, publishes and deploys unless the pushed head commit's full

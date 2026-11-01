@@ -16,7 +16,8 @@ package layout; each contains only `test_<feature>.py` files:
 Repo-level tests that pin project-wide invariants rather than one package stay
 at the `tests/` root (`test_packaging.py`, `test_offline_import.py`,
 `test_template_validation.py`, `test_smoke.py`, `test_example_backend.py`,
-`test_conftest_offline_tripwire.py`) alongside the fixtures infrastructure
+`test_conftest_offline_tripwire.py`, `test_run_tests_wrapper.py`) alongside the
+fixtures infrastructure
 tests (`test_document_fixtures.py`, `test_sources_manifest.py`).
 
 Every submodule is a package (`__init__.py`, like `tests/` itself), so feature
@@ -87,6 +88,12 @@ basenames may repeat across groups (`cli/test_config.py` vs
   determinism/PDF validity, manifest schema, corpus tier (opt-in).
 - `test_packaging.py`, `test_offline_import.py`, `test_template_validation.py`
   — wheel contents, offline import contract, template invariants.
+- `test_run_tests_wrapper.py` — the `mise test` wrapper's contract
+  (`.config/mise/scripts/run_tests.py`): a failing gate keeps `.coverage.<pid>`
+  and `.htmlcov_<pid>` so a coverage miss stays diagnosable, a passing run
+  removes them. Pins the argv, the cwd, and the per-pid `COVERAGE_FILE` too —
+  the wrapper is the gate's only path to pytest, so a regression here silently
+  changes what the 100% check measures.
 - `typing_consumer.py` — type-level consumer contract (checked by `ty`).
 - `test-cache/` — pytest-owned cache dir; scaffolded synthetic documents
   only; self-ignored, never committed. Never written to directly — access it
