@@ -92,7 +92,7 @@ third one finished:
 - **Console attached, window closed** — aborts inside the torch/MKL Fortran
   runtime: `forrtl: error (200): program aborting due to window-CLOSE event`.
   That cost a 65-minute run.
-- **Detached, no console** — the run that completed (5 h 47 m, 24 rows).
+- **Detached, no console** — the run that completed (5 h 54 m, 24 rows).
 
 ```python
 subprocess.Popen(
@@ -288,7 +288,9 @@ with that caveat; measuring it honestly needs per-cell
 
 One environment, one pass: `.venv-gpu` reporting
 `2026.10.16.post8.dev0+9cbb645`, three 2-page fixtures × eight backends = **24
-rows, zero skips, 5 h 47 m**, clean exit. Artifacts:
+rows, zero skips, 5 h 54 m**, clean exit. That figure is wall clock
+(`launch.log` 23:54:22 → `stdout.log` last write 05:48:50) and it agrees with the
+artifact, whose `elapsed_s` values sum to 21 261.9 s = 5 h 54.4 m. Artifacts:
 [`benchmark-gpu-fiveway-2026-10-31.json`](benchmark-gpu-fiveway-2026-10-31.json)
 and [`.md`](benchmark-gpu-fiveway-2026-10-31.md) — the committed tables, not a
 summary of them.
