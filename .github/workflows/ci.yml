@@ -169,7 +169,12 @@ jobs:
       run: mise dev
 
     - name: Run linter
-      run: mise lint
+      # `lint-check`, never `lint`: `lint` is ruff --fix, a rewriter, so running
+      # it here repaired a lint finding on the runner and exited 0 — CI could
+      # not fail on a lint error the local `mise all` gate rejects (observed
+      # 2026-11-01: an unused import plus a canonical block passed CI green).
+      # Same split as `mise all` (pc-9p6.2) and `format-check` below (pc-flz).
+      run: mise lint-check
 
     # Type check against the CANONICAL DEV ENV that `mise dev` produced above
     # (uv sync --dev --all-groups --extra web — no heavy extras). ty's verdict

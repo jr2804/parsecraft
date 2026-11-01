@@ -12,7 +12,7 @@ jobs run in parallel:
 | --- | ------ | ---- |
 | `extras` | ubuntu, windows | `uv sync -U --all-extras --all-groups --all-packages --dry-run` on 3.13 (root `AGENTS.md` rule 10) |
 | `extras-availability` | ubuntu, macos, windows | the same assertion on 3.14 and 3.14t; **reporting only** (`continue-on-error`) |
-| `quality` | ubuntu | `mise lint` + `mise spell` + `mise format-check` + `mise actionlint` |
+| `quality` | ubuntu | `mise lint-check` + `mise typecheck` + `mise spell` + `mise format-check` + `mise actionlint` |
 | `tests` | ubuntu, macos, windows | `mise test` (100% coverage gate) |
 | `docs` | ubuntu | `mise docs` |
 
@@ -38,6 +38,18 @@ check`, `rumdl check`, `ruff format --check`, import order) and never rewrites
 anything. The formatters themselves run only locally — a gate that only
 reformats cannot detect drift, it just leaves it in the working tree for the
 next run to rewrite again.
+
+**No CI step runs a fixer.** The same rule applies to the linter, which is why
+the step is `mise lint-check` and not `mise lint`: `lint` is `ruff check --fix`,
+so a finding was repaired on the runner and the step exited `0`. Measured
+2026-11-01 — a tree with an unused import plus a canonical block passed the
+quality job while the local `mise all` rejected it, because the local gate uses
+`lint-check` (pc-9p6.2) and CI had kept the original `mise lint`. A gate that
+repairs what it gates can only fail on findings it cannot fix, and it validates
+a tree the contributor never had. `tests/test_ci_gate_tasks.py` enforces this
+mechanically: it loads each `mise <task>` a workflow invokes, reads that task's
+commands from `.config/mise/`, and fails if any of them rewrites files — so a
+future task cannot reintroduce the inversion by name alone.
 
 `mise typecheck` is part of the local gate but **not yet a CI step** (pc-180).
 Adding it is not a one-line job: ty's verdict depends on which extras are

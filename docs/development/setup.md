@@ -28,6 +28,7 @@ optional AI tooling). See [Tech stack](tech-stack.md).
 | `mise dev` | `uv sync -U --dev --all-groups --extra web` | Install dependencies (heavy extras never enter the dev/CI venv) |
 | `mise test` | `uv run python .config/mise/scripts/run_tests.py` (pytest under coverage) | Tests with the 100% coverage gate |
 | `mise lint` | `ruff check src/ tests/ --fix` | Lint and autofix |
+| `mise lint-check` | `ruff check src/ tests/ --no-cache` | Verify lint cleanliness (the gate arm) |
 | `mise typecheck` | `ty check src/ tests/` | Static type checking |
 | `mise spell` | `codespell src/ tests/` | Spell check |
 | `mise format` | pyreorder + `ruff format` + import sort | Format Python |
@@ -38,7 +39,6 @@ optional AI tooling). See [Tech stack](tech-stack.md).
 
 `mise lint` and `mise format-md` rewrite files in place. Run them before
 committing; a clean tree is expected after a full `mise all`.
-
 `mise all` only runs the *checking* arms (`format-check`, `lint-check`): a
 non-canonical tree fails the gate instead of being silently fixed into a false
 green. `mise test` writes its coverage data to a per-process file and deletes it
