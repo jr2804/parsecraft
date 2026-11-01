@@ -273,6 +273,7 @@ languages: [references/backends.md](references/backends.md).
 | --- | --- |
 | `PARSECRAFT_JSON` | Emit JSON without passing `--json` |
 | `PARSECRAFT_OFFLINE=1` | Offline constraint: backends carrying a model asset are excluded |
+| `PARSECRAFT_MINERU` | Declare the `mineru` extra installed (`1`/`true`/`yes`); required as well as `parsecraft[mineru]` |
 | `PARSECRAFT_TESSERACT` | Declare the tesseract binary location (never probed past) |
 | `TYPESAFE_API_KEY` | Credential for `typesafe-ai/*` judges |
 | `OPENCODE_API_KEY` | Credential for `zen/*` judges |

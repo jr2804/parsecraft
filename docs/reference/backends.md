@@ -49,7 +49,7 @@ and the extension is the suffix the host layer joins onto it.
 | `trafilatura` — `parsecraft[web]` (`httpx`, `trafilatura>=2.3.1`) | `.html` (`text/html`) | [`adbar/trafilatura`](https://github.com/adbar/trafilatura) — Apache-2.0 | Readability-class main-content extraction: starts at the article H1, keeps tables as Markdown tables, drops link/image/formula syntax; **asset-free** — no weights, so no download notice and no offline carve-out | Under-extracts very long single-page specs (RFC-class counter-case below); a single-row table without `<thead>`, and a single-line `<pre><code>`, do not survive as typed blocks |
 | `pdf-inspector` — base install | `.pdf` (`application/pdf`) | [`firecrawl/pdf-inspector`](https://github.com/firecrawl/pdf-inspector) — MIT | Fastest verified text-PDF path: Rust/PyO3 extraction straight to Markdown, no ML models and no OCR runtime loaded; classifies text-based vs scanned PDFs before extraction | PDF only (no docx/pptx/xlsx path exists upstream); no OCR, so scanned pages need an OCR backend; ships as a prebuilt Rust extension wheel only for `cp38-abi3` — Linux x86_64/aarch64, macOS Intel/ARM, Windows x64 (other platforms build from source and need a Rust toolchain); `abi3` wheels do not load on a free-threaded build, so `3.14t` needs a source build too; not yet benchmarked |
 | `marker` — none; `marker-pdf` 2.0.0 is a **bring-your-own dependency** | `.pdf` (`application/pdf`) | [`datalab-to/marker`](https://github.com/datalab-to/marker) — Apache-2.0; model weights under OpenRAIL-M (restricted use) | High-fidelity PDF→Markdown: figures, tables, math, reading order; page-aware pagination | PDF only — DOCX/XLSX/PPTX/HTML/EPUB route through weasyprint, which needs GTK/Pango system libraries and is unverified on Windows; model weights are fetched at converter creation (network I/O); no extra is declared, so the consumer's own dependency graph installs `marker-pdf` |
-| `mineru` — `parsecraft[mineru]` (native; `torch>=2.5`, `transformers>=5.17,<6`, `accelerate`, `torchvision`) | `.pdf` (`application/pdf`) | [`opendatalab/MinerU2.5-Pro-2605-1.2B`](https://huggingface.co/opendatalab/MinerU2.5-Pro-2605-1.2B) — Apache-2.0; protocol reimplemented from Apache-2.0 `mineru-vl-utils`; code MIT | Native two-step VLM parsing: layout detection then per-block recognition; tables as HTML, equations bracketed, figure crops as assets; **text PDFs run weight-free** at flash effort (the VLM loads only for textless pages); page ranges honored natively | ~2.3 GiB checkpoint; slower than docling on CPU (minutes per dense page); medium+ effort loads the checkpoint eagerly |
+| `mineru` — `parsecraft[mineru]` **plus `PARSECRAFT_MINERU=1`** (native; `torch>=2.5`, `transformers>=5.17,<6`, `accelerate`, `torchvision`) | `.pdf` (`application/pdf`) | [`opendatalab/MinerU2.5-Pro-2605-1.2B`](https://huggingface.co/opendatalab/MinerU2.5-Pro-2605-1.2B) — Apache-2.0; protocol reimplemented from Apache-2.0 `mineru-vl-utils`; code MIT | Native two-step VLM parsing: layout detection then per-block recognition; tables as HTML, equations bracketed, figure crops as assets; **text PDFs run weight-free** at flash effort (the VLM loads only for textless pages); page ranges honored natively | ~2.3 GiB checkpoint; slower than docling on CPU (minutes per dense page); medium+ effort loads the checkpoint eagerly |
 | `ocr-ovis` — `parsecraft[ocr]` | `.pdf` (`application/pdf`), `.jpg`, `.jpeg` (`image/jpeg`), `.png` (`image/png`) | [`ATH-MaaS/OvisOCR2`](https://huggingface.co/ATH-MaaS/OvisOCR2) — Apache-2.0 | ~0.9 B; formulas and tables; vLLM wrapper (optional `vllm` extra) | GPU required (~1 GB VRAM); not yet benchmarked |
 | `ocr-tele` — `parsecraft[ocr]` | `.pdf` (`application/pdf`), `.jpg`, `.jpeg` (`image/jpeg`), `.png` (`image/png`) | [`StarDoc-AI/TeleOCR`](https://huggingface.co/StarDoc-AI/TeleOCR) — Apache-2.0 ([code](https://github.com/caipeng328/TeleOCR)) | Geometry-aware; camera captures | GPU required (~1.2 GB VRAM); not yet benchmarked |
 | `ocr-unlimited` — `parsecraft[ocr]` | `.pdf` (`application/pdf`), `.jpg`, `.jpeg` (`image/jpeg`), `.png` (`image/png`) | [`baidu/Unlimited-OCR`](https://huggingface.co/baidu/Unlimited-OCR) — MIT | Long-horizon multi-page documents | 3 B; quantization required under an 8 GB budget; not yet benchmarked |
@@ -167,6 +167,31 @@ be offered, and the difference is the point:
 The two must not read identically: a no-extra shape hides the dependency from
 the installer, while an extra shape makes what it pulls a condition of
 installing.
+
+### The `mineru` extra also has to be declared
+
+Installing `parsecraft[mineru]` is necessary but **not sufficient**: the
+backend stays ineligible until the host declares the extra with
+`PARSECRAFT_MINERU=1` (any of `1`, `true`, `yes`). Without it, pinning the
+backend reports `no eligible backend: pinned backend 'mineru' is not eligible
+for this source`.
+
+This is deliberate, and it is the price of the native rework. `parsecraft[mineru]`
+installs `torch`, `transformers`, `accelerate` and `torchvision` — *exactly* the
+`surya` requirements and a subset of `ocr`'s — so no import can tell them apart.
+Probing a shared module would report `mineru` installed on every host that
+installed an OCR extra, and a false positive routes pages into a pass that can
+only fail. The declaration is the only honest signal left (ADR-0010).
+
+A **bundle gates nothing**: `parsecraft[pdf-full]` (PyMuPDF plus the native VLM
+stack) does not make `mineru` eligible either, because no backend names it as
+its dependency group. Install the bundle, then declare the members you want
+enabled.
+
+The same shape governs the tesseract engine: `parsecraft` never installs the
+binary, and `PARSECRAFT_TESSERACT` declares a location outside `PATH`
+(ADR-0008 decision 2). Both variables are listed in
+[the environment-variable table](cli.md#environment-variables).
 
 ## External converters
 

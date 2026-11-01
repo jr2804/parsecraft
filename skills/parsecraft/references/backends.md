@@ -22,11 +22,12 @@ judge client, `liteparse`, `openpyxl`, and the pandoc wrapper. Extras
 | Extra | Contents | Note |
 | --- | --- | --- |
 | `web` | `httpx`, `trafilatura>=2.3.1` | HTML readability backend |
-| `docling` | `docling>=2.130` | MIT |
+| `docling` | `docling-rs>=2.55` | MIT; Rust layout engine, no PyTorch |
 | `pymupdf` | `pymupdf>=1.28.2` | **AGPL-3.0-or-commercial** (ADR-0003) |
-| `mineru` | `torch>=2.5`, `transformers>=5.17,<6`, `accelerate`, `torchvision` | native MinerU2.5 VLM backend — Apache-2.0 checkpoint (ADR-0007, amended 2026-10-26); no `mineru` package |
-| `pdf-full` | `pymupdf` + the native VLM stack | inherits the AGPL warning from `pymupdf` only |
+| `mineru` | `torch>=2.5`, `transformers>=5.17,<6`, `accelerate`, `torchvision` | native MinerU2.5 VLM backend — Apache-2.0 checkpoint (ADR-0007, amended 2026-10-26); no `mineru` package. **Also needs `PARSECRAFT_MINERU=1`**: its requirements are identical to `surya`'s, so no import can prove it (ADR-0010) |
+| `pdf-full` | `pymupdf` + the native VLM stack | inherits the AGPL warning from `pymupdf` only. A bundle gates nothing — declaring `mineru` is still required for that backend |
 | `ocr` | `torch>=2.5`, `transformers>=5.17,<6`, `accelerate`, … | GPU OCR/VLM backends |
+| `surya` | `torch>=2.5`, `transformers>=5.17,<6`, `accelerate`, `torchvision` | the `ocr-surya` backend alone, because its weights are OpenRAIL-M and `ocr` stays Apache-only |
 | `vllm` | `vllm>=0.11` | Linux/WSL2 only (platform marker) |
 
 There is no `auto` extra — it was removed by ADR-0009, and no extra name
@@ -56,7 +57,7 @@ in the code is MIME, suffixes are joined on by the host layer.
 | `trafilatura` | `parsecraft[web]` | `.html` | Readability-class main-content extraction: starts at the article H1, keeps tables as Markdown, asset-free (no weights) | Under-extracts very long single-page specs (kept 5,592 of 503,420 chars on a 1.2 MB spec); single-row tables without `<thead>` and bare `<pre><code>` lines don't survive as typed blocks |
 | `pdf-inspector` | base | `.pdf` | Fastest verified text-PDF path: Rust/PyO3 straight to Markdown, no ML models, no OCR runtime; classifies text-based vs scanned before extraction | PDF only; no OCR (scanned pages need an OCR backend); prebuilt `cp38-abi3` wheels for Linux x86_64/aarch64, macOS Intel/ARM, Windows x64 |
 | `marker` | bring-your-own `marker-pdf` 2.0.0 (no extra) | `.pdf` | High-fidelity PDF→Markdown: figures, tables, math, reading order; page-aware pagination | PDF only (other formats route via weasyprint/GTK, unverified on Windows); weights fetched at converter creation (network I/O); weights under OpenRAIL-M |
-| `mineru` | `parsecraft[mineru]` | `.pdf` | Native MinerU2.5 VLM (no `mineru` package): two-step layout + recognition, tables as HTML, equations; **text PDFs run weight-free** at flash effort (VLM only on textless pages); Apache-2.0 checkpoint, ~2.3 GiB, CPU works slowly | Slower than docling on CPU; medium+ effort loads the checkpoint eagerly |
+| `mineru` | `parsecraft[mineru]` + `PARSECRAFT_MINERU=1` | `.pdf` | Native MinerU2.5 VLM (no `mineru` package): two-step layout + recognition, tables as HTML, equations; **text PDFs run weight-free** at flash effort (VLM only on textless pages); Apache-2.0 checkpoint, ~2.3 GiB, CPU works slowly | Slower than docling on CPU; medium+ effort loads the checkpoint eagerly |
 | `ocr-ovis` | `parsecraft[ocr]`, GPU | `.pdf`, `.jpg`, `.jpeg`, `.png` | ~0.9 B; formulas and tables; optional vLLM wrapper | GPU required (~1 GB VRAM); not yet benchmarked |
 | `ocr-tele` | `parsecraft[ocr]`, GPU | `.pdf`, `.jpg`, `.jpeg`, `.png` | Geometry-aware; camera captures | GPU required (~1.2 GB VRAM); not yet benchmarked |
 | `ocr-unlimited` | `parsecraft[ocr]`, GPU | `.pdf`, `.jpg`, `.jpeg`, `.png` | Long-horizon multi-page documents | 3 B; quantization required under an 8 GB budget |

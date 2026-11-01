@@ -523,7 +523,8 @@ offline = false  (default:<defaults>)
 | `PARSECRAFT_JUDGE_API_KEY` | `parsecraft convert` | Credential override; beats the `[providers.*]` config value |
 | `PARSECRAFT_CACHE_DIR` | `parsecraft convert --cache`, `parsecraft cache` | Overrides the conversion-cache root |
 | `PARSECRAFT_OFFLINE` | any command | Declares offline mode; backends carrying a `model_asset` are excluded |
-| `PARSECRAFT_MINERU` | `parsecraft backends`, `convert`, `inspect` | Declares the `mineru` extra installed — its requirements are identical to `surya`'s, so no import can prove it |
+| `PARSECRAFT_MINERU` | `parsecraft backends`, `convert`, `inspect` | Declares the `mineru` extra installed — its requirements are identical to `surya`'s, so no import can prove it. Accepts `1`/`true`/`yes`; required as well as `parsecraft[mineru]` (see [the mineru row](backends.md#the-mineru-extra-also-has-to-be-declared)) |
+| `PARSECRAFT_TESSERACT` | `parsecraft backends`, `convert`, `inspect` | Declares the `tesseract` binary's path, honoured verbatim and never probed past (ADR-0008 decision 2) |
 
 `PARSECRAFT_JSON` is a CLI flag default. Configuration settings use the
 distinct `PARSECRAFT_CONFIG_` prefix so the flag cannot collide with a setting

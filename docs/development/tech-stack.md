@@ -20,11 +20,12 @@ These install with `pip install parsecraft` (`pyproject.toml` `[project] depende
 | Extra | Contents | Role |
 | ----- | -------- | ---- |
 | `web` | `httpx`, `trafilatura` | the `trafilatura` HTML backend |
-| `docling` | `docling>=2.130` | layout-aware conversion |
+| `docling` | `docling-rs>=2.55` | layout-aware conversion |
 | `mineru` | `torch>=2.5`, `transformers>=5.17,<6`, `accelerate`, `torchvision` | the native MinerU2.5 VLM backend (no `mineru` package) |
 | `pymupdf` | `pymupdf>=1.28.2` | PyMuPDF extraction (AGPL) |
 | `pdf-full` | `pymupdf` + the native VLM stack | the whole PDF stack in one name |
 | `ocr` | `torch`, `transformers`, … | the GPU OCR/VLM backends |
+| `surya` | `torch`, `transformers`, `accelerate`, `torchvision` | the `ocr-surya` backend (OpenRAIL-M weights, kept out of `ocr` so that extra stays Apache-only) |
 | `vllm` | `vllm>=0.11` | the vLLM accelerator (Linux/WSL2 only) |
 
 [huggingface-hub](https://huggingface.co/docs/huggingface_hub) is **core** (pinned
