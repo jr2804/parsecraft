@@ -19,11 +19,19 @@ from parsecraft.pipeline.analysis import (
     choose_analyzer,
     media_type_for,
 )
-from parsecraft.pipeline.executor import ALL_PASSES_FAILED_CODE, PIPELINE_TIMEOUT_CODE, CacheProtocol, execute, pipeline_failure
+from parsecraft.pipeline.executor import (
+    ALL_PASSES_FAILED_CODE,
+    DEGRADED_EMPTY_OUTPUT_CODE,
+    PIPELINE_TIMEOUT_CODE,
+    CacheProtocol,
+    execute,
+    pipeline_failure,
+)
 from parsecraft.pipeline.models import PageGroup, PassAttempt, PipelineResult
 
 __all__ = [
     "ALL_PASSES_FAILED_CODE",
+    "DEGRADED_EMPTY_OUTPUT_CODE",
     "MEDIA_TYPES",
     "PIPELINE_TIMEOUT_CODE",
     "AnalysisError",

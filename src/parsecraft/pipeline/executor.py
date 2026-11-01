@@ -203,7 +203,15 @@ def _document_quality(
 
 
 def _total_failure(pages: Sequence[PageResult], trace: Sequence[TraceEntry]) -> PassFailure | None:
-    """``pipeline_failure`` over the raw pieces, for the aggregator that has no document yet."""
+    """``pipeline_failure`` over the raw pieces, for the aggregator that has no document yet.
+
+    All-or-nothing on purpose: a document is only a total failure when **every**
+    page is typed-failed and no page produced blocks. A partially-empty document
+    therefore keeps its exit status and reports per-page signals instead — so
+    "some pages empty" and "all pages empty" are deliberately different outcomes,
+    and widening one of the two conditions here would silently move documents
+    across that boundary.
+    """
     if not pages or any(page.blocks for page in pages):
         return None
     flagged = all(any(diagnostic.code == ALL_PASSES_FAILED_CODE for diagnostic in page.diagnostics) for page in pages)

@@ -59,6 +59,7 @@ from parsecraft.pipeline import (
     pipeline_failure,
 )
 from parsecraft.pipeline import PIPELINE_TIMEOUT_CODE as public_timeout_code
+from parsecraft.pipeline import executor as executor_module
 from parsecraft.pipeline.analysis import apply_classifier
 from parsecraft.pipeline.executor import (
     ALL_PASSES_FAILED_CODE,
@@ -646,6 +647,18 @@ def test_public_analysis_names_are_exported_from_pipeline() -> None:
         assert hasattr(public_pipeline, name)
     assert public_pipeline.analyze_source is analyze_source
     assert public_pipeline.media_type_for is media_type_for
+
+
+def test_every_published_diagnostic_code_is_exported_from_pipeline() -> None:
+    # Consumers key on these strings by name (``degraded-empty-output`` is in use
+    # downstream), so the facade must export each code the executor defines.
+    # Set equality rather than membership: a new code that skips the facade —
+    # which is how this one was missed — fails here instead of at a consumer.
+    exported = {name for name in public_pipeline.__all__ if name.endswith("_CODE")}
+    defined = {name for name, value in vars(executor_module).items() if name.endswith("_CODE") and isinstance(value, str)}
+    assert exported == defined
+    for name in defined:
+        assert getattr(public_pipeline, name) is getattr(executor_module, name)
 
 
 def test_analyze_source_uses_the_canonical_analyzer(monkeypatch: pytest.MonkeyPatch) -> None:
