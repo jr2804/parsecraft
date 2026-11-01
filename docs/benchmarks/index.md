@@ -295,10 +295,9 @@ instead of output, and only `ocr-qianfan` completed all three fixtures.
 
 For the single model that ran, pages/s is the headline the definition promised:
 **0.0021 / 0.0026 / 0.0029** pages per second (roughly 345–470 s per page, model
-load included — and, per caveat 2 below, qianfan's weights were fetched during
-this same pass, so those seconds include the download). The other four rows have
-no pages/s because they produced no
-pages; their `failures` column is the result.
+load included; all five weight sets were already on disk when the pass started,
+so no cell pays for a download — see caveat 2). The other four rows have no
+pages/s because they produced no pages; their `failures` column is the result.
 
 The failures are the same allocation, not four bugs: `ovis` and `surya` both ask
 for **52.66 GiB** in one `Tried to allocate` (two different model families
@@ -319,11 +318,17 @@ surviving model priced the reduction experimentally — qianfan at 150 dpi took
 
 1. `elapsed_s` includes model load. `_measure` builds a fresh backend per
    (document, backend), so no row is pure inference time.
-2. A mid-run weight download inflates a cell **silently** — no failure row, no
-   skip row, only a `downloading …` line on stderr. `surya` (1318.9 MB / 21
-   files) and `tele` (2714.3 MB / 29 files) were pre-cached and verified before
-   the pass; `ovis`, `qianfan` and `unlimited` were fetched during it, so those
-   three cells mix download with compute.
+2. **No cell includes a download.** A mid-run weight fetch inflates a cell
+   silently — no failure row, no skip row, only a `downloading …` line on
+   stderr — so the caches were checked rather than assumed. The recorded pass
+   (started 2026-10-31T23:54:22) logged **zero** `downloading` lines on either
+   stream, and every weight file predates it: `ovis` newest 22:49 (`1648.9` MB /
+   22 files), `qianfan` 23:07 (`9059.2` MB / 33), `unlimited` 21:58 (`6373.6` MB /
+   27), `surya` 18:03 (`1318.9` MB / 21), `tele` 21:55 (`2714.3` MB / 29). The
+   fetch happened in the two **aborted** earlier attempts, which is why
+   `run.log` from that attempt carries the `downloading ATH-MaaS/OvisOCR2`
+   line and `stdout.log` does not. The `elapsed_s` values are therefore free of
+   download cost; what they still include is model load (caveat 1).
 3. VRAM spilled to host (`Some parameters are on the meta device because they
    were offloaded to the cpu`), so even the rows that completed are not clean
    GPU numbers.
