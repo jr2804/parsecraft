@@ -16,7 +16,8 @@ package layout; each contains only `test_<feature>.py` files:
 Repo-level tests that pin project-wide invariants rather than one package stay
 at the `tests/` root (`test_packaging.py`, `test_offline_import.py`,
 `test_template_validation.py`, `test_smoke.py`, `test_example_backend.py`,
-`test_conftest_offline_tripwire.py`, `test_run_tests_wrapper.py`) alongside the
+`test_conftest_offline_tripwire.py`, `test_run_tests_wrapper.py`,
+`test_ci_gate_tasks.py`) alongside the
 fixtures infrastructure
 tests (`test_document_fixtures.py`, `test_sources_manifest.py`).
 
@@ -94,6 +95,12 @@ basenames may repeat across groups (`cli/test_config.py` vs
   removes them. Pins the argv, the cwd, and the per-pid `COVERAGE_FILE` too —
   the wrapper is the gate's only path to pytest, so a regression here silently
   changes what the 100% check measures.
+- `test_ci_gate_tasks.py` — no CI step may run a mise task that rewrites the
+  tree it gates. For every `mise <task>` a workflow invokes it loads that task's
+  commands from `.config/mise/` and rejects `--fix`, `rumdl fmt`, `pyreorder run`
+  and unguarded `ruff format`; a rule by mechanism, not by task name, because the
+  inversion that motivated it (`mise lint` in the quality job, 2026-11-01) came
+  from the split landing in `.config/mise/` and not in `ci.yml`.
 - `typing_consumer.py` — type-level consumer contract (checked by `ty`).
 - `test-cache/` — pytest-owned cache dir; scaffolded synthetic documents
   only; self-ignored, never committed. Never written to directly — access it
