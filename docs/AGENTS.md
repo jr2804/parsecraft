@@ -83,6 +83,14 @@ one-file-owns-each-definition pattern in `.agents/FILES.md`.
   Never infer it from a constraint solver or a prose summary: uv resolves
   against versions without modelling whether a wheel exists for the target
   platform, so a green `--all-extras` run is not evidence of installability.
+- **Name which artifact you checked.** The wheel and the sdist are different
+  surfaces: the wheel ships `src/parsecraft` and the package markdown, while the
+  sdist also carries `docs/`, `skills/`, `.agents/` and whatever a local build
+  happened to have on disk (pc-1qz). A claim about what a *consumer receives*
+  says "wheel" or "sdist" explicitly, and a claim verified against one is never
+  written as if it covered both — the rule-9 sweep grepped to zero because it
+  ran over the wheel's markdown, while the sdist still ships three ADRs and
+  `HISTORY.md` naming the consumer.
 - **Benchmark numbers are re-derived from the committed artifact.** Every figure
   in `benchmarks/index.md` and in a backend row that cites a measurement must
   come from the JSON under `docs/benchmarks/`, not from a run's console output,
