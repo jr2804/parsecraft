@@ -171,6 +171,16 @@ jobs:
     - name: Run linter
       run: mise lint
 
+    # Type check against the CANONICAL DEV ENV that `mise dev` produced above
+    # (uv sync --dev --all-groups --extra web — no heavy extras). ty's verdict
+    # is extras-dependent (pc-180): in an all-extras env the
+    # `ty: ignore[unresolved-import]` markers in _surya_impl.py and
+    # _convert.py turn into warning[unused-ignore-comment] and a well-meaning
+    # contributor deletes load-bearing markers. The task itself pins
+    # VIRTUAL_ENV to this project's venv, so the check is hermetic here.
+    - name: Run type checker (dev env, not all-extras)
+      run: mise typecheck
+
     - name: Check spelling
       run: mise spell
 
