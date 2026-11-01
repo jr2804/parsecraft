@@ -75,6 +75,21 @@ one-file-owns-each-definition pattern in `.agents/FILES.md`.
   Never infer it from a constraint solver or a prose summary: uv resolves
   against versions without modelling whether a wheel exists for the target
   platform, so a green `--all-extras` run is not evidence of installability.
+- **Benchmark numbers are re-derived from the committed artifact.** Every figure
+  in `benchmarks/index.md` and in a backend row that cites a measurement must
+  come from the JSON under `docs/benchmarks/`, not from a run's console output,
+  a sibling prose page, or the transcript of the session that ran it. Two
+  failure modes this prevents, both observed: a caveat about a *mechanism*
+  (weights can be fetched mid-run) gets written as a caveat about a
+  *measurement* (these cells include a download), and a derived estimate
+  (`≈ 145 s/page → ≈ 20 h`) survives a later run that contradicts it. When a
+  correction lands, mark the old figure revised rather than deleting it — it may
+  have been quoted onward.
+- **`package_version` is install-time metadata, not the commit that ran.** On an
+  editable install the local segment names the commit the package was *built*
+  from; a run imports the working tree, which may be ahead of it. Any row whose
+  reproduction depends on a specific tree must name that commit in prose beside
+  the artifact. See *Provenance* in `benchmarks/index.md`.
 - **ADRs.** Records live only in `docs/adr/`, in the project-docs skill's ADR
   format. Creation and edits are pc-1's call.
 
