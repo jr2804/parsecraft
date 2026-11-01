@@ -59,6 +59,14 @@ one-file-owns-each-definition pattern in `.agents/FILES.md`.
   document anything that does not exist.
 - **Label unbuilt work.** Planned components are marked as planned or Phase N,
   never presented as implemented.
+- **Consumers read the Upgrading table before the release body.** A change that
+  requires work on the consumer's side — a removed module, an inert env var, a
+  renamed export, a version that is wrong for one purpose — gets a dated row in
+  `getting-started/installation.md` *Upgrading*, with the release it entered and
+  what to do. Derive the row from the tag diff, not from memory, and state the
+  tag you checked; the `.15`-only docling extra regression is the model case, a
+  one-release defect that no release body would have named. Add a row when the
+  change lands, while the reason is still in the commit message.
 - **Dated deferrals.** A measurement or run that was deliberately not performed
   is recorded as a deferral with a date, the reason (cost/time or scope, never
   "failed"), and the exact command to run it later — never left as silent prose
