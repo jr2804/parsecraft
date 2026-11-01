@@ -26,18 +26,25 @@ optional AI tooling). See [Tech stack](tech-stack.md).
 | Task | Runs | Purpose |
 | ---- | ---- | ------- |
 | `mise dev` | `uv sync -U --dev --all-groups --extra web` | Install dependencies (heavy extras never enter the dev/CI venv) |
-| `mise test` | `uv run pytest --cov=parsecraft` | Tests with the 100% coverage gate |
+| `mise test` | `uv run python .config/mise/scripts/run_tests.py` (pytest under coverage) | Tests with the 100% coverage gate |
 | `mise lint` | `ruff check src/ tests/ --fix` | Lint and autofix |
 | `mise typecheck` | `ty check src/ tests/` | Static type checking |
 | `mise spell` | `codespell src/ tests/` | Spell check |
 | `mise format` | pyreorder + `ruff format` + import sort | Format Python |
 | `mise format-md` | `rumdl fmt` | Lint and format Markdown |
 | `mise docs` | `uv run --link-mode=copy zensical build` | Build the docs site |
-| `mise all` | `test` + `lint` + `spell` + `format` + `format-md` + `docs` | Full quality gate |
+| `mise all` | `format-check` + `smoke` + `test` + `typecheck` + `lint-check` + `spell` + `actionlint` + `docs` | Full quality gate |
 | `mise clean` | remove build artifacts | Clean `build/`, `dist/`, caches |
 
 `mise lint` and `mise format-md` rewrite files in place. Run them before
 committing; a clean tree is expected after a full `mise all`.
+
+`mise all` only runs the *checking* arms (`format-check`, `lint-check`): a
+non-canonical tree fails the gate instead of being silently fixed into a false
+green. `mise test` writes its coverage data to a per-process file and deletes it
+when the run passes; **when the gate fails it keeps `.coverage.<pid>` and
+`.htmlcov_<pid>` and prints the report command**, so a coverage failure can be
+diagnosed after the fact instead of only seen.
 
 ## Project layout
 
