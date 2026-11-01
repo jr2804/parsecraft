@@ -124,7 +124,7 @@ def test_gpu_fiveway_covers_all_five_models_and_records_every_failure() -> None:
     assert report.skips == [], "every document and backend ran; nothing was skipped"
     assert "9cbb645" in report.package_version
     backends = {row.backend for row in report.results}
-    assert _FIVEWAY_OCR_BACKENDS <= backends
+    assert backends >= _FIVEWAY_OCR_BACKENDS
     assert {"liteparse", "pdf-inspector", "pymupdf"} <= backends
     won: dict[str, int] = dict.fromkeys(_FIVEWAY_OCR_BACKENDS, 0)
     for row in report.results:
