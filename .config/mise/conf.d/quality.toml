@@ -1,8 +1,14 @@
 [tasks.test]
-description = "Run tests with coverage (per-run data file, self-cleaned; concurrent runs cannot clash)"
+description = "Run tests with coverage (per-run data file, self-cleaned on success; concurrent runs cannot clash)"
 # No wait_for on the format tasks (pc-flz): they are not part of `mise all` —
 # nothing rewrites the tree concurrently, so there is no coverage race.
-run = '''uv run python -c "import glob,os,shutil,subprocess,sys;pid=os.getpid();os.environ['COVERAGE_FILE']=f'.coverage.{pid}';rc=subprocess.call([sys.executable,'-m','pytest','--cov=parsecraft','--cov-report=term-missing',f'--cov-report=html:.htmlcov_{pid}']);shutil.rmtree(f'.htmlcov_{pid}',ignore_errors=True);[os.remove(p) for p in glob.glob(f'.coverage.{pid}')+glob.glob(f'.coverage.{pid}.*')];raise SystemExit(rc)"'''
+#
+# Cleanup is conditional on rc == 0 (pc-gate-flake): a FAILING coverage gate is
+# exactly when the per-line data is worth something, and deleting it leaves the
+# operator with "Total coverage: 99.97%" and no way to learn which two
+# statements were missed. On failure the data file and the HTML report are kept
+# and their paths printed; `mise clean` removes them.
+run = 'uv run python .config/mise/scripts/run_tests.py'
 
 [tasks.test-corpus]
 description = "Corpus tier: opt-in network + cached public documents (15 min cold-cache budget)"
