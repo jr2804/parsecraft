@@ -1,8 +1,18 @@
 # Benchmarks
 
 Measured throughput and text coverage for the real backends over the pinned
-local corpus. Latest run: **2026-10-31** at commit `a546d73`
-(`2026.10.13.post53.dev0+a546d73`), CPU only, PyMuPDF not installed.
+local corpus. Two runs from **2026-10-31**, on different machines and commits —
+read them as separate measurements, not as a series:
+
+- **CPU, `a546d73`** (`2026.10.13.post53.dev0+a546d73`), 17 rows over 9
+documents, PyMuPDF not installed — [Results](#results-2026-10-31-a546d73).
+- **GPU, `9cbb645`** (`2026.10.16.post8.dev0+9cbb645`), 3 fixtures × 8 backends =
+24 rows, the five-way OCR pass —
+[five-way results](#results-2026-10-31-9cbb645). Its finding is an 8 GB raster
+limit, not a backend ranking. The stamp is the install-time label: the pass
+imported the tree at `97fc8ab`, which is the commit to reproduce from — see
+*Provenance* in that section.
+
 The 2026-09-27 snapshot (11 rows, with PyMuPDF measured) is retained under
 [2026-09-27 snapshot](#2026-09-27-snapshot) with its provenance; no
 historical number is presented as a new-run result.
@@ -276,11 +286,23 @@ with that caveat; measuring it honestly needs per-cell
 
 ### Results (2026-10-31, `9cbb645`)
 
-One environment, one pass: `.venv-gpu` at `2026.10.16.post8.dev0+9cbb645`, three
-2-page fixtures × eight backends = **24 rows, zero skips, 5 h 47 m**, clean
-exit. Artifacts: [`benchmark-gpu-fiveway-2026-10-31.json`](benchmark-gpu-fiveway-2026-10-31.json)
+One environment, one pass: `.venv-gpu` reporting
+`2026.10.16.post8.dev0+9cbb645`, three 2-page fixtures × eight backends = **24
+rows, zero skips, 5 h 47 m**, clean exit. Artifacts:
+[`benchmark-gpu-fiveway-2026-10-31.json`](benchmark-gpu-fiveway-2026-10-31.json)
 and [`.md`](benchmark-gpu-fiveway-2026-10-31.md) — the committed tables, not a
 summary of them.
+
+**Provenance: reproduce with `97fc8ab`, not the stamped version.** The harness
+records `package_version` from the *installed distribution metadata*, and this
+venv was installed editable, so the stamp names the commit it was installed from
+— not the source the run imported. The working tree at launch was `97fc8ab`,
+which is two commits ahead of `9cbb645` (`9d93d71` derives `allow_ocr` from the
+OCR backends a host can run; `97fc8ab` stops a judge leading an OCR page with a
+parser). That difference is load-bearing here: `9cbb645` predates the
+`allow_ocr` fix and would plan **zero OCR rows**, which is exactly how the first
+attempt at this run failed. Anyone re-running from this page must check out
+`97fc8ab`.
 
 **The result this run actually establishes is not a speed ranking.** At the
 shipped `RASTER_DPI = 300`, four of the five OCR models cannot process a single
