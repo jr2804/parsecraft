@@ -25,6 +25,13 @@ on hosts without the engine).
   that state (measured), so the adapter must supply
   ``docling-ocr-disabled``; this is the end-to-end proof that
   ``--backend-option`` reaches the engine (pc-fwn).
+- figure case (``test_figure_page_emits_asset_and_linked_chunk``): a page
+  holding a chart-like raster figure (axes + bars, pasted as an image)
+  must come back with one ``ExtractedAsset`` plus one FIGURE chunk whose
+  metadata links it via ``asset_id`` — the mineru-parity surface,
+  end-to-end on the real engine (pc-sc9). Runs with ``do_ocr=false`` so
+  only the layout models are needed; a page without figures must stay
+  free of figure surface entirely.
 
 Partial-cache recipe (from the pc-04u isolation): copy a full model cache
 and delete only the ``ocr_*`` files, then point
@@ -55,7 +62,7 @@ _PARTIAL_CACHE_ENV = "PARSECRAFT_DOCLING_PARTIAL_CACHE"
 # Runs in a child process (see module docstring). The caller prepends an
 # optional cache-redirect line before any docling import binds it.
 _CHILD_CODE = """
-import io, json
+import io, json, base64
 from PIL import Image, ImageDraw
 from parsecraft.backends.docling import docling as docling_module
 from parsecraft.backends.protocol import BackendConfig, ConversionRequest, SourceDocument
@@ -63,6 +70,15 @@ img = Image.new("RGB", (1240, 1754), "white")
 draw = ImageDraw.Draw(img)
 for index in range(3):
     draw.text((80, 120 + index * 110), f"SCANNED LINE {index + 1}: THE QUICK BROWN FOX", fill="black")
+if PASTE_FIGURE:
+    figure = Image.new("RGB", (480, 320), "white")
+    fdraw = ImageDraw.Draw(figure)
+    fdraw.rectangle((0, 0, 479, 319), outline="black", width=3)
+    fdraw.line((40, 20, 40, 280), fill="black", width=3)
+    fdraw.line((40, 280, 440, 280), fill="black", width=3)
+    for bar, height in ((70, 180), (170, 240), (270, 120), (370, 200)):
+        fdraw.rectangle((bar, 280 - height, bar + 60, 280), fill=(70, 110, 180))
+    img.paste(figure, (200, 700))
 buf = io.BytesIO(); img.save(buf, format="PDF", resolution=150)
 source = SourceDocument(uri="file:///scan.pdf", media_type="application/pdf", content=buf.getvalue())
 backend = docling_module.factory(BackendConfig(name="docling", options=OPTIONS))
@@ -77,6 +93,22 @@ print("VERDICT " + json.dumps({
     "message": next((d.message for d in page.diagnostics if d.code == "docling-ocr-unavailable"), ""),
     "disabled_message": next((d.message for d in page.diagnostics if d.code == "docling-ocr-disabled"), ""),
     "converter_options": dict(getattr(backend, "_options", {})),
+    "assets": [
+        {
+            "id": a.id,
+            "kind": a.kind.value,
+            "media_type": a.media_type,
+            "uri_is_data": a.uri.startswith("data:image/"),
+            "sha256_len": len(a.sha256),
+            "bbox": None if a.bbox is None else [a.bbox.x0, a.bbox.y0, a.bbox.x1, a.bbox.y1],
+        }
+        for a in page.assets
+    ],
+    "figures": [
+        {"id": c.id, "metadata": c.metadata, "content_head": c.content[:40]}
+        for c in page.blocks
+        if c.kind.value == "figure"
+    ],
 }))
 """
 
@@ -126,8 +158,58 @@ def test_scan_reports_the_option_that_emptied_it() -> None:
     assert "do_ocr=false" in cast("str", verdict["disabled_message"])
 
 
-def _run_child(prefix: str, options: dict[str, str | int | float | bool] | None = None) -> dict[str, object]:
-    code = prefix + textwrap.dedent(_CHILD_CODE).replace("OPTIONS", repr(options or {}))
+def test_figure_page_emits_asset_and_linked_chunk() -> None:
+    """Chart-like figure → one asset + one FIGURE chunk linked by asset_id (pc-sc9).
+
+    Measured on docling-rs 2.55.4: the pasted chart is detected as exactly
+    one ``PictureItem`` with a PNG ``data:`` crop and a BOTTOMLEFT
+    provenance bbox; the adapter must flip that bbox into the raster frame
+    and hash the DECODED payload. Runs with ``do_ocr=false`` so only the
+    layout models are needed.
+    """
+    verdict = _run_child("", options={"do_ocr": False}, paste_figure=True)
+    failure_messages = cast("list[str]", verdict["failure_messages"])
+    if any("docling_rs.download_models()" in message for message in failure_messages):
+        pytest.skip("no docling model cache (run docling_rs.download_models() once)")
+    assert verdict["failures"] == []
+    assets = cast("list[dict[str, object]]", verdict["assets"])
+    figures = cast("list[dict[str, object]]", verdict["figures"])
+    assert len(assets) == 1, "the synthesized chart must be detected as exactly one picture"
+    asset = assets[0]
+    assert asset["id"] == "docling-1-a0"
+    assert asset["kind"] == "image"
+    assert asset["media_type"] == "image/png"
+    assert asset["uri_is_data"] is True
+    assert asset["sha256_len"] == 64
+    bbox = cast("list[float]", asset["bbox"])
+    assert bbox is not None
+    assert len(bbox) == 4
+    assert bbox[0] <= bbox[2], "raster frame ordering, x axis"
+    assert bbox[1] <= bbox[3], "raster frame ordering, y-down"
+    assert len(figures) == 1
+    figure = figures[0]
+    assert figure["metadata"] == {"backend": "docling", "asset_id": "docling-1-a0"}
+    assert figure["id"] == "docling-1-b0"
+
+
+def test_text_only_page_has_no_figure_surface() -> None:
+    """A page without pictures must stay free of figure surface (pc-sc9 acceptance)."""
+    verdict = _run_child("", options={"do_ocr": False}, paste_figure=False)
+    failure_messages = cast("list[str]", verdict["failure_messages"])
+    if any("docling_rs.download_models()" in message for message in failure_messages):
+        pytest.skip("no docling model cache (run docling_rs.download_models() once)")
+    assert verdict["failures"] == []
+    assert cast("list[dict[str, object]]", verdict["assets"]) == []
+    assert cast("list[dict[str, object]]", verdict["figures"]) == []
+
+
+def _run_child(
+    prefix: str,
+    options: dict[str, str | int | float | bool] | None = None,
+    *,
+    paste_figure: bool = False,
+) -> dict[str, object]:
+    code = prefix + textwrap.dedent(_CHILD_CODE).replace("OPTIONS", repr(options or {})).replace("PASTE_FIGURE", repr(paste_figure))
     proc = subprocess.run(  # noqa: S603 - trusted local interpreter, fixed argv, no shell
         [sys.executable, "-c", code],
         capture_output=True,

@@ -21,10 +21,17 @@ Design notes:
   and the output budget between items. A document that yields no chunks still
   returns the requested pages as empty ``PageResult``s so the executor's
   page-number check holds.
+- Picture items become figure surface (pc-sc9): a picture that carries a
+  crop (``image`` as a ``data:`` URI, e.g. from ``keep_picture_images``)
+  yields one ``ExtractedAsset`` plus one FIGURE chunk whose metadata links
+  the chunk to the asset via ``asset_id`` — the same shape the mineru
+  backend emits. A picture without a crop (``keep_picture_images=false``)
+  is skipped; a document without pictures is unchanged.
 """
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import os
 import sys
@@ -35,7 +42,7 @@ from pathlib import Path
 from time import monotonic
 
 import pypdfium2 as pdfium  # base dependency (ADR-0008 d10), not an extra
-from docling_core.types.doc.document import DoclingDocument, TableItem, TextItem  # ty: ignore[unresolved-import]
+from docling_core.types.doc.document import DoclingDocument, PictureItem, TableItem, TextItem  # ty: ignore[unresolved-import]
 from docling_rs import ConversionResult, DocumentConverter, DocumentStream  # ty: ignore[unresolved-import]
 
 from parsecraft.backends.docling.docling import DESCRIPTOR, DOCLING_BACKEND_VERSION
@@ -53,9 +60,12 @@ from parsecraft.backends.protocol import (
 )
 from parsecraft.backends.source import path_from_file_uri
 from parsecraft.ir.models import (
+    AssetKind,
+    BBox,
     ChunkKind,
     Diagnostic,
     DiagnosticLevel,
+    ExtractedAsset,
     FailureCode,
     PageRange,
     PageResult,
@@ -203,7 +213,8 @@ class DoclingBackend:
             return _result(reference, [], [_failure(request, started, FailureCode.BACKEND_ERROR, detail)], started)
         if request.timeout_s is not None and monotonic() - started > request.timeout_s:
             return _result(reference, [], [_failure(request, started, FailureCode.TIMEOUT, "conversion exceeded timeout_s")], started)
-        pages, failure = _select(request, result.document, started, ocr_unavailable=ocr_unavailable, ocr_disabled=ocr_disabled)
+        page_heights = _pdf_page_heights(data, request.page_range) if request.source.media_type == _PDF_MEDIA_TYPE else {}
+        pages, failure = _select(request, result.document, started, page_heights=page_heights, ocr_unavailable=ocr_unavailable, ocr_disabled=ocr_disabled)
         failures = [] if failure is None else [failure]
         return _result(reference, pages, failures, started)
 
@@ -309,6 +320,41 @@ def _pdf_signals(data: bytes) -> list[PageSignal]:
         document.close()
 
 
+def _pdf_page_heights(data: bytes, page_range: PageRange | None) -> dict[int, float]:
+    """Point height of each requested page via pypdfium2, for bbox y-flipping.
+
+    docling reports provenance bboxes in a BOTTOMLEFT (y-up) frame while the
+    IR ``BBox`` convention follows the raster top-left (y-down) frame the
+    mineru backend emits, so flipping needs the page height — which the
+    engine does not expose (``ConversionResult.input`` carries only
+    ``file``, probed 2026-11-03). pypdfium2 is a docling dependency already
+    used by ``_pdf_signals`` and ``get_size`` renders nothing, so the pass
+    is cheap. Any pypdfium2 failure (docling repairs damaged PDFs that
+    pypdfium2 still rejects) degrades to ``{}`` — assets are emitted with
+    ``bbox=None`` rather than dropped (pc-sc9).
+    """
+    try:
+        document = pdfium.PdfDocument(data)
+    except Exception:  # noqa: BLE001 — any pypdfium2 parse failure means no heights
+        return {}
+    numbers = range(1, len(document) + 1) if page_range is None else range(page_range.start, page_range.end + 1)
+    heights: dict[int, float] = {}
+    try:
+        for number in numbers:
+            if number < 1 or number > len(document):
+                continue
+            page = document[number - 1]
+            try:
+                heights[number] = float(page.get_size()[1])
+            finally:
+                page.close()
+    except Exception:  # noqa: BLE001 — a half-read table is worse than none
+        return {}
+    finally:
+        document.close()
+    return heights
+
+
 def _convert_and_watch(
     data: bytes,
     request: ConversionRequest,
@@ -382,25 +428,57 @@ def _select(
     document: DoclingDocument,
     started: float,
     *,
+    page_heights: dict[int, float],
     ocr_unavailable: bool = False,
     ocr_disabled: bool = False,
 ) -> tuple[list[PageResult], PassFailure | None]:
-    """Map docling items to typed chunks per page, honoring bounds."""
+    """Map docling items to typed chunks and figure assets per page.
+
+    Picture items with a crop become one ``ExtractedAsset`` plus one FIGURE
+    chunk linking it via ``metadata["asset_id"]`` (mineru parity, pc-sc9);
+    the chunk counts as a block, so a figure-only page is NOT empty and the
+    ``docling-ocr-disabled`` / ``docling-ocr-unavailable`` page diagnostics
+    (which fire on empty pages only) stay quiet — those messages claim the
+    page "came back empty", which a page with a figure did not.
+    """
     blocks: dict[int, list[StructuredChunk]] = {}
+    assets: dict[int, list[ExtractedAsset]] = {}
     used_chars = 0
     for item, _level in document.iterate_items():
         if request.cancellation is not None and request.cancellation():
-            return _filled_pages(blocks, request.page_range, ocr_unavailable, ocr_disabled), _failure(
+            return _filled_pages(blocks, assets, request.page_range, ocr_unavailable, ocr_disabled), _failure(
                 request, started, FailureCode.CANCELLED, "cancelled between items"
             )
+        page_number = item.prov[0].page_no if item.prov else 1
+        if isinstance(item, PictureItem):
+            mapped = _picture_item(
+                item,
+                document,
+                page_number,
+                asset_index=len(assets.get(page_number, [])),
+                chunk_index=len(blocks.get(page_number, [])),
+                page_height=page_heights.get(page_number),
+            )
+            if mapped is not None:
+                chunk, asset = mapped
+                if request.page_range is not None and not (request.page_range.start <= page_number <= request.page_range.end):
+                    continue
+                if request.max_output_chars is not None and used_chars + len(chunk.content) > request.max_output_chars:
+                    return _filled_pages(blocks, assets, request.page_range, ocr_unavailable, ocr_disabled), _failure(
+                        request, started, FailureCode.BUDGET_EXCEEDED, "max_output_chars budget reached"
+                    )
+                used_chars += len(chunk.content)
+                chunks = blocks.setdefault(page_number, [])
+                chunks.append(chunk)
+                assets.setdefault(page_number, []).append(asset)
+            continue
         content, kind, rows, metadata = _item_content(item, document)
         if not content:
             continue
-        page_number = item.prov[0].page_no if item.prov else 1
         if request.page_range is not None and not (request.page_range.start <= page_number <= request.page_range.end):
             continue
         if request.max_output_chars is not None and used_chars + len(content) > request.max_output_chars:
-            return _filled_pages(blocks, request.page_range, ocr_unavailable, ocr_disabled), _failure(
+            return _filled_pages(blocks, assets, request.page_range, ocr_unavailable, ocr_disabled), _failure(
                 request, started, FailureCode.BUDGET_EXCEEDED, "max_output_chars budget reached"
             )
         used_chars += len(content)
@@ -416,7 +494,94 @@ def _select(
                 metadata=metadata,
             )
         )
-    return _filled_pages(blocks, request.page_range, ocr_unavailable, ocr_disabled), None
+    return _filled_pages(blocks, assets, request.page_range, ocr_unavailable, ocr_disabled), None
+
+
+def _picture_item(
+    item: PictureItem,
+    document: DoclingDocument,
+    page_number: int,
+    *,
+    asset_index: int,
+    chunk_index: int,
+    page_height: float | None,
+) -> tuple[StructuredChunk, ExtractedAsset] | None:
+    """Figure chunk + asset for one cropped picture, ``None`` when uncropped.
+
+    The asset URI is the engine's crop ``data:`` URI verbatim; ``sha256``
+    hashes the DECODED payload bytes (mineru parity — it hashes the PNG
+    bytes, not a serialization of them). Pictures without a crop
+    (``keep_picture_images=false``) and pictures with unusable crop data
+    are skipped entirely: no asset, no chunk — a figure chunk without its
+    asset would dangle.
+    """
+    uri, payload = _crop_payload(item)
+    if uri is None or payload is None:
+        return None
+    asset = ExtractedAsset(
+        id=f"docling-{page_number}-a{asset_index}",
+        kind=AssetKind.IMAGE,
+        media_type=str(getattr(item.image, "mimetype", None) or "image/png"),
+        uri=uri,
+        bbox=_bbox_from_prov(item.prov[0], page_height) if item.prov else None,
+        sha256=hashlib.sha256(payload).hexdigest(),
+    )
+    caption = ""
+    caption_text = getattr(item, "caption_text", None)
+    if callable(caption_text):
+        caption = str(caption_text(document) or "").strip()
+    chunk = StructuredChunk(
+        id=f"docling-{page_number}-b{chunk_index}",
+        kind=ChunkKind.FIGURE,
+        content=caption,
+        page_number=page_number,
+        reading_order=chunk_index,
+        metadata={"backend": DESCRIPTOR.name, "asset_id": asset.id},
+    )
+    return chunk, asset
+
+
+def _crop_payload(item: PictureItem) -> tuple[str | None, bytes | None]:
+    """The crop ``(data URI, decoded bytes)``, or ``(None, None)`` when unusable."""
+    image = getattr(item, "image", None)
+    uri = str(getattr(image, "uri", None) or "")
+    if image is None or not uri.startswith("data:"):
+        return None, None
+    try:
+        return uri, base64.b64decode(uri.split("base64,", 1)[1], validate=True)
+    except ValueError:  # binascii.Error subclasses ValueError — corrupt payloads vanish
+        return None, None
+
+
+def _bbox_from_prov(prov_item: object, page_height: float | None) -> BBox | None:
+    """IR ``BBox`` from one provenance item; malformed boxes vanish (mineru parity).
+
+    docling's provenance frame is BOTTOMLEFT (y-up, ``t > b``), the IR
+    convention is the raster top-left frame (y-down, ``y1 > y0``), so the
+    y coordinates flip using the page height. A TOPLEFT frame is taken as
+    is; a missing ``coord_origin`` is assumed BOTTOMLEFT (the docling-core
+    default today). Non-PDF sources have no page height, so their assets
+    carry ``bbox=None`` rather than a box in an unverifiable frame.
+    """
+    bbox = getattr(prov_item, "bbox", None)
+    if bbox is None:
+        return None
+    left, top = getattr(bbox, "l", None), getattr(bbox, "t", None)
+    right, bottom = getattr(bbox, "r", None), getattr(bbox, "b", None)
+    if None in (left, top, right, bottom):
+        return None
+    origin = getattr(bbox, "coord_origin", None)
+    origin_name = getattr(origin, "name", None) or str(origin or "")
+    if origin_name.endswith("TOPLEFT"):
+        y0, y1 = float(top), float(bottom)
+    else:  # BOTTOMLEFT, or an origin we do not recognize: current-engine default
+        if page_height is None:
+            return None
+        y0, y1 = page_height - float(top), page_height - float(bottom)
+    try:
+        return BBox(x0=min(float(left), float(right)), y0=min(y0, y1), x1=max(float(left), float(right)), y1=max(y0, y1))
+    except ValueError:
+        return None
 
 
 def _item_content(item: object, document: DoclingDocument) -> tuple[str, ChunkKind, tuple[tuple[str, ...], ...] | None, dict[str, str]]:
@@ -460,11 +625,18 @@ def _heading_metadata(item: TextItem) -> dict[str, str]:
 
 def _filled_pages(
     blocks: dict[int, list[StructuredChunk]],
+    assets: dict[int, list[ExtractedAsset]],
     page_range: PageRange | None,
     ocr_unavailable: bool = False,
     ocr_disabled: bool = False,
 ) -> list[PageResult]:
     """Every requested page, empty when docling produced no chunks for it.
+
+    Pages holding figure assets but no text chunks appear in the list too:
+    the page union covers both maps, so an asset-only page is never
+    silently dropped from the result (pc-sc9). Assets themselves do not
+    mute the diagnostics below — blocks do (a figure-only page produced
+    visible content, so an "empty page" warning would be false).
 
     When docling-rs warned about missing OCR models, every page that came
     back empty carries a typed WARNING diagnostic naming the fix. Deliberately
@@ -479,11 +651,12 @@ def _filled_pages(
     emptied would come back silent — the shape pc-04u and pc-8ti exist to
     remove. The two never both fire: disabling OCR suppresses the warning.
     """
-    numbers = sorted(blocks) or [1] if page_range is None else list(range(page_range.start, page_range.end + 1))
+    numbers = (sorted(set(blocks) | set(assets)) or [1]) if page_range is None else list(range(page_range.start, page_range.end + 1))
     return [
         PageResult(
             page_number=number,
             blocks=blocks.get(number, []),
+            assets=assets.get(number, []),
             diagnostics=_page_diagnostics(number, blocks, ocr_unavailable=ocr_unavailable, ocr_disabled=ocr_disabled),
         )
         for number in numbers

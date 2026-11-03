@@ -7,6 +7,7 @@ same pattern as the LiteParse and OCR families.
 
 from __future__ import annotations
 
+import base64
 import contextlib
 import hashlib
 import importlib
@@ -25,7 +26,7 @@ import pytest
 from parsecraft.backends.docling import docling as docling_module
 from parsecraft.backends.errors import BackendError, DependencyUnavailableError
 from parsecraft.backends.protocol import BackendConfig, BackendResult, ConversionRequest, DocumentBackend, SourceDocument
-from parsecraft.ir.models import ChunkKind, FailureCode, PageRange, PassKind
+from parsecraft.ir.models import AssetKind, BBox, ChunkKind, FailureCode, PageRange, PassKind
 from tests.fixtures.documents import docx_headings_bytes
 
 _PDF_BYTES = b"%PDF-1.7 stub"
@@ -44,12 +45,73 @@ _OCR_WARNING = (
 ).encode()
 
 
+# ── Figure surface (pc-sc9): cropped pictures become assets + figure chunks ─────
+
+_PNG_BYTES = b"\x89PNG-fixture-bytes"
+_PNG_DATA_URI = "data:image/png;base64," + base64.b64encode(_PNG_BYTES).decode("ascii")
+
+
 # ── Stubs: heavy packages faked through sys.modules ─────────────────────────────
 
 
 class _Prov:
-    def __init__(self, page_no: int) -> None:
+    def __init__(self, page_no: int, bbox: object | None = None) -> None:
         self.page_no = page_no
+        self.bbox = bbox
+
+
+class _CoordOrigin:
+    """The real docling-core enum's surface: ``.name`` carries the frame."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
+class _BoundingBox:
+    """Mirrors docling-core ``BoundingBox``: l/t/r/b + ``coord_origin``."""
+
+    def __init__(
+        self,
+        left: float,
+        top: float,
+        right: float,
+        bottom: float,
+        coord_origin: str = "BOTTOMLEFT",
+    ) -> None:
+        # Attribute names mirror the real docling-core BoundingBox (l/t/r/b),
+        # which the adapter reads via getattr; only the params get safe names.
+        self.l, self.t, self.r, self.b = left, top, right, bottom
+        self.coord_origin = _CoordOrigin(coord_origin)
+
+
+class _ImageRef:
+    """Mirrors docling-core ``ImageRef``: data-URI crop + size + mimetype."""
+
+    def __init__(self, uri: str, mimetype: str = "image/png", width: float = 247.0, height: float = 112.0) -> None:
+        self.uri = uri
+        self.mimetype = mimetype
+        self.size = types.SimpleNamespace(width=width, height=height)
+        self.dpi = 144.0
+
+
+class _PictureItem:
+    """Mirrors docling-core ``PictureItem``: crop, provenance, captions."""
+
+    def __init__(
+        self,
+        page_no: int = 1,
+        image: object | None = None,  # docling-core ImageRef shape (uri, mimetype, size)
+        bbox: object | None = None,  # docling-core BoundingBox shape (l/t/r/b, coord_origin)
+        caption: str = "",
+    ) -> None:
+        self.label = "picture"
+        self.prov = [_Prov(page_no, bbox)]
+        self.image = image
+        self.captions: list[object] = []
+        self._caption = caption
+
+    def caption_text(self, _doc: object) -> str:
+        return self._caption
 
 
 class _TextItem:
@@ -131,12 +193,19 @@ class _TextPage:
 
 
 class _PdfPage:
-    def __init__(self, text: str) -> None:
+    def __init__(self, text: str, size: tuple[float, float] | None = (612.0, 792.0)) -> None:
         self._textpage = _TextPage(text)
+        self._size = size
         self.closed = False
 
     def get_textpage(self) -> _TextPage:
         return self._textpage
+
+    def get_size(self) -> tuple[float, float]:
+        """Point dimensions, like the real pypdfium2 page (pc-sc9 y-flip)."""
+        if self._size is None:
+            raise RuntimeError("size probe failed")
+        return self._size
 
     def close(self) -> None:
         self.closed = True
@@ -144,7 +213,8 @@ class _PdfPage:
 
 class _PdfDocument:
     def __init__(self, state: _State) -> None:
-        self._pages = [_PdfPage(text) for text in state.pdf_pages]
+        sizes = state.pdf_sizes or [(612.0, 792.0)] * max(len(state.pdf_pages), 1)
+        self._pages = [_PdfPage(text, size) for text, size in zip(state.pdf_pages, sizes, strict=False)]
         self.closed = False
 
     def __len__(self) -> int:
@@ -162,12 +232,20 @@ class _State:
 
     def __init__(self) -> None:
         self.pdf_pages: list[str] = []
+        self.pdf_sizes: list[tuple[float, float] | None] = []
+        self.pdf_open_error: Exception | None = None
         self.items: list[object] = []
         self.convert_calls: list[tuple[str | None, tuple[int, int] | None]] = []
         self.convert_error: Exception | None = None
         self.delay_s = 0.0
         self.stderr_warnings: list[bytes] = []
         self.converters: list[_Converter] = []
+
+
+class _MutePicture(_PictureItem):
+    """A picture whose engine object lacks the caption accessor."""
+
+    caption_text = None  # type: ignore[assignment]
 
 
 def _grid_from_markdown(markdown: str) -> list[list[types.SimpleNamespace]]:
@@ -615,6 +693,202 @@ def test_do_ocr_false_reports_no_missing_models_and_no_pages_are_blank(docling_s
     assert result.pages[0].diagnostics == []
 
 
+def test_convert_emits_figure_assets_and_chunks_like_mineru(docling_stub: _State) -> None:
+    """One cropped picture yields one asset + one FIGURE chunk linking it.
+
+    Kompend pc-sc9 acceptance: same surface as mineru — ExtractedAsset
+    (kind, media type, data URI, bbox, sha256) plus a figure chunk whose
+    metadata carries ``asset_id``; page number and bbox come from the
+    item's provenance, flipped out of docling's y-up frame.
+    """
+    docling_stub.pdf_pages = [""]  # one blank PDF page: heights for the y-flip
+    docling_stub.items = [
+        _TextItem("before", page_no=1),
+        _PictureItem(page_no=1, image=_ImageRef(_PNG_DATA_URI), bbox=_BoundingBox(left=390.87, top=133.03, right=513.98, bottom=77.34), caption="Logo"),
+        _TextItem("after", page_no=1),
+    ]
+    result = _convert(_backend())
+    (page,) = result.pages
+    assert [c.kind for c in page.blocks] == [ChunkKind.PARAGRAPH, ChunkKind.FIGURE, ChunkKind.PARAGRAPH]
+    figure = page.blocks[1]
+    (asset,) = page.assets
+    assert asset.id == "docling-1-a0"
+    assert asset.kind == AssetKind.IMAGE
+    assert asset.media_type == "image/png"
+    assert asset.uri == _PNG_DATA_URI
+    assert asset.sha256 == hashlib.sha256(_PNG_BYTES).hexdigest()
+    assert asset.bbox == BBox(x0=390.87, y0=658.97, x1=513.98, y1=714.66)
+    assert figure.id == "docling-1-b1"
+    assert figure.metadata == {"backend": "docling", "asset_id": "docling-1-a0"}
+    assert figure.content == "Logo"
+    assert figure.reading_order == 1
+
+
+def test_figure_bbox_flips_the_bottomleft_provenance_frame(docling_stub: _State) -> None:
+    """Docling provenance is y-up (t > b); the IR frame is raster y-down."""
+    docling_stub.pdf_pages = [""]  # one blank PDF page: heights for the y-flip
+    docling_stub.items = [_PictureItem(page_no=1, image=_ImageRef(_PNG_DATA_URI), bbox=_BoundingBox(left=10.0, top=133.03, right=60.0, bottom=77.34))]
+    (asset,) = _convert(_backend()).pages[0].assets
+    assert asset.bbox == BBox(x0=10.0, y0=658.97, x1=60.0, y1=714.66)
+
+
+def test_topleft_provenance_is_taken_as_is(docling_stub: _State) -> None:
+    docling_stub.items = [
+        _PictureItem(page_no=1, image=_ImageRef(_PNG_DATA_URI), bbox=_BoundingBox(left=10.0, top=20.0, right=60.0, bottom=80.0, coord_origin="TOPLEFT"))
+    ]
+    (asset,) = _convert(_backend()).pages[0].assets
+    assert asset.bbox == BBox(x0=10.0, y0=20.0, x1=60.0, y1=80.0)
+
+
+def test_provenance_without_a_bbox_yields_an_asset_without_one(docling_stub: _State) -> None:
+    docling_stub.items = [_PictureItem(page_no=1, image=_ImageRef(_PNG_DATA_URI), bbox=None)]
+    (asset,) = _convert(_backend()).pages[0].assets
+    assert asset.bbox is None
+
+
+def test_malformed_provenance_bbox_vanishes_but_the_asset_stays(docling_stub: _State) -> None:
+    """Non-numeric corners drop the box, not the asset (mineru parity)."""
+    docling_stub.pdf_pages = [""]  # PDF media: the BOTTOMLEFT branch needs a page height to reach float()
+    broken = types.SimpleNamespace(l="not-a-number", t=1.0, r=2.0, b=3.0, coord_origin=_CoordOrigin("BOTTOMLEFT"))
+    docling_stub.items = [_PictureItem(page_no=1, image=_ImageRef(_PNG_DATA_URI), bbox=broken)]
+    (asset,) = _convert(_backend()).pages[0].assets
+    assert asset.bbox is None
+
+
+def test_uncropped_picture_is_skipped_entirely(docling_stub: _State) -> None:
+    """``keep_picture_images=false`` drops the crop: no asset, no dangling chunk."""
+    docling_stub.items = [_PictureItem(page_no=1, image=None)]
+    (page,) = _convert(_backend()).pages
+    assert page.blocks == []
+    assert page.assets == []
+
+
+def test_uncropped_picture_on_an_ocr_disabled_page_still_says_so(docling_stub: _State) -> None:
+    """Composition (pc-fwn): the figure machinery must not mute empty-page warnings.
+
+    The picture produced nothing (no crop), so the page has no blocks and
+    the pc-fwn ``docling-ocr-disabled`` diagnostic still fires — assets are
+    not blocks and never silence that path.
+    """
+    docling_stub.items = [_PictureItem(page_no=1, image=None)]
+    backend = docling_module.factory(BackendConfig(name="docling", options={"do_ocr": False}))
+    (page,) = _convert(backend).pages
+    assert page.assets == []
+    (diagnostic,) = page.diagnostics
+    assert diagnostic.code == "docling-ocr-disabled"
+
+
+def test_captioned_figure_page_is_not_reported_empty(docling_stub: _State) -> None:
+    """Pinned decision: figure chunks are blocks, so a figure-bearing page did
+    not "come back empty" and the pc-fwn/pc-04u diagnostics stay quiet.
+    """
+    docling_stub.items = [_PictureItem(page_no=1, image=_ImageRef(_PNG_DATA_URI), caption="Figure 1")]
+    backend = docling_module.factory(BackendConfig(name="docling", options={"do_ocr": False}))
+    (page,) = _convert(backend).pages
+    assert [c.kind for c in page.blocks] == [ChunkKind.FIGURE]
+    assert page.assets
+    assert page.diagnostics == []
+
+
+def test_figure_on_a_page_outside_the_range_is_dropped(docling_stub: _State) -> None:
+    docling_stub.items = [_PictureItem(page_no=2, image=_ImageRef(_PNG_DATA_URI))]
+    result = _convert(_backend(), page_range=PageRange(start=1, end=1))
+    assert result.pages[0].blocks == []
+    assert result.pages[0].assets == []
+
+
+def test_ranges_past_the_document_are_padded_without_crashing(docling_stub: _State) -> None:
+    docling_stub.items = [_PictureItem(page_no=2, image=_ImageRef(_PNG_DATA_URI))]
+    result = _convert(_backend(), page_range=PageRange(start=1, end=3))
+    assert [p.page_number for p in result.pages] == [1, 2, 3]
+    assert result.pages[2].blocks == []
+    assert result.pages[2].assets == []
+    assert [a.id for a in result.pages[1].assets] == ["docling-2-a0"]
+
+
+def test_document_without_figures_has_no_assets(docling_stub: _State) -> None:
+    docling_stub.items = [_TextItem("para", page_no=1), _TableItem("| a | b |\n| - | - |\n| 1 | 2 |", page_no=1)]
+    result = _convert(_backend())
+    assert all(page.assets == [] for page in result.pages)
+
+
+def test_non_data_uri_crop_is_skipped(docling_stub: _State) -> None:
+    docling_stub.items = [_PictureItem(page_no=1, image=_ImageRef("file:///elsewhere.png"))]
+    (page,) = _convert(_backend()).pages
+    assert page.blocks == []
+    assert page.assets == []
+
+
+def test_corrupt_base64_crop_is_skipped(docling_stub: _State) -> None:
+    docling_stub.items = [_PictureItem(page_no=1, image=_ImageRef("data:image/png;base64,!!!not-base64!!!"))]
+    (page,) = _convert(_backend()).pages
+    assert page.blocks == []
+    assert page.assets == []
+
+
+def test_bare_engine_picture_still_yields_asset(docling_stub: _State) -> None:
+    """A picture object without caption_text/mimetype niceties still emits."""
+    docling_stub.items = [
+        _MutePicture(page_no=1, image=types.SimpleNamespace(uri=_PNG_DATA_URI), bbox=_BoundingBox(left=0.0, top=0.0, right=10.0, bottom=10.0))
+    ]
+    (page,) = _convert(_backend()).pages
+    (asset,) = page.assets
+    assert asset.media_type == "image/png"
+    assert page.blocks[0].content == ""
+
+
+def test_two_figures_on_one_page_get_distinct_ids(docling_stub: _State) -> None:
+    docling_stub.items = [
+        _PictureItem(page_no=1, image=_ImageRef(_PNG_DATA_URI)),
+        _PictureItem(page_no=1, image=_ImageRef(_PNG_DATA_URI)),
+    ]
+    (page,) = _convert(_backend()).pages
+    assert [c.id for c in page.blocks] == ["docling-1-b0", "docling-1-b1"]
+    assert [c.metadata["asset_id"] for c in page.blocks] == ["docling-1-a0", "docling-1-a1"]
+    assert [c.reading_order for c in page.blocks] == [0, 1]
+
+
+def test_figure_captions_count_toward_the_output_budget(docling_stub: _State) -> None:
+    """Caption text is chunk content and counts; the crop payload never does."""
+    docling_stub.items = [_PictureItem(page_no=1, image=_ImageRef(_PNG_DATA_URI), caption="x" * 50)]
+    result = _convert(_backend(), max_output_chars=10)
+    (failure,) = result.failures
+    assert failure.code == FailureCode.BUDGET_EXCEEDED
+    assert result.pages[0].blocks == []
+
+
+def test_pdf_page_heights_degrade_when_pypdfium2_cannot_open(docling_stub: _State) -> None:
+    """Damaged PDFs that docling repaired still emit assets — with bbox=None."""
+    docling_stub.pdf_open_error = RuntimeError("damaged")
+    docling_stub.items = [_PictureItem(page_no=1, image=_ImageRef(_PNG_DATA_URI), bbox=_BoundingBox(left=10.0, top=20.0, right=60.0, bottom=80.0))]
+    (asset,) = _convert(_backend()).pages[0].assets
+    assert asset.bbox is None
+
+
+def test_pdf_page_heights_degrade_when_a_page_size_fails(docling_stub: _State) -> None:
+    docling_stub.pdf_pages = [""]  # one real page, or the zip truncates to zero
+    docling_stub.pdf_sizes = [None]
+    docling_stub.items = [_PictureItem(page_no=1, image=_ImageRef(_PNG_DATA_URI), bbox=_BoundingBox(left=10.0, top=20.0, right=60.0, bottom=80.0))]
+    (asset,) = _convert(_backend()).pages[0].assets
+    assert asset.bbox is None
+
+
+def test_partial_provenance_bbox_yields_an_asset_without_one(docling_stub: _State) -> None:
+    """A bbox missing one coordinate attribute degrades to bbox=None (pc-sc9)."""
+    partial = types.SimpleNamespace(l=10.0, t=20.0, b=80.0, coord_origin=_CoordOrigin("BOTTOMLEFT"))
+    docling_stub.items = [_PictureItem(page_no=1, image=_ImageRef(_PNG_DATA_URI), bbox=partial)]
+    (asset,) = _convert(_backend()).pages[0].assets
+    assert asset.bbox is None
+
+
+def test_non_pdf_sources_emit_assets_without_bboxes(docling_stub: _State) -> None:
+    """No page-height frame exists outside PDFs: asset without bbox (policy)."""
+    source = SourceDocument(uri="file:///doc.html", media_type="text/html", content=b"<p>x</p>")
+    docling_stub.items = [_PictureItem(page_no=1, image=_ImageRef(_PNG_DATA_URI), bbox=_BoundingBox(left=10.0, top=20.0, right=60.0, bottom=80.0))]
+    (asset,) = _convert(_backend(), source=source).pages[0].assets
+    assert asset.bbox is None
+
+
 def _backend() -> DocumentBackend:
     return docling_module.factory(BackendConfig(name="docling"))
 
@@ -669,7 +943,13 @@ def _install_stub_modules(state: _State, monkeypatch: pytest.MonkeyPatch) -> Non
         return mod
 
     pypdfium2 = module("pypdfium2")
-    pypdfium2.PdfDocument = lambda _data: _PdfDocument(state)  # ty: ignore[unresolved-attribute]
+
+    def _make_pdf_document(_data: object) -> _PdfDocument:
+        if state.pdf_open_error is not None:
+            raise state.pdf_open_error
+        return _PdfDocument(state)
+
+    pypdfium2.PdfDocument = _make_pdf_document  # ty: ignore[unresolved-attribute]
 
     docling_rs = module("docling_rs")
     docling_rs.ConversionResult = _ConversionResult  # ty: ignore[unresolved-attribute]
@@ -693,6 +973,7 @@ def _install_stub_modules(state: _State, monkeypatch: pytest.MonkeyPatch) -> Non
     doc_document.DoclingDocument = _Document  # ty: ignore[unresolved-attribute]
     doc_document.TextItem = _TextItem  # ty: ignore[unresolved-attribute]
     doc_document.TableItem = _TableItem  # ty: ignore[unresolved-attribute]
+    doc_document.PictureItem = _PictureItem  # ty: ignore[unresolved-attribute]
     doc_io.DocumentStream = _DocumentStream  # ty: ignore[unresolved-attribute]
 
 
