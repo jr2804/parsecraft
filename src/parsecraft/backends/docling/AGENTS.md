@@ -82,6 +82,21 @@ mapping is engine-independent.
   requested page — empty `PageResult`s included — so the executor's exact
   page-number check holds (`page_range=(1, 1)` yields page 1 only, verified
   against the real package).
+- **Figure surface (pc-sc9, live-verified 2026-11-03).** Cropped
+  `PictureItem`s (an `image` with a `data:` URI — present by default,
+  gone under `keep_picture_images=false`) become one `ExtractedAsset`
+  plus one `FIGURE` chunk linked by `metadata["asset_id"]` — the same
+  shape `mineru` emits. The asset URI is the engine's crop `data:` URI
+  verbatim; `sha256` hashes the DECODED payload bytes; the bbox comes
+  from the item's provenance flipped out of docling's BOTTOMLEFT (y-up)
+  frame using page heights pypdfium2 reads separately (the engine
+  exposes no page sizes; a pypdfium2 failure — e.g. a PDF docling
+  repaired — degrades to `bbox=None`, never a dropped asset).
+  Uncropped/unusable pictures are skipped entirely (no dangling chunk);
+  a document without figures is unchanged. A figure chunk counts as a
+  block, so a figure-bearing page does NOT trigger the empty-page
+  diagnostics below — those claim the page "came back empty", which a
+  page with a figure did not (assets alone never mute them).
 - **Missing models** map to a typed `BACKEND_ERROR` naming
   `docling_rs.download_models()` (matched on the `model not found at`
   substring of the real `ConversionError`, verified with an empty model
@@ -124,7 +139,11 @@ mapping is engine-independent.
 parsecraft convert FIXTURE` in a throwaway environment — dependencies are never
 installed with `uv pip install`, the project routes dependency changes through
 `uv add` (root rule), and `--isolated --extra` is the idiom for exercising a
-real conversion.
+real conversion. The figure surface (pc-sc9) is additionally covered by the
+opt-in live tier: `pytest tests/backends/test_docling_live.py
+--run-live-docling` runs the real engine on a synthesized chart page (figure
+asset + linked chunk) and a text-only page (no figure surface), skipping
+gracefully without the model cache.
 
 On-demand measurement (never part of `mise test`/CI, resumable):
 `mise run bench-docling` / `scripts/bench_docling.py`; results live in
