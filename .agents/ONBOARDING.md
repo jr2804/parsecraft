@@ -47,4 +47,13 @@ Dev-time tool inventory (MCP servers, skills, CLIs, gate commands) lives in
 `.agents/TOOLS.md` — read it when you need a tool, not a rule.
 
 Install/manage MCP servers and skills via `mise run add-mcp-servers <agent>`
-and `mise run add-skills` (manifests + installer documented in TOOLS.md).
+and `mise run add-skills` (manifests + installer documented in TOOLS.md). The
+agent token is `add-mcp`'s own name (`claude-code`, `opencode`, `pi`, ...); an
+unrecognised one fails every registration in the run.
+
+## Beads
+
+The issue tracker lives in `.beads/` and syncs to `refs/dolt/data` on the
+git origin. A clone has no local database — `bd init --non-interactive
+--init-if-missing` materialises one from the remote's ref. That same command
+rewrites the root `AGENTS.md`; see **Git hooks** in `.agents/TOOLS.md`.

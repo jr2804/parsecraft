@@ -1,4 +1,15 @@
 #!/usr/bin/env sh
+# --- BEGIN PRE-COMMIT FRAMEWORK INTEGRATION ---
+# Runs the project's .pre-commit-config.yaml checks on staged files.
+# Skipped when pre-commit is not on PATH (it is not a project dependency);
+# `mise all` is the gate. Content outside the bd markers is preserved by
+# `bd hooks install`, so this block survives a bd upgrade.
+if command -v pre-commit >/dev/null 2>&1; then
+    pre-commit run || exit 1
+fi
+# --- END PRE-COMMIT FRAMEWORK INTEGRATION ---
+
+#!/usr/bin/env sh
 # --- BEGIN BEADS INTEGRATION v1.3.2 ---
 # This section is managed by beads. Do not remove these markers.
 if command -v bd >/dev/null 2>&1; then

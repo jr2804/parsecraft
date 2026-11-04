@@ -17,6 +17,7 @@ Kept compact — agents hallucinate less when they know where definitions live.
 | CLI entry points       | `src/parsecraft/cli/`            | `app.py` (Typer app), `args.py`, `commands.py`  |
 | Test suite             | `tests/`                                                        | `test_*.py`, `conftest.py`                      |
 | Issue tracker (beads)  | `.beads/`                                                       | `bd` CLI, issue prefix `pc`                     |
+| Git hooks              | `.beads/hooks/`                                                | `core.hooksPath`; mode 755 or git ignores them |
 | Project metadata       | `pyproject.toml`                                                | `[project]`, `[tool.pytest.ini_options]`        |
 | Linter/formatter       | `ruff.toml`                                                     | Ruff rule selection, line length                |
 | Type checker           | `ty.toml`                                                       | ty strictness                                   |

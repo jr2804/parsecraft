@@ -164,7 +164,8 @@ the gate silently makes the validated tree not the caller's tree, and the gate
 then greens a tree nobody wrote.
 
 Pre-commit hooks (`.pre-commit-config.yaml`) run a subset of the above on every
-commit. Run `pre-commit run --all-files` to check the whole tree.
+commit, chained through the bead hook — see **Git hooks** in `.agents/TOOLS.md`.
+Run `pre-commit run --all-files` to check the whole tree.
 
 **Boundary code gets real-object tests, always.** A seam that talks to an outside
 engine (a backend adapter's handoff, a judge wire call, a storage format) must be

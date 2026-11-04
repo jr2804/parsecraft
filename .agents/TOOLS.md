@@ -55,3 +55,22 @@ when-to-use note. This is a live inventory, not a historical log.
 | ---- | ----------- |
 | `bd` (beads) | Durable multi-session issue tracking (`.beads/`, prefix `pc`); see `.agents/skills/beads/SKILL.md` |
 | copier (+ `copier-uv-plus` skill) | Template renders/updates of this project; see `C:\Users\Jan.Reimes\.agents\skills\copier-uv-plus\SKILL.md` |
+
+## Git hooks
+
+`bd init` sets `core.hooksPath` to `.beads/hooks/`, so git runs the tracked
+shims there — and `pre-commit install` then refuses ("cowardly refusing to
+install hooks with `core.hooksPath` set"). The pre-commit framework is
+therefore chained into `.beads/hooks/pre-commit` as a block outside bd's
+managed markers; bd preserves outside content across upgrades.
+
+Two consequences:
+
+- The shims must stay mode **755**. Git silently ignores a non-executable
+  hook — no error, just a hint — so the whole integration goes quiet.
+- The tracked shims are the whole hook set. A fresh clone gets them from git;
+  nothing is installed locally.
+
+`bd init` also rewrites the root `AGENTS.md`, appending its managed block
+below the no-patching marker. After any `bd init` or `bd setup`, check
+`git diff AGENTS.md` and keep the beads guidance in `CLAUDE.md` instead.
