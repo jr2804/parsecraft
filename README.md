@@ -91,6 +91,29 @@ uv run parsecraft backends
 See the [CLI reference](https://jr2804.github.io/parsecraft/reference/cli/) for
 every command, flag, exit code, and environment variable.
 
+## Configuration
+
+Settings live in a layered TOML config: `./parsecraft.toml` (project) over
+`~/.config/parsecraft/config.toml` (global), with `PARSECRAFT_CONFIG_*`
+environment variables and CLI flags on top. Secrets are references, never
+literals — write `api_key = "${MY_KEY}"`.
+
+```toml
+[routing]
+preference = "quality"          # speed | balanced | quality
+preferred_backend = "docling"   # preference, not a permission
+max_passes = 2                  # fallback-pass budget
+
+[routing.backend_options.docling]
+do_ocr = false                  # forwarded verbatim to the backend
+```
+
+`parsecraft config check` validates the effective configuration (unknown
+backend or engine names fail loudly); `parsecraft config show` prints every
+effective key with the file or layer it came from. See the
+[configuration reference](https://jr2804.github.io/parsecraft/reference/cli/#parsecraft-config)
+for every key.
+
 ## How it works
 
 ```text

@@ -456,6 +456,12 @@ merged in order `default → global → project → env → cli`. The global fil
 `./parsecraft.toml`; settings come from `PARSECRAFT_CONFIG_*` env vars (`__`
 separates nested sections).
 
+The project layer may hold several files: a later file wins per key, and
+every effective key records the exact file that set it, so `config show`
+reports `project:<path>` per key (a consumer that keeps one config in its
+vault and one in the working directory passes both, vault first). Missing
+files are skipped; relative paths resolve against the current directory.
+
 Shared options:
 
 | Option | Env var | Behaviour |
@@ -477,10 +483,47 @@ Recognized settings:
 | `judge.model` | string | unset | Default decision-model spec; `--judge` and `PARSECRAFT_JUDGE_MODEL` beat it |
 | `text_classifier.model` | string | unset | Default text-kind spec (the only activation surface); never reads `[judge]` |
 
+#### Routing settings
+
+The `[routing]` section carries the auto-routing knobs. It maps 1:1 onto
+`RoutingConstraints`; library consumers build one with
+`RoutingSettings.routing_constraints(...)` instead of re-deriving the
+mapping. Keys not set keep the documented default.
+
+```toml
+[routing]
+preference = "balanced"        # speed | balanced | quality
+allow_ocr = true               # omit the key to let eligibility derive it
+engines = ["pandoc"]           # required engine ids; unknown ids fail `config check`
+preferred_backend = "docling"  # preference, not a permission: ineligible pages still route elsewhere
+# only_backend = "liteparse"   # pin every page; unknown names fail `config check`
+[routing.backend_options.docling]
+do_ocr = false                 # forwarded verbatim; keys are backend-owned (pc-k92)
+```
+
+| Key | Type | Default | Notes |
+| --- | ---- | ------- | ----- |
+| `preference` | string | `balanced` | `speed`, `balanced`, or `quality`; orders eligible candidates, never admits one |
+| `allow_ocr` | bool | unset | Key absent = no override (eligibility derives it); `false` forbids OCR backends |
+| `engines` | string list | `[]` | Required engine ids (e.g. `pandoc`, `tesseract`); an unknown id is a `config check` error |
+| `preferred_backend` | string | unset | Move this backend to the front where it is eligible; empty string = unset |
+| `only_backend` | string | unset | Pin every page to one backend; empty string = unset |
+| `backend_options.<backend>` | table | `{}` | Forwarded verbatim into that backend's options (part of the conversion-cache key); option keys are backend-owned and validated at first conversion, not here |
+| `language` | string | unset | ISO language hint for language-gated backends |
+| `max_passes` | int | `1` | Fallback-pass budget; `≥ 1` |
+| `vram_budget_gb` | float | `0.0` | VRAM ceiling in GiB; `≥ 0` |
+| `gpu_usable` | bool | `false` | Whether GPU-resident backends may be considered |
+
+Deliberately absent (derived per run, never configured): `formats` (from the
+source media type), `installed_extras` (from the registry), `cached_assets`
+(from the asset cache), `offline` (a top-level key).
+
 #### `parsecraft config check`
 
 Validate the effective configuration. Exit `1` when invalid, otherwise `0`.
-Warnings and errors print on stderr in text mode.
+Warnings and errors print on stderr in text mode. An unknown
+`routing.preferred_backend`, `routing.only_backend`, or `routing.engines`
+name is an error naming the key and the accepted set.
 
 ```text
 $ parsecraft config check
@@ -506,9 +549,24 @@ the configuration is invalid, `show` still prints the raw source values.
 $ parsecraft config show
 cache_dir = null  (default:<defaults>)
 hf_token = "***"  (default:<defaults>)
+judge.model = null  (default:<defaults>)
 min_free_bytes = 0  (default:<defaults>)
 offline = false  (default:<defaults>)
+routing.allow_ocr = null  (default:<defaults>)
+routing.engines = []  (default:<defaults>)
+routing.gpu_usable = false  (default:<defaults>)
+routing.language = null  (default:<defaults>)
+routing.max_passes = 1  (default:<defaults>)
+routing.only_backend = null  (default:<defaults>)
+routing.preference = "balanced"  (default:<defaults>)
+routing.preferred_backend = null  (default:<defaults>)
+routing.vram_budget_gb = 0.0  (default:<defaults>)
+text_classifier.model = null  (default:<defaults>)
+timeout_s = null  (default:<defaults>)
 ```
+
+A key set by a project file reports the file it came from:
+`routing.max_passes = 2  (project:/work/parsecraft.toml)`.
 
 `--json` emits one object per key:
 `{"key", "value", "source": {"layer", "origin"}}`.

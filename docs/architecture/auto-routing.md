@@ -436,6 +436,7 @@ deterministic rule table plus, where configured, a judge spec.
 | judge / classifier spec | `resolve_judge` / `resolve_classifier`; `--judge` / `--classifier` | swaps ordering (or OCR-need evidence) without touching the rules |
 | thresholds `40` / `0.05` / `5` | `src/parsecraft/routing/rules.py` | code-owned constants, not config keys — tuning them is a code change with tests |
 | `RoutingConstraints.language` | library callers | BCP-47 narrowing of language-declaring backends; the detector is opt-in |
+| `[routing]` config section | `parsecraft.toml` (project layer, several files allowed) | the flags above as config keys, mapped 1:1 onto `RoutingConstraints` by `RoutingSettings.routing_constraints()`; unknown backend/engine names fail `config check` — see the [config reference](../reference/cli.md#routing-settings) |
 
 ## Related
 
