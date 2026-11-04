@@ -696,7 +696,7 @@ def test_do_ocr_false_reports_no_missing_models_and_no_pages_are_blank(docling_s
 def test_convert_emits_figure_assets_and_chunks_like_mineru(docling_stub: _State) -> None:
     """One cropped picture yields one asset + one FIGURE chunk linking it.
 
-    Kompend pc-sc9 acceptance: same surface as mineru — ExtractedAsset
+    pc-sc9 acceptance: same surface as mineru — ExtractedAsset
     (kind, media type, data URI, bbox, sha256) plus a figure chunk whose
     metadata carries ``asset_id``; page number and bbox come from the
     item's provenance, flipped out of docling's y-up frame.

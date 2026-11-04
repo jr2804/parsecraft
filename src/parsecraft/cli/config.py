@@ -87,7 +87,7 @@ class RoutingSettings(BaseModel):
     """User-settable routing knobs, mapped 1:1 onto ``RoutingConstraints`` (pc-8qc).
 
     This section is the single source of truth for backend/routing settings,
-    so consumers (kompend) no longer carry their own ``parsecraft_*`` copies.
+    so consumers no longer carry their own ``parsecraft_*`` copies.
     Deliberately ABSENT (derived per call by the consumer, never configured):
     ``formats`` (from the source media type), ``installed_extras`` (from the
     registry), ``cached_assets`` (from the run), and ``offline`` (already a
@@ -209,7 +209,7 @@ def build_engine(config_files: Sequence[Path] | None = None) -> ConfigEngine[Par
 
     1. schema defaults
     2. global   ``~/.config/parsecraft/config.toml``
-    3. vault    ``<vault>/.kompend/parsecraft.toml``   (consumer-supplied)
+    3. vault    ``<vault>/parsecraft.toml``            (consumer-supplied)
     4. project  ``./parsecraft.toml``                  (cwd, CLI convenience)
     5. env      ``PARSECRAFT_CONFIG_*``
     6. CLI flags
