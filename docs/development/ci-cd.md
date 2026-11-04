@@ -51,12 +51,19 @@ mechanically: it loads each `mise <task>` a workflow invokes, reads that task's
 commands from `.config/mise/`, and fails if any of them rewrites files — so a
 future task cannot reintroduce the inversion by name alone.
 
-`mise typecheck` is part of the local gate but **not yet a CI step** (pc-180).
-Adding it is not a one-line job: ty's verdict depends on which extras are
-installed, so the same commit types clean in the `mise dev` environment and dirty
-in an all-extras one — the `# ty: ignore[unresolved-import]` markers on the heavy
-imports are load-bearing there and invert to `unused-ignore-comment` once the
-extra is present. The job must pin the environment it types against and say so.
+`mise typecheck` runs in the `quality` job, **reported and never gating**
+(user ruling 2026-11-04): ty's verdict depends on which extras are installed, so
+a type finding must not block a release — the same split the
+`extras-availability` job already uses. The verdict is printed on every run,
+and `mise all` still type-checks locally as a hard gate.
+
+The job pins the environment it types against, and says so: the canonical dev
+env that `mise dev` produced above (`uv sync --dev --all-groups --extra web`,
+no heavy extras), never an all-extras one. The same commit types clean in the
+dev environment and dirty in an all-extras one — the
+`# ty: ignore[unresolved-import]` markers on the heavy imports are load-bearing
+there and invert to `unused-ignore-comment` once the extra is present. The task
+itself pins `VIRTUAL_ENV` to the project's venv, so the check is hermetic.
 
 The test matrix:
 

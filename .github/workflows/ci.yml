@@ -183,7 +183,14 @@ jobs:
     # _convert.py turn into warning[unused-ignore-comment] and a well-meaning
     # contributor deletes load-bearing markers. The task itself pins
     # VIRTUAL_ENV to this project's venv, so the check is hermetic here.
+    #
+    # REPORTED, NOT GATING (user ruling 2026-11-04): ty's verdict depends on
+    # which extras are installed, so a type finding must not block a release —
+    # the same split the `extras-availability` job already uses. The verdict
+    # is still printed on every run, and `mise all` still type-checks locally
+    # as a hard gate.
     - name: Run type checker (dev env, not all-extras)
+      continue-on-error: true
       run: mise typecheck
 
     - name: Check spelling
