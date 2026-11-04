@@ -9,13 +9,14 @@ servers, and skills they describe.
 ## Enable
 
 ```bash
-mise run add-mcp-servers claude    # install tools and register MCP servers
+mise run add-mcp-servers claude-code   # install tools and register MCP servers
 mise run add-skills                # install agent skills
 ```
 
-`add-mcp-servers <agent>` takes the target agent name (`claude`, `gemini`,
-`copilot`, `opencode`, ...). Both tasks depend on `mise dev`, so dependencies
-install first.
+`add-mcp-servers <agent>` takes the target agent name (`claude-code`,
+`gemini-cli`, `github-copilot-cli`, `opencode`, `pi`, ...). The exact set comes
+from `add-mcp`; an unrecognized name fails every registration. Both tasks depend
+on `mise dev`, so dependencies install first.
 
 ## Manifests
 
