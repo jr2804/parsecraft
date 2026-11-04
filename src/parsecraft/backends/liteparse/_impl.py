@@ -12,6 +12,12 @@ Design notes:
   between pages and a failing page becomes a typed ``BACKEND_ERROR`` record
   for that page's range instead of aborting the document. A single page's
   parse is one blocking call — the deadline cannot interrupt it mid-parse.
+- **Figure surface (pc-usi).** The engine returns the document's images on the
+  parse result, not on the page, so they are read per page and mapped onto the
+  IR's figure surface (``_images``): one ``ExtractedAsset`` plus one
+  ``FIGURE`` chunk linked by ``asset_id`` — the shape ``docling`` and
+  ``mineru`` emit. It is off unless the caller sets ``extract_images``, so an
+  existing conversion is byte-identical to before.
 """
 
 from __future__ import annotations
@@ -25,7 +31,8 @@ from typing import cast
 from liteparse import LiteParse
 
 from parsecraft.backends.errors import BackendError
-from parsecraft.backends.liteparse._items import TextItemLike, chunks_for_page, heading_ys
+from parsecraft.backends.liteparse._images import Figure, ImageLike, figure_chunk, figures_for_page
+from parsecraft.backends.liteparse._items import TextItemLike, heading_ys, positioned_chunks_for_page
 from parsecraft.backends.liteparse._tables import (
     VectorGraphicsLike,
     VectorLineLike,
@@ -47,6 +54,7 @@ from parsecraft.backends.protocol import (
 from parsecraft.backends.source import path_from_file_uri
 from parsecraft.ir.models import (
     ChunkKind,
+    ExtractedAsset,
     FailureCode,
     PageRange,
     PageResult,
@@ -66,6 +74,8 @@ _PARSER_KWARGS: dict[str, object] = {
 #: LiteParse constructor keywords a caller may set through ``BackendConfig.options``
 #: (``--backend-option extract_vector_graphics=true`` and friends). Only these are
 #: forwarded: the rest of the constructor surface is not ours to expose.
+#: ``extract_images`` is the one that changes the OUTPUT: it switches on the
+#: figure surface (pc-usi) — off by default, so nothing changes silently.
 _FORMAT_OPTION_KEYS: tuple[str, ...] = (
     "extract_text_metadata",
     "extract_vector_graphics",
@@ -89,6 +99,9 @@ class _ParsedPage:
     #: (:class:`VectorLineLike`), shapes are carried for a later pass.
     lines: list[VectorLineLike] = field(default_factory=list)
     shapes: list[VectorShapeLike] = field(default_factory=list)
+    #: The images the engine extracted for this page (empty unless the caller
+    #: asked for them with ``extract_images``).
+    images: list[ImageLike] = field(default_factory=list)
 
 
 class LiteparseBackend:
@@ -181,10 +194,11 @@ class LiteparseBackend:
                     )
                 )
                 continue
-            blocks = (
-                chunks_for_page(parsed.items, page_number=number, page_height=parsed.height, seen_texts=self._seen_texts)
-                if parsed.items
-                else _fallback_chunks(number, parsed.text)
+            blocks, assets = _page_surface(
+                parsed,
+                number,
+                self._seen_texts,
+                images=self._extracts_images(),
             )
             if self._has_vector_graphics():
                 blocks = _append_table_chunks(
@@ -208,7 +222,7 @@ class LiteparseBackend:
                     )
                 )
                 break
-            kept.append(PageResult(page_number=number, blocks=blocks))
+            kept.append(PageResult(page_number=number, blocks=blocks, assets=assets))
         return _result(reference, kept, failures, started)
 
     @staticmethod
@@ -240,6 +254,10 @@ class LiteparseBackend:
     def _has_vector_graphics(self) -> bool:
         return bool(self._option_kwargs.get("extract_vector_graphics"))
 
+    def _extracts_images(self) -> bool:
+        """Whether the caller asked the engine for the document's images."""
+        return bool(self._option_kwargs.get("extract_images"))
+
     def _make_parser(self, **overrides: str | int | float | bool) -> LiteParse:
         """A parser carrying the caller's format options plus this call's overrides."""
         return _parser(**{**self._option_kwargs, **overrides})
@@ -256,7 +274,7 @@ def create(config: BackendConfig) -> DocumentBackend:
 
 
 def _parse_page(data: bytes, page_number: int, **overrides: str | int | float | bool) -> _ParsedPage:
-    """One page's rendered text plus its items and vector graphics (the latter only when the caller opted in)."""
+    """One page's rendered text plus its items, vector graphics and images."""
     result = _parser(target_pages=str(page_number), **overrides).parse(data)
     if not result.pages:
         msg = f"liteparse returned no content for page {page_number}"
@@ -277,7 +295,65 @@ def _parse_page(data: bytes, page_number: int, **overrides: str | int | float | 
         width=float(width) if isinstance(width, int | float) else 0.0,
         lines=lines,
         shapes=shapes,
+        images=_page_images(result, page_number),
     )
+
+
+def _page_images(result: object, page_number: int) -> list[ImageLike]:
+    """The images the engine extracted for one page.
+
+    The engine returns the document's images on the PARSE RESULT, not on the
+    page, so they are filtered by the page they belong to. A parse without
+    ``extract_images`` carries no images at all.
+    """
+    raw = cast(list[ImageLike], getattr(result, "images", None) or [])
+    return [image for image in raw if getattr(image, "page", None) == page_number]
+
+
+def _page_surface(
+    parsed: _ParsedPage,
+    number: int,
+    seen_texts: set[str],
+    *,
+    images: bool,
+) -> tuple[list[StructuredChunk], list[ExtractedAsset]]:
+    """The page's blocks in reading order, with the figure surface merged in.
+
+    A figure takes its place by its top edge against the text blocks'
+    baselines — both in the viewport frame (top-left origin, 72 DPI), so the
+    comparison is direct. The merged list is renumbered: a block's id and its
+    reading order ARE its position on the page, and a figure pushes the text
+    blocks below it down.
+    """
+    if parsed.items:
+        positioned = positioned_chunks_for_page(
+            parsed.items,
+            page_number=number,
+            page_height=parsed.height,
+            seen_texts=seen_texts,
+        )
+    else:
+        positioned = [(chunk, 0.0) for chunk in _fallback_chunks(number, parsed.text)]
+    figures = figures_for_page(parsed.images, page_number=number) if images else []
+    if not figures:
+        return [chunk for chunk, _y in positioned], []
+    entries: list[tuple[float, int, object]] = [(y, 0, chunk) for chunk, y in positioned]
+    entries.extend((figure.top, 1, figure) for figure in figures)
+    entries.sort(key=lambda entry: entry[0])
+    blocks: list[StructuredChunk] = []
+    assets: list[ExtractedAsset] = []
+    for index, (_y, _tag, payload) in enumerate(entries):
+        if isinstance(payload, Figure):
+            blocks.append(figure_chunk(payload, page_number=number, index=index))
+            assets.append(payload.asset)
+        else:
+            blocks.append(_renumbered(cast(StructuredChunk, payload), page_number=number, index=index))
+    return blocks, assets
+
+
+def _renumbered(chunk: StructuredChunk, *, page_number: int, index: int) -> StructuredChunk:
+    """The chunk with its position-derived id and reading order refreshed."""
+    return chunk.model_copy(update={"id": f"liteparse-p{page_number}-b{index}", "reading_order": index})
 
 
 def _vector_graphics(page: object) -> tuple[list[VectorLineLike], list[VectorShapeLike]]:

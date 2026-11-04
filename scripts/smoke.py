@@ -35,6 +35,9 @@ class _Case:
     label: str
     args: tuple[str, ...]
     why: str
+    #: Fragments the run's census must contain — the paths whose OUTPUT is the
+    #: point, not just their exit code.
+    expect: tuple[str, ...] = ()
 
 
 def main(argv: list[str]) -> int:
@@ -43,10 +46,13 @@ def main(argv: list[str]) -> int:
         work = Path(work_dir)
         pdf = work / "smoke.pdf"
         pdf.write_bytes(_build_pdf())
-        print(f"smoke: real PDF {pdf.stat().st_size} bytes, {len(_cases(pdf))} paths\n")
+        figure = work / "figure.pdf"
+        figure.write_bytes(_build_figure_pdf())
+        cases = _cases(pdf, figure)
+        print(f"smoke: real PDF {pdf.stat().st_size} bytes, {len(cases)} paths\n")
 
         failures: list[str] = []
-        for case in _cases(pdf):
+        for case in cases:
             output_file = work / f"{abs(hash(case.label))}.json"
             code, text = _run(case.args, output_file)
             # The rejection case MUST fail; every other case MUST succeed.
@@ -55,6 +61,11 @@ def main(argv: list[str]) -> int:
             detail = "rejected loudly" if expected_failure and code != 0 else _report(output_file)
             if expected_failure and code == 0:
                 detail = "ACCEPTED a bogus option value"
+            # A path whose OUTPUT is the point must also produce it.
+            missing = [fragment for fragment in case.expect if fragment not in detail]
+            if missing and code == 0:
+                ok = False
+                detail = f"missing {missing} in: {detail}"
             status = "ok  " if ok else "FAIL"
             print(f"  [{status}] {case.label:<32} exit={code}  {detail}")
             if verbose or not ok:
@@ -100,7 +111,44 @@ def _build_pdf() -> bytes:
     return bytes(out)
 
 
-def _cases(pdf: Path) -> list[_Case]:
+def _build_figure_pdf() -> bytes:
+    """A real one-page PDF carrying one embedded image.
+
+    The image is drawn over 200x200 points: LiteParse extracts an image only
+    when its DRAWN extent reaches ~32 points (measured 2026-11-04), so a
+    small one would never be reported. This is the input the figure surface
+    consumes (pc-usi) — the path that used to pay for the extraction and
+    throw the result away.
+    """
+    pixels = bytes([(index * 7) % 256 for index in range(64 * 64 * 3)])
+    content = b"BT /F1 12 Tf 72 700 Td (Figure smoke) Tj ET\nq 200 0 0 200 72 400 cm /Im0 Do Q\n"
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> /XObject << /Im0 4 0 R >> >> /Contents 6 0 R >>",
+        b"<< /Type /XObject /Subtype /Image /Width 64 /Height 64 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Length "
+        + str(len(pixels)).encode()
+        + b" >>\nstream\n"
+        + pixels
+        + b"\nendstream",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        b"<< /Length " + str(len(content)).encode() + b" >>\nstream\n" + content + b"endstream",
+    ]
+    out = bytearray(b"%PDF-1.4\n")
+    offsets: list[int] = []
+    for number, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += f"{number} 0 obj\n".encode() + body + b"\nendobj\n"
+    xref_at = len(out)
+    out += f"xref\n0 {len(objects) + 1}\n".encode()
+    out += b"0000000000 65535 f \n"
+    for offset in offsets:
+        out += f"{offset:010d} 00000 n \n".encode()
+    out += f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_at}\n%%EOF\n".encode()
+    return bytes(out)
+
+
+def _cases(pdf: Path, figure: Path) -> list[_Case]:
     return [
         _Case("default (native family)", (str(pdf),), "the base path every consumer uses"),
         _Case(
@@ -117,6 +165,12 @@ def _cases(pdf: Path) -> list[_Case]:
             "liteparse + vector graphics",
             (str(pdf), "--backend", "liteparse", "--backend-option", "extract_vector_graphics=true"),
             "issue #7: the VectorGraphics handoff into the table path",
+        ),
+        _Case(
+            "liteparse + images",
+            (str(figure), "--backend", "liteparse", "--backend-option", "extract_images=true"),
+            "issue #8: the extracted image reaches the IR as an asset and a figure chunk",
+            ("figure=1", "assets=1"),
         ),
         _Case(
             "liteparse + unknown option value",
@@ -156,12 +210,14 @@ def _report(output_file: Path) -> str:
     payload = json.loads(output_file.read_text(encoding="utf-8"))
     pages = payload.get("pages") or []
     kinds: dict[str, int] = {}
+    assets = 0
     for page in pages:
         for block in page.get("blocks") or []:
             kind = str(block.get("kind"))
             kinds[kind] = kinds.get(kind, 0) + 1
+        assets += len(page.get("assets") or [])
     census = ", ".join(f"{name}={count}" for name, count in sorted(kinds.items())) or "no blocks"
-    return f"{len(pages)} page(s): {census}"
+    return f"{len(pages)} page(s): {census}, assets={assets}"
 
 
 if __name__ == "__main__":

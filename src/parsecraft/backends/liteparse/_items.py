@@ -95,6 +95,23 @@ def chunks_for_page(
     repeat. Passing ``None`` (the default) disables the running-header filter,
     which is what a single-page conversion wants.
     """
+    return [chunk for chunk, _y in positioned_chunks_for_page(items, page_number=page_number, page_height=page_height, seen_texts=seen_texts)]
+
+
+def positioned_chunks_for_page(
+    items: Sequence[TextItemLike],
+    *,
+    page_number: int,
+    page_height: float = 0.0,
+    seen_texts: set[str] | None = None,
+) -> list[tuple[StructuredChunk, float]]:
+    """The same chunks, each with the y of the line it was built from.
+
+    A figure needs a place in the page's reading order, and the only position
+    the IR can state for a figure is the image's own top edge — so the text
+    blocks need theirs too. One mapping, two projections: the chunks and their
+    positions never drift apart.
+    """
     lines = classify_lines(lines_of(items))
     kept: list[_Line] = []
     for line in lines:
@@ -106,7 +123,7 @@ def chunks_for_page(
         if seen_texts is not None:
             seen_texts.add(line.text)
 
-    chunks: list[StructuredChunk] = []
+    chunks: list[tuple[StructuredChunk, float]] = []
     index = 0
     body_size = _body_size(lines)
     pending: list[_Line] = []
@@ -115,7 +132,12 @@ def chunks_for_page(
         nonlocal index, pending
         if not pending:
             return
-        chunks.append(_chunk(page_number, index, ChunkKind.PARAGRAPH, _paragraph_text(pending), reading_order=index))
+        chunks.append(
+            (
+                _chunk(page_number, index, ChunkKind.PARAGRAPH, _paragraph_text(pending), reading_order=index),
+                pending[0].y,
+            )
+        )
         index += 1
         pending = []
 
@@ -123,13 +145,16 @@ def chunks_for_page(
         if line.level:
             _flush()
             chunks.append(
-                _chunk(
-                    page_number,
-                    index,
-                    ChunkKind.HEADING,
-                    line.text,
-                    reading_order=index,
-                    heading_level=str(line.level),
+                (
+                    _chunk(
+                        page_number,
+                        index,
+                        ChunkKind.HEADING,
+                        line.text,
+                        reading_order=index,
+                        heading_level=str(line.level),
+                    ),
+                    line.y,
                 )
             )
             index += 1

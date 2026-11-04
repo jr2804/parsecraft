@@ -101,6 +101,11 @@ _PDF_FONT_SIZE = 18
 _PDF_LEADING = 24
 #: Side of the grayscale image object in :func:`mixed_scanned_pdf` (square pixels).
 _IMAGE_SIDE = 8
+#: Pixel side of the figure image in :func:`figure_pdf`.
+_FIGURE_SIDE = 64
+#: Drawn side (PDF points) of the figure image in :func:`figure_pdf` — LiteParse
+#: extracts an image only from a drawn extent of ~32 points or more.
+_FIGURE_DRAWN = 200
 
 
 class DocumentFactory:
@@ -277,6 +282,55 @@ def image_heavy_pdf(images: int = 5) -> bytes:
     draws = " ".join(f"q /Im{index} Do Q" for index in range(images))
     content_stream = draws.encode("ascii")
     objects.append(f"<< /Length {len(content_stream)} >>\nstream\n".encode("ascii") + content_stream + b"\nendstream")
+    return _assemble(objects)
+
+
+def figure_pdf() -> bytes:
+    """Build a one-page PDF with body text, an embedded figure and a caption.
+
+    The figure is an RGB image drawn over ``_FIGURE_DRAWN`` points square:
+    LiteParse extracts an image only when its DRAWN extent reaches ~32
+    points (measured 2026-11-04) — an 8x8-pixel image drawn at 1x1 points is
+    never reported — so the drawn size, not the pixel size, is what this
+    fixture has to get right.
+
+    The two body lines are there for the paragraph merge: a page's paragraphs
+    split on a gap above the page's TYPICAL gap, so a page with a single line
+    below a figure never splits at all.
+
+    Page 1 layout, top to bottom (viewport coordinates, top-left origin)::
+
+        y=72   the first body line
+        y=92   the second body line
+        y=192  the figure (200 points tall)
+        y=432  the caption below it
+
+    That order is the fixture for the figure surface (pc-usi): the figure must
+    land BETWEEN the body and the caption in the page's reading order.
+    """
+    pixels = bytes([(index * 7) % 256 for index in range(_FIGURE_SIDE * _FIGURE_SIDE * 3)])
+    content = (
+        b"BT /F1 18 Tf 1 0 0 1 72 720 Tm 20 TL (Figure fixture) Tj T* (Second body line.) Tj ET\n"
+        + f"q {_FIGURE_DRAWN} 0 0 {_FIGURE_DRAWN} 72 400 cm /Im0 Do Q\n".encode("ascii")
+        + b"BT /F1 18 Tf 1 0 0 1 72 360 Tm (Caption below the figure.) Tj ET\n"
+    )
+    objects: list[bytes] = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        (
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {_PDF_PAGE_WIDTH} {_PDF_PAGE_HEIGHT}] "
+            f"/Resources << /Font << /F1 5 0 R >> /XObject << /Im0 4 0 R >> >> /Contents 6 0 R >>"
+        ).encode("ascii"),
+        (
+            f"<< /Type /XObject /Subtype /Image /Width {_FIGURE_SIDE} /Height {_FIGURE_SIDE} "
+            f"/ColorSpace /DeviceRGB /BitsPerComponent 8 /Length {len(pixels)} >>"
+        ).encode("ascii")
+        + b"\nstream\n"
+        + pixels
+        + b"\nendstream",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        f"<< /Length {len(content)} >>\nstream\n".encode("ascii") + content + b"\nendstream",
+    ]
     return _assemble(objects)
 
 
