@@ -121,14 +121,24 @@ progress — a second re-run in the same firing is refused with *"The workflow
 run containing this job is already running"* (measured 2026-11-04). The next
 firing happens when the run completes again, and takes the next cell.
 
-Two guards bound the retries. The trigger accepts only a **push**-triggered
+Three guards bound the retries. The trigger accepts only a **push**-triggered
 `ci` run on `main` — a pull-request run (including one from a fork whose
 branch is named `main`) never reaches the re-run API, the same fork-pwn vector
-`release.yml` closes — and only a run that **failed**, so a run a human
-cancelled stays cancelled. The automatic budget is finite (six re-runs per
-push, counted both on the run's attempt counter and on this workflow's own
-firings for the push), so the retry can never fight GitHub's runner capacity
-forever.
+`release.yml` closes — and only a run that did **not succeed**. The automatic
+budget is finite (six re-runs per push, counted both on the run's attempt
+counter and on this workflow's own firings for the push), so the retry can
+never fight GitHub's runner capacity forever.
+
+A run a **human interrupted** is left alone, and the two are told apart by the
+cells, not by the run's conclusion: the capacity case cancels only cells that
+never got a runner, while an interruption cancels a cell that had one. The
+script therefore skips a run in which any cancelled cell carries a runner.
+
+The run's conclusion is not the discriminator, and the reason is worth
+recording: the capacity case concludes **`cancelled`**, not `failure` (measured
+2026-11-04 — three macOS cells cancelled without a runner, every other cell
+green, the run concluded `cancelled`). A `failure`-only guard would therefore
+never fire in the very case it was written for.
 
 ## Release
 

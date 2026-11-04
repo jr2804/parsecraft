@@ -36,10 +36,26 @@ def test_the_job_is_guarded_against_a_pull_request_run() -> None:
     assert "github.event.workflow_run.head_branch == 'main'" in _TEXT
 
 
-def test_a_run_a_human_cancelled_is_not_retried() -> None:
-    """`conclusion == 'failure'`, not merely "not success": a cancelled run stays cancelled."""
-    assert "github.event.workflow_run.conclusion == 'failure'" in _TEXT
-    assert "github.event.workflow_run.conclusion != 'success'" not in _TEXT
+def test_a_cancelled_run_is_eligible_because_capacity_concludes_cancelled() -> None:
+    """The capacity case concludes 'cancelled', NOT 'failure' (measured 2026-11-04).
+
+    Three macOS cells cancelled without a runner, every other cell green, the
+    run concluded 'cancelled' — so a 'failure'-only guard would never fire in
+    the very case the workflow exists for.
+    """
+    assert "github.event.workflow_run.conclusion != 'success'" in _TEXT
+    assert "github.event.workflow_run.conclusion == 'failure'" not in _TEXT
+
+
+def test_a_run_interrupted_mid_flight_is_not_retried() -> None:
+    """A cancelled cell that HAD a runner was stopped by a human or a lost runner.
+
+    The capacity case cancels only cells that never got a runner; a cell with
+    a runner means the run was interrupted, and re-running it would undo that
+    decision.
+    """
+    assert "job.conclusion === 'cancelled' && job.runner_name" in _TEXT
+    assert "the run was interrupted, not starved" in _TEXT
 
 
 def test_only_a_cancelled_cell_that_never_got_a_runner_is_re_run() -> None:

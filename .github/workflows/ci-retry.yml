@@ -39,15 +39,18 @@ jobs:
     # from a fork whose branch is named main — must never reach the re-run
     # API with a write token.
     #
-    # `conclusion == 'failure'` and not merely "not success": a run a human
-    # CANCELLED concludes 'cancelled', and re-running its cells would undo
-    # that decision. A run that FAILED keeps its failing cell failed, so this
-    # can never turn a real breakage green — it only replaces the cells that
-    # never ran.
+    # Any conclusion but 'success'. The capacity case concludes 'cancelled',
+    # NOT 'failure' (measured 2026-11-04: three macOS cells cancelled without
+    # a runner, every other cell green, the run concluded 'cancelled') — so a
+    # 'failure'-only guard would never fire in the very case it was built for.
+    # A run that FAILED keeps its failing cell failed, so this can never turn
+    # a real breakage green — it only replaces the cells that never ran. A
+    # run a HUMAN cancelled is left alone: the script below skips a run whose
+    # cancellation interrupted a cell that had a runner.
     if: >-
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'main' &&
-      github.event.workflow_run.conclusion == 'failure'
+      github.event.workflow_run.conclusion != 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -93,9 +96,19 @@ jobs:
               run_id: run.id,
               per_page: 100,
             });
+            // A cancelled cell that HAD a runner was interrupted mid-flight:
+            // a human cancelled the run, or the runner was lost. That is not
+            // capacity, and re-running it would undo the decision. The
+            // capacity case cancels only cells that never got a runner at all
+            // (measured 2026-11-04: every cancelled cell had runner_name null
+            // while the cells that ran were green).
+            const interrupted = jobs.some((job) => job.conclusion === 'cancelled' && job.runner_name);
+            if (interrupted) {
+              core.info('a cancelled cell had a runner — the run was interrupted, not starved');
+              return;
+            }
             // `runner_name` is empty exactly when GitHub never handed the cell
-            // to a runner — the capacity case. A cancelled cell that HAD a
-            // runner was cancelled on purpose and stays cancelled.
+            // to a runner — the capacity case.
             const capacity = jobs.filter((job) => job.conclusion === 'cancelled' && !job.runner_name);
             if (!capacity.length) {
               core.info('no capacity-cancelled cells to retry');
