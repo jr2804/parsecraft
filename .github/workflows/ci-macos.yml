@@ -1,0 +1,162 @@
+name: ci-macos
+
+# The macOS leg, in its OWN workflow so it can never hold up a release.
+#
+# A hosted macOS runner can be unavailable for an entire run: GitHub never
+# hands the cell to a runner and cancels it ("The job was not acquired by
+# Runner of type hosted even after multiple attempts" - "Due to capacity
+# constraints, jobs targeting macOS arm64 runners may experience longer queue
+# times"). Observed 2026-11-04 on push cd37a0a: four macOS cells queued for 15
+# minutes with no runner and were cancelled, while every cell that actually
+# ran was green.
+#
+# A macOS cell that TIMES OUT must not block the release (user ruling
+# 2026-11-04). It could not be fixed inside ci.yml: a job that is still
+# waiting for a runner keeps the RUN open, so the release - which waits for
+# the ci run to complete - would wait for the macOS leg either way. Moving the
+# leg out means the ci run finishes as soon as ubuntu and windows are done.
+#
+# The macOS leg is still tested and still reported (a red run on the commit),
+# and `ci-retry.yml` still re-runs its capacity-cancelled cells. It simply
+# cannot gate a release.
+on:
+  push:
+    branches:
+    - main
+  pull_request:
+    branches:
+    - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+# Minimal token: no ci job needs more than read access to the repository.
+permissions:
+  contents: read
+
+env:
+  LANG: en_US.utf-8
+  LC_ALL: en_US.utf-8
+  PYTHONIOENCODING: UTF-8
+  PYTHONWARNDEFAULTENCODING: "1"
+
+jobs:
+
+  tests-macos:
+    # Observed 8-12 min across the matrix; 30 min bounds a hung cell.
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        python-version:
+          - "3.13"
+          - "3.14"
+    runs-on: macos-latest
+    env:
+      # The dev toolset is not needed by the test job (only uv + Python), and
+      # some tools lack wheels on the newest interpreters.
+      MISE_AUTO_INSTALL: "0"
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      with:
+        fetch-depth: 0
+        fetch-tags: true
+        persist-credentials: false
+
+    - name: Setup Python
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+      with:
+        python-version: ${{ matrix.python-version }}
+        allow-prereleases: true
+
+    - name: Setup uv
+      uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
+      with:
+        enable-cache: true
+        cache-dependency-glob: pyproject.toml
+
+    - name: Setup mise
+      uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac  # v2
+      with:
+        install: false
+        # See ci.yml's quality job: never restore the tool cache.
+        cache: false
+
+    - name: Install dependencies
+      run: mise dev
+
+    - name: Run tests with coverage
+      run: mise test
+
+  extras-availability-macos:
+    name: extras availability (macos-latest / ${{ matrix.python-version }})
+    runs-on: macos-latest
+    timeout-minutes: 10
+    # Reporting only, never gating: the same split as ci.yml's
+    # `extras-availability` job. The macOS cells of that job live here for
+    # the same reason the test cells do - so nothing macOS can do reaches the
+    # release.
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.14", "3.14t"]
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      with:
+        fetch-depth: 0
+        fetch-tags: true
+        persist-credentials: false
+
+    - name: Setup Python
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Setup uv
+      uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
+      with:
+        enable-cache: true
+        cache-dependency-glob: pyproject.toml
+
+    - name: Assert every extra resolves jointly
+      run: uv sync -U --all-extras --all-groups --all-packages --dry-run
+
+    # Alert-fatigue mitigation: a red cell must be read, not tuned out. Every
+    # cell carries the known cause and the re-entry condition; a failing cell
+    # additionally raises a notice annotation.
+    - name: Explain this cell
+      if: always()
+      run: |
+        cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+        ### extras availability - macos-latest / ${{ matrix.python-version }}
+
+        **Known cause of expected failures:** native dependencies whose
+        upstreams publish no wheel for the cell's interpreter and platform.
+        Observed on 2026-10-26: onnxruntime (no free-threaded wheel, no sdist)
+        on Windows 3.14t; nvidia-cudnn-frontend and pynvvideocodec (both from
+        the vllm extra's chain, which resolves on macOS and Linux) on macOS
+        3.14 and Ubuntu 3.14t. The mineru extra no longer contributes a cause:
+        since 2026-10-26 it installs first-party runtimes (torch, transformers)
+        instead of the mineru package. PEP 508 has no free-threaded marker, so
+        these cannot be gated out.
+
+        **Re-entry condition:** when those upstreams publish wheels for the
+        cell, drop continue-on-error from this job and it becomes the gate
+        root AGENTS.md rule 10 always claimed to have.
+
+        See docs/development/ci-cd.md.
+        EOF
+
+    - name: Annotate expected failure
+      if: failure()
+      run: |
+        echo "::notice title=extras availability::expected: a native dependency ships no wheel for this cell (see the step summary for the observed packages and the re-entry condition)"

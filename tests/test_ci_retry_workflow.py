@@ -25,7 +25,8 @@ _TEXT = _WORKFLOW.read_text(encoding="utf-8")
 
 def test_the_retry_triggers_only_on_a_completed_ci_run_on_main() -> None:
     assert "workflow_run:" in _TEXT
-    assert "workflows: [ci]" in _TEXT
+    # Both workflows: the macOS leg has its own workflow (ci-macos.yml).
+    assert "workflows: [ci, ci-macos]" in _TEXT
     assert "types: [completed]" in _TEXT
     assert "branches: [main]" in _TEXT
 

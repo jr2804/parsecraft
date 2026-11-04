@@ -19,7 +19,9 @@ name: ci-retry
 # GitHub's runner capacity forever.
 on:
   workflow_run:
-    workflows: [ci]
+    # Both workflows: the macOS leg has its own workflow (ci-macos.yml), and
+    # its cells need the same capacity retry.
+    workflows: [ci, ci-macos]
     types: [completed]
     branches: [main]
 

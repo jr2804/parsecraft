@@ -13,8 +13,11 @@ jobs run in parallel:
 | `extras` | ubuntu, windows | `uv sync -U --all-extras --all-groups --all-packages --dry-run` on 3.13 (root `AGENTS.md` rule 10) |
 | `extras-availability` | ubuntu, macos, windows | the same assertion on 3.14 and 3.14t; **reporting only** (`continue-on-error`) |
 | `quality` | ubuntu | `mise lint-check` + `mise typecheck` + `mise spell` + `mise format-check` + `mise actionlint` |
-| `tests` | ubuntu, macos, windows | `mise test` (100% coverage gate) |
+| `tests` | ubuntu, windows | `mise test` (100% coverage gate) |
 | `docs` | ubuntu | `mise docs` |
+
+The macOS legs are not in this workflow at all — they live in
+`ci-macos.yml`, see [the macOS leg](#the-macos-leg-has-its-own-workflow-it-cannot-hold-up-a-release).
 
 `extras` verifies rule 10 (every optional extra must resolve jointly) on
 CPython 3.13 alone. `extras-availability` extends the same assertion to the
@@ -69,9 +72,12 @@ The test matrix:
 
 | Python | OS | Notes |
 | ------ | -- | ----- |
-| 3.13 | ubuntu, macos, windows | GIL-enabled builds |
-| 3.14 | ubuntu, macos, windows | |
+| 3.13 | ubuntu, windows | GIL-enabled builds |
+| 3.14 | ubuntu, windows | |
 | 3.15-dev | ubuntu | `continue-on-error` — allowed to fail |
+
+The macOS cells (3.13, 3.14) and the macOS `extras-availability` cells
+(3.14, 3.14t) live in `ci-macos.yml` — see below.
 
 Free-threaded (`3.14t`) cells are **suspended** (ADR-0001 amendment, 2026-10-09):
 heavy runtimes such as `onnxruntime` ship no free-threaded macOS/Windows wheels
@@ -90,6 +96,38 @@ job (only uv plus the selected interpreter, and some tools lack wheels on the
 newest interpreters).
 The free-threaded runtime floor and CI matrix are recorded in
 [ADR-0001](../adr/0001-phase-0-decisions.md).
+
+### The macOS leg has its own workflow: it cannot hold up a release
+
+A hosted macOS runner can be unavailable for an entire run: GitHub never hands
+the cell to a runner and cancels it. The cell's own annotation says it —
+*"The job was not acquired by Runner of type hosted even after multiple
+attempts"*, plus *"Due to capacity constraints, jobs targeting macOS arm64
+runners may experience longer queue times"* — and the run turns red although
+no macOS code ever ran. Observed 2026-11-04 on push `cd37a0a`: four macOS
+cells queued for 15 minutes with no runner and were cancelled, while every cell
+that actually ran was green. The same wall returned on a full re-run of the
+workflow and on every single-cell re-run.
+
+**A macOS cell that times out (or never gets a runner) must not block the
+release** (user ruling 2026-11-04). That could not be fixed inside `ci.yml`:
+a job that is still waiting for a runner keeps the RUN open, so the release —
+which waits for the ci run to complete — would wait for the macOS leg either
+way. Keeping it in the same workflow would also leave the run's conclusion at
+the mercy of a cell that never ran.
+
+So the macOS legs live in their own workflow, `.github/workflows/ci-macos.yml`:
+the two test cells and the two free-threaded `extras-availability` cells. The
+release is triggered by `ci` and never by `ci-macos`, so nothing macOS can do
+reaches it — not a timeout, not a capacity cancellation, and not a macOS
+regression. **A macOS regression does not block a release either**: it is
+reported on the commit (the `ci-macos` run is red) and the release proceeds.
+The macOS leg is a signal, not a gate.
+
+The macOS leg is neither skipped nor hidden: it runs the same steps as the
+gated job (`tests/test_ci_macos_leg.py` pins that), its run is on the commit,
+and `ci-retry.yml` re-runs its capacity-cancelled cells exactly as it does for
+the gated workflow's.
 
 ### Cancelled cells are retried, not treated as failures
 
