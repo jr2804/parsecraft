@@ -28,6 +28,11 @@ Always applicable. Boundaries, priorities, verification, checklist.
 ## Change constraints
 
 - Minimal, surgical edits. Preserve existing style.
+- **Run Python through `uv`, never a bare `python3`** (user directive
+  2026-11-04): `uv run python ...` for a project script,
+  `uv run --no-project python ...` for a standalone one. The project's tooling
+  is `uv run` throughout, so a bare `python3` runs against whichever
+  interpreter happens to be on PATH.
 - **Progressive, never pinned** (user directive 2026-10-09): mise tools and
   dependencies track `latest`. When an update breaks the gate, fix the code or
   the dependency — never pin the tool back to the version that used to pass.
