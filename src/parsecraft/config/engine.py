@@ -7,17 +7,21 @@ Layer precedence, lowest first:
 
     default -> global -> project -> env -> cli
 
-Values from later layers override earlier ones. Every effective leaf key keeps a
-``ConfigSource`` record, so ``source_of("section.key")`` answers where a value
-came from. ``${VAR}`` placeholders resolve from the environment and never hold
-literal secrets in files.
+Values from later layers override earlier ones. The ``global`` and ``project``
+layers are file-backed; ``read_files`` may feed SEVERAL files into one file
+layer (a consumer's vault file ahead of the cwd project file), in which case a
+later file wins per key and every leaf still records the exact file that
+supplied it. Every effective leaf key keeps a ``ConfigSource`` record, so
+``source_of("section.key")`` answers where a value came from. ``${VAR}``
+placeholders resolve from the environment and never hold literal secrets in
+files.
 """
 
 from __future__ import annotations
 
 import os
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import TypeVar, cast
 
@@ -89,6 +93,9 @@ class ConfigEngine[SchemaT: ConfigSchema]:
         self._environ = environ
         self._values: dict[ConfigLayer, dict[str, object]] = {ConfigLayer.DEFAULT: _plain_mapping(_schema_defaults(schema))}
         self._origins: dict[ConfigLayer, str] = {ConfigLayer.DEFAULT: _DEFAULT_ORIGIN}
+        #: Per-leaf provenance overrides for file layers built from several
+        #: files (``read_files``): dotted key -> the file that supplied it.
+        self._leaf_sources: dict[ConfigLayer, dict[str, ConfigSource]] = {}
         self._warnings: list[ConfigWarning] = []
 
     # ── Recording layers ──────────────────────────────────────────────────
@@ -99,17 +106,40 @@ class ConfigEngine[SchemaT: ConfigSchema]:
         self._record(ConfigLayer.DEFAULT, _deep_update(current, _plain_mapping(values)), origin=_DEFAULT_ORIGIN)
 
     def read_file(self, layer: ConfigLayer, path: str | Path) -> None:
-        """Read a TOML file into ``global`` or ``project`` and migrate aliases."""
+        """Read a TOML file into ``global`` or ``project`` and migrate aliases.
+
+        Reading into a layer REPLACES whatever that layer held before (the
+        accumulated form is :meth:`read_files`).
+        """
         if layer not in _FILE_LAYERS:
             allowed = ", ".join(item.value for item in _FILE_LAYERS)
             raise ConfigLayerError(layer.value, allowed)
-        file_path = Path(path)
-        try:
-            document = tomlkit.parse(file_path.read_text(encoding="utf-8"))
-        except (OSError, ParseError) as exc:
-            raise ConfigFileError(str(file_path), exc) from exc
-        values = _plain_mapping(cast("Mapping[str, object]", document.unwrap()))
-        self._record(layer, self._migrate_aliases(values), origin=str(file_path))
+        values = _read_toml(Path(path))
+        self._leaf_sources[layer] = {}
+        self._record(layer, self._migrate_aliases(values), origin=str(Path(path)))
+
+    def read_files(self, layer: ConfigLayer, paths: Sequence[str | Path]) -> None:
+        """Read several TOML files into one file layer; a later file wins per key.
+
+        Priority within the layer follows the given order: each file is
+        deep-merged over the previous ones, and every effective leaf keeps the
+        exact file that last supplied it as its provenance (``config show``
+        reports ``project:<path>`` per key, and ``path_keys`` resolve against
+        the declaring file). An empty ``paths`` sequence leaves the layer
+        empty.
+        """
+        if layer not in _FILE_LAYERS:
+            allowed = ", ".join(item.value for item in _FILE_LAYERS)
+            raise ConfigLayerError(layer.value, allowed)
+        for path in paths:
+            file_path = Path(path)
+            values = self._migrate_aliases(_read_toml(file_path))
+            merged = _deep_update(self._values.get(layer, {}), values)
+            leaf_sources = dict(self._leaf_sources.get(layer, {}))
+            for dotted, _leaf in _flatten(values):
+                leaf_sources[dotted] = ConfigSource(layer=layer, origin=str(file_path))
+            self._leaf_sources[layer] = leaf_sources
+            self._record(layer, merged, origin=str(file_path))
 
     def read_env(self) -> None:
         """Record the ``env`` layer from the configured environment mapping."""
@@ -244,7 +274,14 @@ class ConfigEngine[SchemaT: ConfigSchema]:
             if not values:
                 continue
             source = ConfigSource(layer=layer, origin=self._origins[layer])
-            _merge_into(merged, values, prefix="", provenance=provenance, source=source)
+            _merge_into(
+                merged,
+                values,
+                prefix="",
+                provenance=provenance,
+                source=source,
+                leaf_sources=self._leaf_sources.get(layer),
+            )
         return merged, provenance
 
     def _resolved_values(self) -> tuple[dict[str, object], dict[str, ConfigSource]]:
@@ -267,6 +304,15 @@ class ConfigEngine[SchemaT: ConfigSchema]:
             if candidate.is_absolute():
                 continue
             _dotted_set(values, key, str(Path(source.origin).parent / candidate))
+
+
+def _read_toml(path: Path) -> dict[str, object]:
+    """Parse a TOML file into plain nested mappings (raises ConfigFileError)."""
+    try:
+        document = tomlkit.parse(path.read_text(encoding="utf-8"))
+    except (OSError, ParseError) as exc:
+        raise ConfigFileError(str(path), exc) from exc
+    return _plain_mapping(cast("Mapping[str, object]", document.unwrap()))
 
 
 def _schema_defaults(schema: type[ConfigSchema]) -> dict[str, object]:
@@ -296,6 +342,7 @@ def _merge_into(
     prefix: str,
     provenance: dict[str, ConfigSource],
     source: ConfigSource,
+    leaf_sources: Mapping[str, ConfigSource] | None = None,
 ) -> None:
     for key, value in values.items():
         dotted = f"{prefix}{key}"
@@ -311,12 +358,13 @@ def _merge_into(
                 prefix=f"{dotted}.",
                 provenance=provenance,
                 source=source,
+                leaf_sources=leaf_sources,
             )
             continue
         if type(target.get(key)) is dict:
             _drop_provenance_prefix(provenance, f"{dotted}.")
         target[key] = value
-        provenance[dotted] = source
+        provenance[dotted] = (leaf_sources or {}).get(dotted, source)
 
 
 def _expand_secrets(value: object, environ: Mapping[str, str]) -> object:

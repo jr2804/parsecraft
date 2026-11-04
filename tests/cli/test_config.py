@@ -11,7 +11,8 @@ from typer.testing import CliRunner, Result
 
 from parsecraft.cli import config
 from parsecraft.cli.app import app
-from parsecraft.config import ConfigCheckReport, ConfigShowEntry, ConfigWarning
+from parsecraft.config import ConfigCheckReport, ConfigError, ConfigShowEntry, ConfigValidationError, ConfigWarning
+from parsecraft.routing.models import RoutingPreference
 
 runner = CliRunner()
 
@@ -211,16 +212,6 @@ def test_config_show_redacts_provider_api_keys(tmp_path: Path, monkeypatch: pyte
     assert _entry(result.output, "providers.typesafe.api_key")["value"] == "***"
 
 
-def _text(result: Result) -> str:
-    return f"{result.output}{result.stderr or ''}"
-
-
-def _project_file(tmp_path: Path, text: str) -> Path:
-    path = tmp_path / "parsecraft.toml"
-    path.write_text(text, encoding="utf-8")
-    return path
-
-
 def test_config_env_layer_and_json_flag_no_collision(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PARSECRAFT_CONFIG_OFFLINE", "true")
     monkeypatch.setenv("PARSECRAFT_JSON", "1")
@@ -257,3 +248,174 @@ def test_show_lines_marks_entries_without_source() -> None:
 
 def test_flatten_values_handles_nested_sections() -> None:
     assert config.flatten_values({"a": {"b": 1}, "c": 2}) == {"a.b": 1, "c": 2}
+
+
+def test_routing_settings_defaults() -> None:
+    settings = config.ParsecraftConfig().routing
+    assert settings.preference == RoutingPreference.BALANCED
+    assert settings.allow_ocr is None
+    assert settings.engines == []
+    assert settings.preferred_backend is None
+    assert settings.only_backend is None
+    assert settings.backend_options == {}
+    assert settings.language is None
+    assert settings.max_passes == 1
+    assert settings.vram_budget_gb == 0.0
+    assert settings.gpu_usable is False
+
+
+def test_routing_constraints_maps_the_section() -> None:
+    settings = config.RoutingSettings(
+        preference=RoutingPreference.QUALITY,
+        allow_ocr=False,
+        engines=["pandoc", "tesseract"],
+        preferred_backend="pdf-inspector",
+        only_backend="",
+        backend_options={"pdf-inspector": {"mode": "fast", "dpi": 200}},
+        language="de",
+        max_passes=3,
+        vram_budget_gb=2.5,
+        gpu_usable=True,
+    )
+    constraints = settings.routing_constraints(installed_extras={"pdf-inspector"}, formats={"application/pdf"})
+    assert constraints.preference == RoutingPreference.QUALITY
+    assert constraints.allow_ocr is False
+    assert constraints.engines == frozenset({"pandoc", "tesseract"})
+    assert constraints.preferred_backend == "pdf-inspector"
+    assert constraints.only_backend is None  # empty string normalizes to None
+    assert constraints.backend_options == {"pdf-inspector": {"mode": "fast", "dpi": 200}}
+    assert constraints.language == "de"
+    assert constraints.max_passes == 3
+    assert constraints.vram_budget_gb == 2.5
+    assert constraints.gpu_usable is True
+    assert constraints.installed_extras == {"pdf-inspector"}
+    assert constraints.formats == {"application/pdf"}
+    assert constraints.offline is True
+
+
+def test_routing_constraints_keeps_allow_ocr_derivation_and_offline_override() -> None:
+    derived = config.RoutingSettings().routing_constraints(installed_extras=set(), formats=set())
+    assert derived.allow_ocr is True  # None means "keep the planner's derivation"
+    overridden = config.RoutingSettings().routing_constraints(installed_extras=set(), formats=set(), offline=False)
+    assert overridden.offline is False
+
+
+def test_routing_constraints_rejects_unknown_backend(tmp_path: Path) -> None:
+    settings = config.RoutingSettings(preferred_backend="no-such-backend")
+    with pytest.raises(ConfigError, match="routing.preferred_backend") as excinfo:
+        settings.routing_constraints(installed_extras=set(), formats=set())
+    assert "accepted:" in str(excinfo.value)
+
+
+def test_routing_constraints_rejects_unknown_engine(tmp_path: Path) -> None:
+    settings = config.RoutingSettings(engines=["no-such-engine"])
+    with pytest.raises(ConfigError, match="routing.engines"):
+        settings.routing_constraints(installed_extras=set(), formats=set())
+
+
+def test_routing_constraints_wraps_validation_failures() -> None:
+    """Schema drift between the two models still surfaces as ConfigValidationError."""
+    settings = config.RoutingSettings.model_construct(max_passes=0)  # bypass the schema bounds
+    with pytest.raises(ConfigValidationError, match="failed validation"):
+        settings.routing_constraints(installed_extras=set(), formats=set())
+
+
+def test_config_check_accepts_routing_section(tmp_path: Path) -> None:
+    path = _project_file(
+        tmp_path,
+        '[routing]\npreference = "quality"\nengines = ["pandoc"]\npreferred_backend = "pdf-inspector"\n'
+        '[routing.backend_options.pdf-inspector]\nmode = "fast"\nmax_passes = 2\n',
+    )
+    result = runner.invoke(app, ["config", "check", "--config-file", str(path)])
+    assert result.exit_code == 0
+    assert "Configuration is valid." in _text(result)
+
+
+def test_config_check_rejects_unknown_routing_backend(tmp_path: Path) -> None:
+    path = _project_file(tmp_path, '[routing]\npreferred_backend = "no-such-backend"\n')
+    result = runner.invoke(app, ["config", "check", "--config-file", str(path)])
+    assert result.exit_code == 1
+    assert "routing.preferred_backend" in _text(result)
+    assert "no-such-backend" in _text(result)
+
+
+def test_config_check_rejects_unknown_routing_engine(tmp_path: Path) -> None:
+    path = _project_file(tmp_path, '[routing]\nengines = ["marker"]\n')
+    result = runner.invoke(app, ["config", "check", "--config-file", str(path)])
+    assert result.exit_code == 1
+    assert "routing.engines" in _text(result)
+    assert "marker" in _text(result)
+
+
+def test_config_check_rejects_unknown_routing_keys(tmp_path: Path) -> None:
+    path = _project_file(tmp_path, "[routing]\ntypo_key = 1\n")
+    result = runner.invoke(app, ["config", "check", "--config-file", str(path)])
+    assert result.exit_code == 1
+    assert "typo_key" in _text(result)
+
+
+def test_config_check_rejects_invalid_routing_values(tmp_path: Path) -> None:
+    path = _project_file(tmp_path, "[routing]\nmax_passes = 0\n")
+    result = runner.invoke(app, ["config", "check", "--config-file", str(path)])
+    assert result.exit_code == 1
+    assert "max_passes" in _text(result)
+
+
+def test_config_check_rejects_unknown_only_backend(tmp_path: Path) -> None:
+    path = _project_file(tmp_path, '[routing]\nonly_backend = "no-such-backend"\n')
+    result = runner.invoke(app, ["config", "check", "--config-file", str(path)])
+    assert result.exit_code == 1
+    assert "routing.only_backend" in _text(result)
+
+
+def _text(result: Result) -> str:
+    return f"{result.output}{result.stderr or ''}"
+
+
+def test_build_engine_multi_file_priority_and_provenance(tmp_path: Path) -> None:
+    vault = _project_file(_ensure_dir(tmp_path / "vault"), 'offline = true\n[routing]\npreference = "quality"\n')
+    project = _project_file(_ensure_dir(tmp_path / "cwd"), "[routing]\nmax_passes = 4\n")
+    engine = config.build_engine([vault, project])
+    loaded = engine.load()
+    assert loaded.routing.preference == RoutingPreference.QUALITY
+    assert loaded.routing.max_passes == 4
+    assert loaded.offline is True
+    preference_source = engine.source_of("routing.preference")
+    assert preference_source is not None
+    assert preference_source.origin == str(vault)
+    passes_source = engine.source_of("routing.max_passes")
+    assert passes_source is not None
+    assert passes_source.origin == str(project)
+    offline_source = engine.source_of("offline")
+    assert offline_source is not None
+    assert offline_source.origin == str(vault)
+
+
+def test_build_engine_later_file_wins_per_key(tmp_path: Path) -> None:
+    vault = _project_file(_ensure_dir(tmp_path / "vault"), "offline = true\n")
+    project = _project_file(_ensure_dir(tmp_path / "cwd"), "offline = false\n")
+    engine = config.build_engine([vault, project])
+    assert engine.load().offline is False
+    offline_source = engine.source_of("offline")
+    assert offline_source is not None
+    assert offline_source.origin == str(project)
+
+
+def _ensure_dir(path: Path) -> Path:
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def test_build_engine_empty_sequence_skips_project_layer(tmp_path: Path) -> None:
+    _project_file(tmp_path, "offline = true\n")  # cwd project file exists but must be ignored
+    engine = config.build_engine([])
+    assert engine.load().offline is False  # schema default survives
+    offline_source = engine.source_of("offline")
+    assert offline_source is not None
+    assert offline_source.origin == "<defaults>"
+
+
+def _project_file(tmp_path: Path, text: str) -> Path:
+    path = tmp_path / "parsecraft.toml"
+    path.write_text(text, encoding="utf-8")
+    return path

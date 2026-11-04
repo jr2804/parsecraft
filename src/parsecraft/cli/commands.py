@@ -18,7 +18,7 @@ from parsecraft.cli import judges as judges_module
 from parsecraft.cli import models as models_module
 from parsecraft.cli.convert import _USAGE_EXIT_CODE, ConvertError, convert_source, render, warn_empty_output_notes, warn_text_encoding_notes
 from parsecraft.cli.errors import CliError
-from parsecraft.config import ConfigError
+from parsecraft.config import ConfigCheckReport, ConfigError
 from parsecraft.routing import RoutingPreference
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -66,11 +66,20 @@ def _device_label(capabilities: BackendCapabilities) -> str:
 def config_check(as_json: args.JsonFlag = False, config_file: args.ConfigFileOption = None) -> None:
     """Validate the effective ParseCraft configuration."""
     try:
-        engine = config.build_engine(config_file)
+        engine = config.build_engine([config_file] if config_file is not None else None)
     except ConfigError as exc:
         _emit_config_error(exc, as_json=as_json)
         raise typer.Exit(code=1) from exc
     report = engine.check()
+    if report.valid:
+        errors = config.routing_settings_errors(engine.load().routing)
+        if errors:
+            report = ConfigCheckReport(
+                valid=False,
+                errors=(*report.errors, *errors),
+                warnings=report.warnings,
+                snapshot=report.snapshot,
+            )
     if as_json:
         typer.echo(json.dumps(report.model_dump(mode="json"), indent=2, sort_keys=True))
     else:
@@ -83,7 +92,7 @@ def config_check(as_json: args.JsonFlag = False, config_file: args.ConfigFileOpt
 def config_show(as_json: args.JsonFlag = False, config_file: args.ConfigFileOption = None) -> None:
     """Show the resolved effective configuration with per-key provenance."""
     try:
-        engine = config.build_engine(config_file)
+        engine = config.build_engine([config_file] if config_file is not None else None)
         entries = config.resolved_entries(engine)
     except ConfigError as exc:
         _emit_config_error(exc, as_json=as_json)

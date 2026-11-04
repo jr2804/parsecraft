@@ -254,11 +254,6 @@ def test_check_reports_valid_snapshot(tmp_path: Path) -> None:
     assert report.snapshot["workers"] == 3
 
 
-def _write(path: Path, text: str) -> Path:
-    path.write_text(text, encoding="utf-8")
-    return path
-
-
 def test_check_reports_validation_failure() -> None:
     engine = ConfigEngine(Demo, app_name="parsecraft", environ={"PARSECRAFT_WORKERS": "not-a-number"})
     engine.read_env()
@@ -312,3 +307,66 @@ def test_report_defaults() -> None:
     assert report.warnings == ()
     assert report.snapshot is None
     assert ConfigShowEntry(key="k", value=1).source is None
+
+
+def test_read_files_merge_in_order_and_later_file_wins(tmp_path: Path) -> None:
+    vault = _write(tmp_path / "vault.toml", 'name = "from-vault"\nworkers = 4\n')
+    project = _write(tmp_path / "project.toml", 'name = "from-project"\n')
+    engine = ConfigEngine(Demo, app_name="parsecraft")
+    engine.read_files(ConfigLayer.PROJECT, [vault, project])
+    loaded = engine.load()
+    assert loaded.name == "from-project"
+    assert loaded.workers == 4
+    assert engine.source_of("name") == ConfigSource(layer=ConfigLayer.PROJECT, origin=str(project))
+    assert engine.source_of("workers") == ConfigSource(layer=ConfigLayer.PROJECT, origin=str(vault))
+
+
+def test_read_file_replaces_a_read_files_layer(tmp_path: Path) -> None:
+    vault = _write(tmp_path / "vault.toml", 'name = "from-vault"\nworkers = 4\n')
+    single = _write(tmp_path / "single.toml", 'name = "from-single"\n')
+    engine = ConfigEngine(Demo, app_name="parsecraft")
+    engine.read_files(ConfigLayer.PROJECT, [vault])
+    engine.read_file(ConfigLayer.PROJECT, single)
+    loaded = engine.load()
+    assert loaded.name == "from-single"
+    assert loaded.workers == 1
+
+
+def test_read_files_resolves_path_keys_against_the_declaring_file(tmp_path: Path) -> None:
+    vault = _write(tmp_path / "vault.toml", 'data_dir = "cache"\n')
+    project = _write(tmp_path / "project.toml", 'name = "x"\n')
+    engine = ConfigEngine(Demo, app_name="parsecraft", path_keys=("data_dir",))
+    engine.read_files(ConfigLayer.PROJECT, [vault, project])
+    data_source = engine.source_of("data_dir")
+    assert data_source is not None
+    assert data_source.origin == str(vault)
+    assert engine.load().data_dir == str(vault.parent / "cache")
+
+
+def _write(path: Path, text: str) -> Path:
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_read_files_rejects_non_file_layers() -> None:
+    engine = ConfigEngine(Demo, app_name="parsecraft")
+    with pytest.raises(ConfigLayerError) as excinfo:
+        engine.read_files(ConfigLayer.ENV, [])
+    assert excinfo.value.layer == "env"
+    assert "global" in excinfo.value.allowed
+    assert "project" in excinfo.value.allowed
+
+
+def test_read_files_with_no_paths_is_a_no_op(tmp_path: Path) -> None:
+    engine = ConfigEngine(Demo, app_name="parsecraft")
+    engine.read_files(ConfigLayer.PROJECT, [])
+    assert engine.load().name == "demo"
+    name_source = engine.source_of("name")
+    assert name_source is not None
+    assert name_source.origin == "<defaults>"
+
+
+def test_read_files_missing_path_raises(tmp_path: Path) -> None:
+    engine = ConfigEngine(Demo, app_name="parsecraft")
+    with pytest.raises(ConfigFileError):
+        engine.read_files(ConfigLayer.PROJECT, [tmp_path / "absent.toml"])
