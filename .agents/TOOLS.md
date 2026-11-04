@@ -76,8 +76,15 @@ below the no-patching marker. After any `bd init` or `bd setup`, check
 `git diff AGENTS.md` and strip the appended block; the beads guidance belongs
 in this file, not in a second instruction rail.
 
-`AGENTS.md` is the project's only instruction rail: the assistant-local
-variants are gitignored, and no `bd setup` recipe for them is installed.
+`AGENTS.md` is the project's only instruction rail. An assistant-local
+rail is not tracked, not gitignored-only, and not recreated by any tool: a
+`bd setup <recipe>` writes one, and `bd init` reinstalls every recipe.
+Measured 2026-11-04: a scratch `bd init` put `CLAUDE.md` and `.claude/`
+back into the working tree and committed them. After any `bd init` or
+`bd setup`, remove the recipes that are not wanted
+(`bd setup <recipe> --remove`) and delete what they wrote.
+`tests/test_no_claude_md.py` pins the state mechanically.
+
 `bd init` on an already-initialised repo is a no-op (`--init-if-missing`); a
 bare `bd init` reinstalls the recipes and re-appends its block, so never run
 it here.

@@ -13,8 +13,11 @@ jobs run in parallel:
 | `extras` | ubuntu, windows | `uv sync -U --all-extras --all-groups --all-packages --dry-run` on 3.13 (root `AGENTS.md` rule 10) |
 | `extras-availability` | ubuntu, macos, windows | every extra resolves on 3.14 and 3.14t; a recorded upstream wheel gap passes, anything else fails |
 | `quality` | ubuntu | `mise lint-check` + `mise typecheck` + `mise spell` + `mise format-check` + `mise actionlint` |
-| `tests` | ubuntu, macos, windows | `mise test` (100% coverage gate) |
+| `tests` | ubuntu, windows | `mise test` (100% coverage gate) |
 | `docs` | ubuntu | `mise docs` |
+
+The macOS legs are not in this workflow at all — they live in
+`ci-macos.yml`, see [the macOS leg](#the-macos-leg-has-its-own-workflow-it-cannot-hold-up-a-release).
 
 `extras` verifies rule 10 (every optional extra must resolve jointly) on
 CPython 3.13 alone. `extras-availability` extends the same assertion to the
@@ -56,20 +59,30 @@ mechanically: it loads each `mise <task>` a workflow invokes, reads that task's
 commands from `.config/mise/`, and fails if any of them rewrites files — so a
 future task cannot reintroduce the inversion by name alone.
 
-`mise typecheck` is part of the local gate but **not yet a CI step** (pc-180).
-Adding it is not a one-line job: ty's verdict depends on which extras are
-installed, so the same commit types clean in the `mise dev` environment and dirty
-in an all-extras one — the `# ty: ignore[unresolved-import]` markers on the heavy
-imports are load-bearing there and invert to `unused-ignore-comment` once the
-extra is present. The job must pin the environment it types against and say so.
+`mise typecheck` runs in the `quality` job, **reported and never gating**
+(user ruling 2026-11-04): ty's verdict depends on which extras are installed, so
+a type finding must not block a release — the same split the
+`extras-availability` job already uses. The verdict is printed on every run,
+and `mise all` still type-checks locally as a hard gate.
+
+The job pins the environment it types against, and says so: the canonical dev
+env that `mise dev` produced above (`uv sync --dev --all-groups --extra web`,
+no heavy extras), never an all-extras one. The same commit types clean in the
+dev environment and dirty in an all-extras one — the
+`# ty: ignore[unresolved-import]` markers on the heavy imports are load-bearing
+there and invert to `unused-ignore-comment` once the extra is present. The task
+itself pins `VIRTUAL_ENV` to the project's venv, so the check is hermetic.
 
 The test matrix:
 
 | Python | OS | Notes |
 | ------ | -- | ----- |
-| 3.13 | ubuntu, macos, windows | GIL-enabled builds |
-| 3.14 | ubuntu, macos, windows | |
+| 3.13 | ubuntu, windows | GIL-enabled builds |
+| 3.14 | ubuntu, windows | |
 | 3.15-dev | ubuntu | `continue-on-error` — allowed to fail |
+
+The macOS cells (3.13, 3.14) and the macOS `extras-availability` cells
+(3.14, 3.14t) live in `ci-macos.yml` — see below.
 
 Free-threaded (`3.14t`) cells are **suspended** (ADR-0001 amendment, 2026-10-09):
 heavy runtimes such as `onnxruntime` ship no free-threaded macOS/Windows wheels
@@ -88,6 +101,87 @@ job (only uv plus the selected interpreter, and some tools lack wheels on the
 newest interpreters).
 The free-threaded runtime floor and CI matrix are recorded in
 [ADR-0001](../adr/0001-phase-0-decisions.md).
+
+### The macOS leg has its own workflow: it cannot hold up a release
+
+A hosted macOS runner can be unavailable for an entire run: GitHub never hands
+the cell to a runner and cancels it. The cell's own annotation says it —
+*"The job was not acquired by Runner of type hosted even after multiple
+attempts"*, plus *"Due to capacity constraints, jobs targeting macOS arm64
+runners may experience longer queue times"* — and the run turns red although
+no macOS code ever ran. Observed 2026-11-04 on push `cd37a0a`: four macOS
+cells queued for 15 minutes with no runner and were cancelled, while every cell
+that actually ran was green. The same wall returned on a full re-run of the
+workflow and on every single-cell re-run.
+
+**A macOS cell that times out (or never gets a runner) must not block the
+release** (user ruling 2026-11-04). That could not be fixed inside `ci.yml`:
+a job that is still waiting for a runner keeps the RUN open, so the release —
+which waits for the ci run to complete — would wait for the macOS leg either
+way. Keeping it in the same workflow would also leave the run's conclusion at
+the mercy of a cell that never ran.
+
+So the macOS legs live in their own workflow, `.github/workflows/ci-macos.yml`:
+the two test cells and the two free-threaded `extras-availability` cells. The
+release is triggered by `ci` and never by `ci-macos`, so nothing macOS can do
+reaches it — not a timeout, not a capacity cancellation, and not a macOS
+regression. **A macOS regression does not block a release either**: it is
+reported on the commit (the `ci-macos` run is red) and the release proceeds.
+The macOS leg is a signal, not a gate.
+
+The macOS leg is neither skipped nor hidden: it runs the same steps as the
+gated job (`tests/test_ci_macos_leg.py` pins that), its run is on the commit,
+and `ci-retry.yml` re-runs its capacity-cancelled cells exactly as it does for
+the gated workflow's.
+
+### Cancelled cells are retried, not treated as failures
+
+A hosted macOS runner can be unavailable for an entire run: GitHub never hands
+the cell to a runner and cancels it. The cell's own annotation says it —
+*"The job was not acquired by Runner of type hosted even after multiple
+attempts"*, plus *"Due to capacity constraints, jobs targeting macOS arm64
+runners may experience longer queue times"* — and the run turns red although
+no macOS code ever executed. Observed 2026-11-04 on push `cd37a0a`: four
+macOS cells queued for 15 minutes with no runner and were cancelled, while
+every cell that actually ran was green.
+
+`.github/workflows/ci-retry.yml` re-runs exactly those cells once the `ci`
+run has completed:
+
+| Cell state | Retried | Why |
+| ---------- | ------- | --- |
+| cancelled, **no runner was ever acquired** | yes | GitHub's runner capacity — the code never ran |
+| cancelled after a runner was acquired | no | a timeout, or a human's decision; re-running it would undo that decision |
+| failed | no | the code failed for a reason — the failure is the information |
+| succeeded | no | it ran |
+
+The retry can never turn a real breakage green: the failing cell stays
+failed, so the run stays red. It only replaces the cells that never ran.
+
+Exactly **one** cell is re-run per firing. GitHub accepts a cell re-run only
+while the run sits in a terminal state, and one re-run puts it back in
+progress — a second re-run in the same firing is refused with *"The workflow
+run containing this job is already running"* (measured 2026-11-04). The next
+firing happens when the run completes again, and takes the next cell.
+
+Three guards bound the retries. The trigger accepts only a **push**-triggered
+`ci` run on `main` — a pull-request run (including one from a fork whose
+branch is named `main`) never reaches the re-run API, the same fork-pwn vector
+`release.yml` closes — and only a run that did **not succeed**. The automatic
+budget is finite (six re-runs per push, counted both on the run's attempt
+counter and on this workflow's own firings for the push), so the retry can
+never fight GitHub's runner capacity forever.
+
+A run a **human interrupted** is left alone, and the two are told apart by the
+cells, not by the run's conclusion: the capacity case cancels only cells that
+never got a runner, while an interruption cancels a cell that had one. The
+script therefore skips a run in which any cancelled cell carries a runner.
+
+The run's conclusion is not the discriminator, and the reason is worth
+recording: the capacity case concludes **`cancelled`**, not `failure` (measured
+2026-11-04 — three macOS cells cancelled without a runner, every other cell
+green, the run concluded `cancelled`). A `failure`-only guard would therefore
+never fire in the very case it was written for.
 
 ## Release
 

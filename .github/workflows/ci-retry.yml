@@ -1,0 +1,132 @@
+name: ci-retry
+
+# A hosted macOS runner can be unavailable for an entire run: the cell is never
+# acquired, GitHub cancels it, and the run turns red even though no macOS code
+# ran. Observed 2026-11-04 on push cd37a0a — the job's own annotation says it:
+# "The job was not acquired by Runner of type hosted even after multiple
+# attempts" plus "Due to capacity constraints, jobs targeting macOS arm64
+# runners may experience longer queue times".
+#
+# A cancelled cell is not a failing one: the code never executed. This workflow
+# re-runs exactly those cells — nothing else:
+#   - a cell that FAILED failed for a reason, and is left alone;
+#   - a cell that ran and was then cancelled had a runner and was cancelled on
+#     purpose (a timeout, or a human), and is left alone;
+#   - a cell that was cancelled WITHOUT ever acquiring a runner is GitHub's
+#     capacity, and is re-run.
+#
+# The automatic budget is bounded (MAX_RETRIES below), so this can never fight
+# GitHub's runner capacity forever.
+on:
+  workflow_run:
+    # Both workflows: the macOS leg has its own workflow (ci-macos.yml), and
+    # its cells need the same capacity retry.
+    workflows: [ci, ci-macos]
+    types: [completed]
+    branches: [main]
+
+# Minimal by default; the one job below elevates to actions: write, because
+# re-running a cell is an Actions-API write.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  retry-cancelled:
+    # The push guard (the fork-pwn vector release.yml closes): only a
+    # PUSH-triggered ci run on main is eligible. A pull_request run — even
+    # from a fork whose branch is named main — must never reach the re-run
+    # API with a write token.
+    #
+    # Any conclusion but 'success'. The capacity case concludes 'cancelled',
+    # NOT 'failure' (measured 2026-11-04: three macOS cells cancelled without
+    # a runner, every other cell green, the run concluded 'cancelled') — so a
+    # 'failure'-only guard would never fire in the very case it was built for.
+    # A run that FAILED keeps its failing cell failed, so this can never turn
+    # a real breakage green — it only replaces the cells that never ran. A
+    # run a HUMAN cancelled is left alone: the script below skips a run whose
+    # cancellation interrupted a cell that had a runner.
+    if: >-
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.conclusion != 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Re-run the cells GitHub cancelled without a runner
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            const { owner, repo } = context.repo;
+            const MAX_RETRIES = 6;
+
+            // The automatic budget, bounded twice so it can never fight
+            // GitHub's runner capacity forever:
+            //   - the run's attempt counter — a cell re-run moves it
+            //     (verified 2026-11-04: a single-cell re-run took the run
+            //     from attempt 2 to attempt 3);
+            //   - how often this workflow already fired for this push.
+            if (run.run_attempt > MAX_RETRIES) {
+              core.info(`run attempt ${run.run_attempt} — the automatic retry budget is spent`);
+              return;
+            }
+            const prior = await github.paginate(github.rest.actions.listWorkflowRuns, {
+              owner,
+              repo,
+              workflow_id: 'ci-retry.yml',
+              event: 'workflow_run',
+              per_page: 100,
+            });
+            const spent = prior.filter(
+              (entry) => entry.head_sha === run.head_sha && entry.id !== context.runId,
+            ).length;
+            if (spent >= MAX_RETRIES) {
+              core.info(`already retried ${spent} time(s) for ${run.head_sha.slice(0, 8)} — budget spent`);
+              return;
+            }
+
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+              owner,
+              repo,
+              run_id: run.id,
+              per_page: 100,
+            });
+            // A cancelled cell that HAD a runner was interrupted mid-flight:
+            // a human cancelled the run, or the runner was lost. That is not
+            // capacity, and re-running it would undo the decision. The
+            // capacity case cancels only cells that never got a runner at all
+            // (measured 2026-11-04: every cancelled cell had runner_name null
+            // while the cells that ran were green).
+            const interrupted = jobs.some((job) => job.conclusion === 'cancelled' && job.runner_name);
+            if (interrupted) {
+              core.info('a cancelled cell had a runner — the run was interrupted, not starved');
+              return;
+            }
+            // `runner_name` is empty exactly when GitHub never handed the cell
+            // to a runner — the capacity case.
+            const capacity = jobs.filter((job) => job.conclusion === 'cancelled' && !job.runner_name);
+            if (!capacity.length) {
+              core.info('no capacity-cancelled cells to retry');
+              return;
+            }
+            // EXACTLY ONE cell per firing. GitHub accepts a cell re-run only
+            // while the run sits in a terminal state, and one re-run puts it
+            // back in progress — a second re-run in the same firing is
+            // refused with "The workflow run containing this job is already
+            // running" (measured 2026-11-04). The next firing happens when
+            // this run completes again, and takes the next cell.
+            const job = capacity[0];
+            core.info(`re-running ${job.name} (job ${job.id}); ${capacity.length - 1} cell(s) still to take`);
+            await github.request('POST /repos/{owner}/{repo}/actions/jobs/{job_id}/rerun', {
+              owner,
+              repo,
+              job_id: job.id,
+            });
+            core.info('re-ran 1 capacity-cancelled cell');
