@@ -61,18 +61,23 @@ jobs:
     - name: Assert every extra resolves jointly
       run: uv sync -U --all-extras --all-groups --all-packages --dry-run
 
-  # Root AGENTS.md rule 10, REPORTED NOT GATED. The `extras` job above verifies
-  # joint resolution on 3.13 (GIL) only; this job covers the cells it misses
-  # (3.14 and 3.14t) so a dependency that cannot resolve there is visible
-  # instead of shipping green. It never gates: a gating --all-extras job on
-  # 3.14t fails on mineru today. Promotion path: when onnxruntime publishes
-  # free-threaded macOS/Windows wheels, drop continue-on-error and it becomes
-  # the gate rule 10 always claimed to have.
+  # Root AGENTS.md rule 10, ASSERTED ON EVERY CELL. The `extras` job above
+  # verifies joint resolution on 3.13 (GIL) only; this job covers the cells it
+  # misses (3.14 and 3.14t) and passes or fails on the verdict.
+  #
+  # It used to be `continue-on-error: true`, which made every cause look alike:
+  # a genuine rule 10 violation (an extras set that cannot resolve) was
+  # indistinguishable from a dependency whose upstream ships no wheel for the
+  # interpreter, and the job showed a red X that had to be dismissed on every
+  # run — so nobody read it (pc-7qq). The script now classifies the failure:
+  # a package recorded in `scripts/extras_availability.py::KNOWN_GAPS` with a
+  # reason and a re-entry condition is a notice and the cell passes; anything
+  # else — a new missing wheel, an unsatisfiable graph, a build failure — fails
+  # the cell. Tolerance must be declared, never assumed.
   extras-availability:
     name: extras availability (${{ matrix.os }} / ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -98,39 +103,23 @@ jobs:
         enable-cache: true
         cache-dependency-glob: pyproject.toml
 
+    # The verdict is the script's, not the resolver's: a known upstream gap
+    # passes, everything else fails. `--python` is passed explicitly because
+    # without it uv answers for whatever venv sits in the checkout, which is
+    # how a 3.14t cell could report green while the 3.14t resolution failed.
+    #
+    # `--no-project` is load-bearing: without it `uv run` first builds the
+    # PROJECT environment for the cell interpreter, which on 3.14t is the very
+    # resolution this step exists to classify — the job would die before the
+    # script ran (observed: a 3.14t `uv run` hung for 8+ min resolving extras).
+    # The script needs only the standard library, and it invokes `uv` itself
+    # for the resolution under test.
     - name: Assert every extra resolves jointly
-      run: uv sync -U --all-extras --all-groups --all-packages --dry-run
+      run: >-
+        uv run --no-project python scripts/extras_availability.py
+        --cell "${{ matrix.os }} / ${{ matrix.python-version }}"
+        --python "${{ matrix.python-version }}"
 
-    # Alert-fatigue mitigation: a red cell must be read, not tuned out. Every
-    # cell carries the known cause and the re-entry condition; a failing cell
-    # additionally raises a notice annotation.
-    - name: Explain this cell
-      if: always()
-      run: |
-        cat >> "$GITHUB_STEP_SUMMARY" <<EOF
-        ### extras availability - ${{ matrix.os }} / ${{ matrix.python-version }}
-
-        **Known cause of expected failures:** native dependencies whose
-        upstreams publish no wheel for the cell's interpreter and platform.
-        Observed on 2026-10-26: onnxruntime (no free-threaded wheel, no sdist)
-        on Windows 3.14t; nvidia-cudnn-frontend and pynvvideocodec (both from
-        the vllm extra's chain, which resolves on macOS and Linux) on macOS
-        3.14 and Ubuntu 3.14t. The mineru extra no longer contributes a cause:
-        since 2026-10-26 it installs first-party runtimes (torch, transformers)
-        instead of the mineru package. PEP 508 has no free-threaded marker, so
-        these cannot be gated out.
-
-        **Re-entry condition:** when those upstreams publish wheels for the
-        cell, drop continue-on-error from this job and it becomes the gate
-        root AGENTS.md rule 10 always claimed to have.
-
-        See docs/development/ci-cd.md.
-        EOF
-
-    - name: Annotate expected failure
-      if: failure()
-      run: |
-        echo "::notice title=extras availability::expected: a native dependency ships no wheel for this cell (see the step summary for the observed packages and the re-entry condition)"
 
   quality:
     runs-on: ubuntu-latest

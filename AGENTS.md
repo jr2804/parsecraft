@@ -129,13 +129,18 @@ _Always-injected_ — keep minimal. Everything else → `.agents/` files.
     declare extras mutually exclusive. If a dependency cannot coexist, do not
     add it — port the wrapper ourselves.
     **Honest scope:** the gate verifies joint resolution on the CI `extras`
-    cells only — CPython 3.13 (GIL) on Linux and Windows. An extra may be
-    unavailable on other cells: PEP 508 has no free-threaded marker, so a
-    dependency lacking `cp314t` wheels for macOS/Windows cannot be gated out
-    and would fail a free-threaded user's `--all-extras` install while CI
-    stays green. Per-extra availability is recorded in
-    `docs/reference/backends.md`; a matrix-blocked engine uses a bring-your-own
-    dependency group (ADR-0006) instead of a declared extra.
+    cells (CPython 3.13, GIL, Linux and Windows) and, on the 3.14 / 3.14t
+    cells of all three OSes, it verifies that every failure is a *recorded*
+    upstream wheel gap — `KNOWN_GAPS` in `scripts/extras_availability.py`, each
+    entry carrying a reason and a re-entry condition. Any other failure (a new
+    missing wheel, an unsatisfiable graph, a build failure) fails that cell, so
+    tolerance is declared rather than assumed. PEP 508 has no free-threaded
+    marker, so a dependency lacking `cp314t` wheels for macOS/Windows cannot be
+    gated out; it is recorded instead, and a free-threaded user's
+    `--all-extras` install still fails while CI stays green. Per-extra
+    availability is recorded in `docs/reference/backends.md`; a matrix-blocked
+    engine uses a bring-your-own dependency group (ADR-0006) instead of a
+    declared extra.
 
 ## Child DOX Index
 
