@@ -130,7 +130,7 @@ _Always-injected_ — keep minimal. Everything else → `.agents/` files.
     add it — port the wrapper ourselves.
     **Honest scope:** the gate verifies joint resolution on the CI `extras`
     cells (CPython 3.13, GIL, Linux and Windows) and, on the 3.14 / 3.14t
-    cells of all three OSes, it verifies that every failure is a *recorded*
+    cells of all three OSes, it verifies that every failure is a recorded
     upstream wheel gap — `KNOWN_GAPS` in `scripts/extras_availability.py`, each
     entry carrying a reason and a re-entry condition. Any other failure (a new
     missing wheel, an unsatisfiable graph, a build failure) fails that cell, so
