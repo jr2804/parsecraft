@@ -98,11 +98,11 @@ jobs:
     name: extras availability (macos-latest / ${{ matrix.python-version }})
     runs-on: macos-latest
     timeout-minutes: 10
-    # Reporting only, never gating: the same split as ci.yml's
-    # `extras-availability` job. The macOS cells of that job live here for
-    # the same reason the test cells do - so nothing macOS can do reaches the
-    # release.
-    continue-on-error: true
+    # The macOS cells of ci.yml's `extras-availability` job live here for the
+    # same reason the test cells do - so nothing macOS can do reaches the
+    # release. The verdict is the script's, exactly as in ci.yml: a recorded
+    # upstream wheel gap passes, anything else fails the cell (pc-7qq). A
+    # failing cell gates nothing here: the release is triggered by `ci`.
     strategy:
       fail-fast: false
       matrix:
@@ -127,36 +127,19 @@ jobs:
         enable-cache: true
         cache-dependency-glob: pyproject.toml
 
+    # The verdict is the script's, not the resolver's: a known upstream gap
+    # passes, everything else fails. `--python` is passed explicitly because
+    # without it uv answers for whatever venv sits in the checkout, which is
+    # how a 3.14t cell could report green while the 3.14t resolution failed.
+    #
+    # `--no-project` is load-bearing: without it `uv run` first builds the
+    # PROJECT environment for the cell interpreter, which on 3.14t is the very
+    # resolution this step exists to classify. The script needs only the
+    # standard library, and it invokes `uv` itself for the resolution under
+    # test.
     - name: Assert every extra resolves jointly
-      run: uv sync -U --all-extras --all-groups --all-packages --dry-run
+      run: >-
+        uv run --no-project python scripts/extras_availability.py
+        --cell "macos-latest / ${{ matrix.python-version }}"
+        --python "${{ matrix.python-version }}"
 
-    # Alert-fatigue mitigation: a red cell must be read, not tuned out. Every
-    # cell carries the known cause and the re-entry condition; a failing cell
-    # additionally raises a notice annotation.
-    - name: Explain this cell
-      if: always()
-      run: |
-        cat >> "$GITHUB_STEP_SUMMARY" <<EOF
-        ### extras availability - macos-latest / ${{ matrix.python-version }}
-
-        **Known cause of expected failures:** native dependencies whose
-        upstreams publish no wheel for the cell's interpreter and platform.
-        Observed on 2026-10-26: onnxruntime (no free-threaded wheel, no sdist)
-        on Windows 3.14t; nvidia-cudnn-frontend and pynvvideocodec (both from
-        the vllm extra's chain, which resolves on macOS and Linux) on macOS
-        3.14 and Ubuntu 3.14t. The mineru extra no longer contributes a cause:
-        since 2026-10-26 it installs first-party runtimes (torch, transformers)
-        instead of the mineru package. PEP 508 has no free-threaded marker, so
-        these cannot be gated out.
-
-        **Re-entry condition:** when those upstreams publish wheels for the
-        cell, drop continue-on-error from this job and it becomes the gate
-        root AGENTS.md rule 10 always claimed to have.
-
-        See docs/development/ci-cd.md.
-        EOF
-
-    - name: Annotate expected failure
-      if: failure()
-      run: |
-        echo "::notice title=extras availability::expected: a native dependency ships no wheel for this cell (see the step summary for the observed packages and the re-entry condition)"

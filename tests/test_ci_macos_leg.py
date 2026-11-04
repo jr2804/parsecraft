@@ -57,13 +57,18 @@ def _steps(text: str, job: str) -> list[str]:
     return [line.strip() for line in _job_block(text, job).splitlines() if "uses:" in line or "run:" in line]
 
 
-def test_the_macos_extras_cells_stay_reporting_only() -> None:
-    """The free-threaded wheel gaps are reported, never gated - as before."""
+def test_the_macos_extras_cells_use_the_same_verdict_script() -> None:
+    """The macOS cells classify their failures exactly as ci.yml's do (pc-7qq).
+
+    Tolerance is declared per recorded gap, never assumed by `continue-on-error`
+    — so the macOS cells must run the same script, not a bare `uv sync` under a
+    blanket tolerance.
+    """
     macos = _CI_MACOS.read_text(encoding="utf-8")
     job = _job_block(macos, "extras-availability-macos")
-    assert "continue-on-error: true" in job
-    assert "uv sync -U --all-extras --all-groups --all-packages --dry-run" in job
-    assert "Annotate expected failure" in job
+    assert "scripts/extras_availability.py" in job
+    assert "uv run --no-project python" in job
+    assert "continue-on-error" not in job
 
 
 def _job_block(text: str, name: str) -> str:

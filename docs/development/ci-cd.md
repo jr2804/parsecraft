@@ -11,7 +11,7 @@ jobs run in parallel:
 | Job | Runner | Runs |
 | --- | ------ | ---- |
 | `extras` | ubuntu, windows | `uv sync -U --all-extras --all-groups --all-packages --dry-run` on 3.13 (root `AGENTS.md` rule 10) |
-| `extras-availability` | ubuntu, macos, windows | every extra resolves on 3.14 and 3.14t; a recorded upstream wheel gap passes, anything else fails |
+| `extras-availability` | ubuntu, windows | every extra resolves on 3.14 and 3.14t; a recorded upstream wheel gap passes, anything else fails |
 | `quality` | ubuntu | `mise lint-check` + `mise typecheck` + `mise spell` + `mise format-check` + `mise actionlint` |
 | `tests` | ubuntu, windows | `mise test` (100% coverage gate) |
 | `docs` | ubuntu | `mise docs` |
@@ -61,9 +61,10 @@ future task cannot reintroduce the inversion by name alone.
 
 `mise typecheck` runs in the `quality` job, **reported and never gating**
 (user ruling 2026-11-04): ty's verdict depends on which extras are installed, so
-a type finding must not block a release — the same split the
-`extras-availability` job already uses. The verdict is printed on every run,
-and `mise all` still type-checks locally as a hard gate.
+a type finding must not block a release. The verdict is printed on every run,
+and `mise all` still type-checks locally as a hard gate. (`extras-availability`
+is a different thing and does gate: its tolerance is declared per recorded gap
+rather than assumed, so a new blocker fails the cell.)
 
 The job pins the environment it types against, and says so: the canonical dev
 env that `mise dev` produced above (`uv sync --dev --all-groups --extra web`,
@@ -145,8 +146,8 @@ no macOS code ever executed. Observed 2026-11-04 on push `cd37a0a`: four
 macOS cells queued for 15 minutes with no runner and were cancelled, while
 every cell that actually ran was green.
 
-`.github/workflows/ci-retry.yml` re-runs exactly those cells once the `ci`
-run has completed:
+`.github/workflows/ci-retry.yml` re-runs exactly those cells once the run
+has completed — for the `ci` run and for the `ci-macos` run alike:
 
 | Cell state | Retried | Why |
 | ---------- | ------- | --- |
