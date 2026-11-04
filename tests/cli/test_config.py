@@ -12,7 +12,7 @@ from typer.testing import CliRunner, Result
 from parsecraft.cli import config
 from parsecraft.cli.app import app
 from parsecraft.config import ConfigCheckReport, ConfigError, ConfigShowEntry, ConfigValidationError, ConfigWarning
-from parsecraft.routing.models import RoutingPreference
+from parsecraft.routing.models import RoutingConstraints, RoutingPreference
 
 runner = CliRunner()
 
@@ -399,6 +399,40 @@ def test_build_engine_later_file_wins_per_key(tmp_path: Path) -> None:
     offline_source = engine.source_of("offline")
     assert offline_source is not None
     assert offline_source.origin == str(project)
+
+
+def test_config_driven_routing_journey_end_to_end(tmp_path: Path) -> None:
+    """The documented consumer recipe, whole: two files, real names, one constraints.
+
+    Vault file sets the preference and a backend option, working-directory file
+    overrides the pass budget and forbids OCR; `build_engine` merges them per
+    key, and `routing_constraints()` turns the merged section into a valid
+    `RoutingConstraints` without the caller re-deriving anything.
+    """
+    vault = _project_file(
+        _ensure_dir(tmp_path / "vault"),
+        '[routing]\npreference = "quality"\npreferred_backend = "pdf-inspector"\n[routing.backend_options.pdf-inspector]\nmode = "fast"\n',
+    )
+    project = _project_file(_ensure_dir(tmp_path / "cwd"), "[routing]\nmax_passes = 2\nallow_ocr = false\n")
+    engine = config.build_engine([vault, project])
+    constraints = engine.load().routing.routing_constraints(
+        installed_extras={"pdf-inspector"},
+        formats={"application/pdf"},
+    )
+    assert constraints.preference == RoutingPreference.QUALITY
+    assert constraints.preferred_backend == "pdf-inspector"
+    assert constraints.allow_ocr is False
+    assert constraints.max_passes == 2
+    assert constraints.backend_options == {"pdf-inspector": {"mode": "fast"}}
+    assert constraints.offline is True  # RoutingConstraints' own safe default
+    # The mapping's output is a valid RoutingConstraints verbatim: no re-derivation needed.
+    assert RoutingConstraints.model_validate(constraints.model_dump()) == constraints
+    preference_source = engine.source_of("routing.preferred_backend")
+    assert preference_source is not None
+    assert preference_source.origin == str(vault)
+    passes_source = engine.source_of("routing.max_passes")
+    assert passes_source is not None
+    assert passes_source.origin == str(project)
 
 
 def _ensure_dir(path: Path) -> Path:
