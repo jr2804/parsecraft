@@ -81,3 +81,8 @@ variants are gitignored, and no `bd setup` recipe for them is installed.
 `bd init` on an already-initialised repo is a no-op (`--init-if-missing`); a
 bare `bd init` reinstalls the recipes and re-appends its block, so never run
 it here.
+
+`bd init` writes its recipe files and its git commit into the repository of
+the **process working directory** — `-C` does not move them. Run it from
+inside the target tree, never from a parent, and expect the commit to land
+in that repository.
