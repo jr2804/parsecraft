@@ -63,6 +63,12 @@ uv.lock
 opencode.json
 .opencode
 
+# AGENTS.md is the project's only instruction rail. The assistant-local
+# variants are per-developer, and tools that generate them (bd setup claude)
+# rewrite them on every run — so they stay out of the repo entirely.
+CLAUDE.md
+.claude/
+
 # Skills lock file
 skills-lock.json
 

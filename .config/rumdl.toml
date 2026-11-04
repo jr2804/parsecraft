@@ -32,11 +32,6 @@ exclude = [
     # long single-line prose is the record, not a formatting defect, and reflowing
     # it would churn. The same reasoning as the .beads exclusion (2026-10-09).
     ".agents/history/",
-    # CLAUDE.md carries a bd-managed block that `bd setup claude` rewrites from
-    # its own template on every upgrade. Hand-fixing the generated prose would
-    # be undone by the next bd run, so the gate skips the file; the hand-written
-    # part above the block is the project's own text.
-    "CLAUDE.md",
 ]
 
 # Respect .gitignore files when scanning directories (default: true)

@@ -73,4 +73,11 @@ Two consequences:
 
 `bd init` also rewrites the root `AGENTS.md`, appending its managed block
 below the no-patching marker. After any `bd init` or `bd setup`, check
-`git diff AGENTS.md` and keep the beads guidance in `CLAUDE.md` instead.
+`git diff AGENTS.md` and strip the appended block; the beads guidance belongs
+in this file, not in a second instruction rail.
+
+`AGENTS.md` is the project's only instruction rail: the assistant-local
+variants are gitignored, and no `bd setup` recipe for them is installed.
+`bd init` on an already-initialised repo is a no-op (`--init-if-missing`); a
+bare `bd init` reinstalls the recipes and re-appends its block, so never run
+it here.
