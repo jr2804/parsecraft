@@ -43,6 +43,13 @@ document, format, model, or pipeline concepts.
 
 ## Work Guidance
 
+- **Keep `parsecraft.toml.example` in sync.** Any change here — and any change
+  to the schema this engine loads (`ParsecraftConfig` in `cli/config.py`) —
+  must be checked against `parsecraft.toml.example` in the project root and
+  updated when keys, defaults, locations, or semantics shift. The guard test
+  `test_example_config_matches_the_schema` (tests/cli/test_config.py) fails
+  when a schema key is missing from the example; comment and semantic drift
+  stay on the editor.
 - Adding a layer or source means updating `LAYER_ORDER`, `_effective`, and the
   provenance tests together.
 - Keep helpers pure and module-level; `ConfigEngine` methods record state only.
