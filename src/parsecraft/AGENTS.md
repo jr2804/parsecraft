@@ -32,7 +32,12 @@ Markdown as a deterministic projection.
   `benchmark/AGENTS.md`).
 - `cli/` — Typer CLI; commands are plain functions in `commands.py`,
   registered in `app.py` (never decorators in `commands.py`, never import
-  `app` there — circular import breaks pyreorder). `output.py` owns the CLI's
+  `app` there — circular import breaks pyreorder). `config.py` owns
+  `ParsecraftConfig` and its `[routing]` section:
+  `RoutingSettings.routing_constraints()` is the one
+  config→`RoutingConstraints` construction path (library consumers must not
+  re-derive the mapping), and backend/engine name validation lives there
+  because `config/` cannot import the registry. `output.py` owns the CLI's
   output channels: the one output-encoding policy (`app._callback` forces UTF-8
   on stdout/stderr before every command, because a document's glyphs (U+25AA in
   a projection) crashed a redirected cp1252 stdout and lost the conversion;

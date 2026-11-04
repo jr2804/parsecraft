@@ -24,6 +24,12 @@ document, format, model, or pipeline concepts.
 - **Layer precedence is fixed:** `default → global → project → env → cli`
   (`LAYER_ORDER`). Later layers override earlier ones; every effective leaf
   records a `ConfigSource`.
+- **A file layer can hold several files.** `read_files(layer, paths)`
+  deep-merges them in order: a later file wins per key, and every effective
+  leaf keeps the `ConfigSource` of the exact file that set it (so `config
+  show` reports `project:<path>` per key) while `path_keys` resolve against
+  that declaring file. `read_file` still replaces the whole layer, and an
+  empty `paths` sequence leaves the layer empty.
 - **Env is read explicitly** by `read_env()`; `ConfigSchema` disables native
   pydantic-settings sources so nothing bypasses provenance.
 - **Paths resolve against the declaring file**, never CWD (ADR-0001 §5). Keys
