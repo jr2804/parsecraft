@@ -84,6 +84,45 @@ newest interpreters).
 The free-threaded runtime floor and CI matrix are recorded in
 [ADR-0001](../adr/0001-phase-0-decisions.md).
 
+### Cancelled cells are retried, not treated as failures
+
+A hosted macOS runner can be unavailable for an entire run: GitHub never hands
+the cell to a runner and cancels it. The cell's own annotation says it —
+*"The job was not acquired by Runner of type hosted even after multiple
+attempts"*, plus *"Due to capacity constraints, jobs targeting macOS arm64
+runners may experience longer queue times"* — and the run turns red although
+no macOS code ever executed. Observed 2026-11-04 on push `cd37a0a`: four
+macOS cells queued for 15 minutes with no runner and were cancelled, while
+every cell that actually ran was green.
+
+`.github/workflows/ci-retry.yml` re-runs exactly those cells once the `ci`
+run has completed:
+
+| Cell state | Retried | Why |
+| ---------- | ------- | --- |
+| cancelled, **no runner was ever acquired** | yes | GitHub's runner capacity — the code never ran |
+| cancelled after a runner was acquired | no | a timeout, or a human's decision; re-running it would undo that decision |
+| failed | no | the code failed for a reason — the failure is the information |
+| succeeded | no | it ran |
+
+The retry can never turn a real breakage green: the failing cell stays
+failed, so the run stays red. It only replaces the cells that never ran.
+
+Exactly **one** cell is re-run per firing. GitHub accepts a cell re-run only
+while the run sits in a terminal state, and one re-run puts it back in
+progress — a second re-run in the same firing is refused with *"The workflow
+run containing this job is already running"* (measured 2026-11-04). The next
+firing happens when the run completes again, and takes the next cell.
+
+Two guards bound the retries. The trigger accepts only a **push**-triggered
+`ci` run on `main` — a pull-request run (including one from a fork whose
+branch is named `main`) never reaches the re-run API, the same fork-pwn vector
+`release.yml` closes — and only a run that **failed**, so a run a human
+cancelled stays cancelled. The automatic budget is finite (six re-runs per
+push, counted both on the run's attempt counter and on this workflow's own
+firings for the push), so the retry can never fight GitHub's runner capacity
+forever.
+
 ## Release
 
 `.github/workflows/release.yml` runs on every push to `main` (and manually via
