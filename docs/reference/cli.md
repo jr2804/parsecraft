@@ -109,6 +109,7 @@ parsecraft convert SOURCE [OPTIONS]
 | `--json` | off | Emit the IR as JSON instead of the Markdown projection |
 | `--cache` / `--no-cache` | `--no-cache` | Reuse a content-addressed conversion cache |
 | `--output`, `-o PATH` | unset | Write the result to `PATH` (UTF-8) instead of stdout, truncating like `>` redirection; the parent directory must already exist — a missing one exits `2` before any conversion starts |
+| `--config-file PATH` | unset | Load `PATH` as the project layer instead of `./parsecraft.toml` — the judge model, the judge endpoint, the text-classifier model and the request deadline all read it |
 
 Output is the Markdown projection (`parsecraft.ir.markdown.to_markdown`) or the
 `DocumentResult` as JSON (`--json`) — printed to stdout, or written to `PATH`
@@ -321,6 +322,22 @@ and the two generic flags above. The legacy credential env vars
 (`TYPESAFE_API_KEY`, `OPENCODE_API_KEY`) keep working as the fallback when
 nothing else names a credential.
 
+**Which file a config value comes from.** Every config value above is read
+from one effective configuration per run: the global file, the project layer
+(`./parsecraft.toml`, or the file `--config-file` names — the same meaning
+the flag has for `parsecraft config check` and `parsecraft config show`), and
+the environment. The judge model, the judge endpoint, the text-classifier
+model and the request deadline all read that one configuration, so a value
+set in the file `--config-file` names is the value the conversion uses — it is
+not limited to the `config` group (pc-8e6).
+
+A library consumer that builds its own layer set
+(`parsecraft.cli.config.build_engine([...])`) installs it for the run with
+`parsecraft.cli.config.config_scope(settings)` — the judge spec, the endpoint,
+the text-classifier spec and the timeout then read that configuration, the
+same one the routing constraints were derived from, instead of a second,
+silently different one.
+
 ### `parsecraft cache`
 
 Inspect or clear the conversion cache used by `convert --cache`.
@@ -434,6 +451,7 @@ deterministic report (the harness omits wall-clock metadata).
 | `--max-passes N` | `1` | Fallback passes per page group |
 | `--timeout-s SECONDS` | unset | Per-request backend deadline in seconds (same flag-beats-config rule as `convert`) |
 | `--no-ocr` | off | Forbid OCR harnesses; a parser that OCRs internally stays eligible |
+| `--config-file PATH` | unset | Load `PATH` as the project layer instead of `./parsecraft.toml` — the request deadline reads it |
 
 Documents are read locally; a missing or unsupported path becomes a `Skip`
 record rather than an error. Constraints come from the detected host
@@ -599,3 +617,4 @@ key.
 - `src/parsecraft/cli/models.py` — asset catalogue, `PinProvider`, cache management
 - `src/parsecraft/cli/errors.py` — `CliError`
 - `src/parsecraft/cli/args.py` — `JsonFlag`, `ConfigFileOption`, `PARSECRAFT_JSON`
+- `src/parsecraft/cli/config.py` — `ParsecraftConfig`, `build_engine`, the run-scoped effective configuration (`config_scope`, `effective_settings`)

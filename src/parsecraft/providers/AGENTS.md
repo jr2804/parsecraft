@@ -98,6 +98,12 @@ by `routing/judge_providers.py` (each turns a `JudgeSpec` into a
   allowed (offline, lazy — inside the resolve functions, never at import).
   The default model is selected the same way by `select_judge_spec`:
   `--judge` beats `PARSECRAFT_JUDGE_MODEL` beats `[judge] model`.
+  The file value comes from the run's effective configuration —
+  `parsecraft.cli.config.effective_settings()`, i.e. the scope the run
+  installed, else the global file, the working directory's project file and
+  the environment. A seam never picks a layer set of its own, so the judge,
+  its endpoint, the text classifier and the deadline cannot disagree with the
+  routing constraints derived from the same settings (pc-8e6).
   Config-file sections use consumer-style names (`[providers.typesafe]` is
   `typesafe-ai`, `[providers.ollama-cloud]` is `ollama`; exact tokens work
   too) — the alias map lives in `parsecraft.providers._endpoints`, never in
@@ -117,7 +123,8 @@ indexing test skips without the core dependency), and the System One family:
 (offline SDK stub from `tests/fixtures/jev_sdk.py`; the semi-live Ollama tier
 needs a running daemon and a pulled model, so it runs only with
 `uv run pytest -m judge --run-judge`), and `tests/providers/test_endpoints.py`
-(config file, generic env, and CLI-override precedence for each endpoint knob).
+(config file, generic env, and CLI-override precedence for each endpoint knob;
+the run scope decides which layer set they read).
 
 ## Child DOX Index
 

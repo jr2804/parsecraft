@@ -40,7 +40,11 @@ Markdown as a deterministic projection.
   because `config/` cannot import the registry. Schema changes to
   `ParsecraftConfig` must keep `parsecraft.toml.example` in the project root
   in sync (rule owned by `config/AGENTS.md`; guard test in
-  `tests/cli/test_config.py`). `output.py` owns the CLI's
+  `tests/cli/test_config.py`). `config.py` also owns the run-scoped
+  effective configuration (`config_scope()` / `effective_settings()`): the
+  judge spec, the judge endpoint, the text-classifier spec and the request
+  timeout read it, so they cannot disagree with the routing constraints the
+  caller derived from the same settings (pc-8e6). `output.py` owns the CLI's
   output channels: the one output-encoding policy (`app._callback` forces UTF-8
   on stdout/stderr before every command, because a document's glyphs (U+25AA in
   a projection) crashed a redirected cp1252 stdout and lost the conversion;
