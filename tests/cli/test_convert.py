@@ -61,6 +61,7 @@ class _StubBackend:
         pages: int = 1,
         convert_error: Exception | None = None,
         fail_on_page: int | None = None,
+        seen: list[float | None] | None = None,
     ) -> None:
         self.name = name
         self.capabilities = capabilities
@@ -68,8 +69,12 @@ class _StubBackend:
         self._pages = pages
         self._convert_error = convert_error
         self._fail_on_page = fail_on_page
+        #: The deadlines the pipeline handed to this backend (pc-8e6).
+        self._seen = seen
 
     def convert(self, request: ConversionRequest) -> BackendResult:
+        if self._seen is not None:
+            self._seen.append(request.timeout_s)
         numbers = self._requested_pages(request)
         if self._convert_error is not None:
             raise self._convert_error
@@ -131,6 +136,7 @@ class _StubFactory:
         pages: int = 1,
         convert_error: Exception | None = None,
         fail_on_page: int | None = None,
+        seen: list[float | None] | None = None,
     ) -> None:
         self.descriptor = descriptor
         self._content = content
@@ -138,6 +144,7 @@ class _StubFactory:
         self._pages = pages
         self._convert_error = convert_error
         self._fail_on_page = fail_on_page
+        self._seen = seen
 
     def __call__(self, config: BackendConfig) -> DocumentBackend:
         if self._fail:
@@ -149,6 +156,7 @@ class _StubFactory:
             pages=self._pages,
             convert_error=self._convert_error,
             fail_on_page=self._fail_on_page,
+            seen=self._seen,
         )
 
 
@@ -1027,6 +1035,85 @@ def test_convert_backend_conflicts_with_a_configured_default_judge(pdf_registry:
     assert "mutually exclusive" in _text(result)
 
 
+def test_convert_reads_the_judge_from_the_config_file_option(pdf_registry: Path, tmp_path: Path) -> None:
+    """``--config-file`` decides the judge, not only the ``config`` group (pc-8e6)."""
+    register_judge_provider("cli-file-judge", _load_reversing_judge)
+    project = _write_project_config(tmp_path, '[judge]\nmodel = "cli-file-judge/j"\n')
+    result = runner.invoke(app, ["convert", str(pdf_registry), "--config-file", str(project)])
+    assert result.exit_code == 0
+    assert "aaa native content" not in result.output  # the judge's reordered lead
+
+
+def test_convert_reads_the_timeout_from_the_config_file_option(deadline_source: tuple[Path, list[float | None]], tmp_path: Path) -> None:
+    """The named file feeds the request deadline too, not only the judge (pc-8e6)."""
+    source, seen = deadline_source
+    project = _write_project_config(tmp_path, "timeout_s = 42.0\n")
+    result = runner.invoke(app, ["convert", str(source), "--config-file", str(project)])
+    assert result.exit_code == 0
+    assert seen == [42.0]
+
+
+def test_the_config_file_option_replaces_the_working_directory_file(
+    deadline_source: tuple[Path, list[float | None]], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The named file is the project layer; the working directory's file is not read."""
+    source, seen = deadline_source
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "parsecraft.toml").write_text("timeout_s = 1.0\n", encoding="utf-8")
+    project = _write_project_config(tmp_path, "timeout_s = 42.0\n")
+    result = runner.invoke(app, ["convert", str(source), "--config-file", str(project)])
+    assert result.exit_code == 0
+    assert seen == [42.0]
+
+
+@pytest.fixture
+def deadline_source(registry: BackendRegistry, tmp_path: Path) -> tuple[Path, list[float | None]]:
+    """A PDF source and the deadlines its one eligible backend is handed (pc-8e6)."""
+    seen: list[float | None] = []
+    _register(registry, _descriptor("aaa-recorder", ("application/pdf",)), content="recorded", seen=seen)
+    source = tmp_path / "doc.pdf"
+    source.write_bytes(minimal_pdf([[_LONG_TEXT]]))
+    return source, seen
+
+
+def test_convert_reports_a_malformed_config_file(pdf_registry: Path, tmp_path: Path) -> None:
+    """A broken project file ends the run with a clean message, not a traceback (pc-8e6)."""
+    project = _write_project_config(tmp_path, "timeout_s = [\n")
+    result = runner.invoke(app, ["convert", str(pdf_registry), "--config-file", str(project)])
+    assert result.exit_code == 1
+    assert "error:" in _text(result)
+
+
+def test_one_configuration_feeds_routing_and_every_seam(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A consumer's layer set decides routing, the judge, its endpoint, the classifier and the deadline (pc-8e6)."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "parsecraft.toml").write_text('[routing]\nmax_passes = 9\n[judge]\nmodel = "zen/from-cwd"\n', encoding="utf-8")
+    vault = tmp_path / "vault" / "parsecraft.toml"
+    vault.parent.mkdir(parents=True, exist_ok=True)
+    vault.write_text(
+        'timeout_s = 42.0\n[routing]\nmax_passes = 2\n[judge]\nmodel = "zen/from-vault"\n'
+        '[text_classifier]\nmodel = "stub/from-vault"\n'
+        '[providers.zen]\nbase_url = "https://vault.invalid"\n',
+        encoding="utf-8",
+    )
+    settings = cli_config.build_engine([vault]).load()
+    assert settings.routing.max_passes == 2  # routing comes from the consumer's layer set
+    with cli_config.config_scope(settings):
+        assert endpoints.select_judge_spec(None) == "zen/from-vault"
+        assert endpoints.select_text_classifier_spec() == "stub/from-vault"
+        base_url, _ = endpoints.resolve_endpoint("zen", default_base_url=None, legacy_api_key_env=None)
+        assert base_url == "https://vault.invalid"
+        assert convert_module._effective_timeout_s(None) == 42.0
+
+
+def _write_project_config(tmp_path: Path, text: str) -> Path:
+    """Write a project-layer config file and return its path."""
+    path = tmp_path / "project" / "parsecraft.toml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
 def _load_reversing_judge(spec: JudgeSpec, machine: MachineProfile | None = None, preference: RoutingPreference = RoutingPreference.BALANCED) -> RoutingJudge:
     return _ReversingJudge()
 
@@ -1310,6 +1397,7 @@ def _register(
     pages: int = 1,
     convert_error: Exception | None = None,
     fail_on_page: int | None = None,
+    seen: list[float | None] | None = None,
 ) -> None:
     registry.register(
         descriptor.name,
@@ -1320,6 +1408,7 @@ def _register(
             pages=pages,
             convert_error=convert_error,
             fail_on_page=fail_on_page,
+            seen=seen,
         ),
     )
 
@@ -1359,6 +1448,16 @@ def test_effective_timeout_s_unreadable_config_fails_loudly(tmp_path: Path) -> N
     _write_global_config(tmp_path, "timeout_s = [\n")
     with pytest.raises(convert_module.ConvertError, match="cannot read timeout configuration"):
         convert_module._effective_timeout_s(None)
+
+
+def test_effective_timeout_s_reads_the_run_scope(tmp_path: Path) -> None:
+    """The deadline follows the run's layer set, not the default one (pc-8e6)."""
+    project = tmp_path / "project" / "parsecraft.toml"
+    project.parent.mkdir(parents=True, exist_ok=True)
+    project.write_text("timeout_s = 42.0\n", encoding="utf-8")
+    settings = cli_config.build_engine([project]).load()
+    with cli_config.config_scope(settings):
+        assert convert_module._effective_timeout_s(None) == 42.0
 
 
 def _write_global_config(tmp_path: Path, text: str) -> None:

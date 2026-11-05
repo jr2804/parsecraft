@@ -8,7 +8,9 @@ pure rendering helpers they use.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Generator, Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import cast
 
@@ -42,6 +44,11 @@ SECRET_KEYS: tuple[str, ...] = ("hf_token",)
 
 #: Keys resolved relative to the file that declares them.
 PATH_KEYS: tuple[str, ...] = ("cache_dir",)
+
+#: The configuration the current run reads, when the run installed one
+#: (pc-8e6). ``None`` means "no run scope" — the seams fall back to the
+#: default layer set.
+_current_settings: ContextVar[ParsecraftConfig | None] = ContextVar("parsecraft_settings", default=None)
 
 
 class ProviderEndpoint(BaseModel):
@@ -199,6 +206,45 @@ class ParsecraftConfig(ConfigSchema):
 def _check_names(key: str, value: str | None, backend_names: set[str]) -> None:
     if value and value not in backend_names:
         raise ConfigError(_unknown_name_error(f"routing.{key}", value, sorted(backend_names)))
+
+
+@contextmanager
+def config_scope(settings: ParsecraftConfig | None) -> Generator[None]:
+    """Install the effective configuration of the current run, then drop it.
+
+    The judge spec, the judge endpoint, the text-classifier spec and the
+    request timeout all read the scoped configuration, so they cannot
+    disagree with the routing constraints the caller derived from the very
+    same settings (pc-8e6). A run that installs no scope reads the default
+    layer set — the global file, the working directory's project file, and
+    the environment.
+
+    ``settings`` of ``None`` leaves the ambient scope untouched, so a nested
+    call cannot silently widen or narrow the configuration an outer run
+    installed. The scope is thread-local like every ``ContextVar``: a worker
+    thread started by the caller starts with an empty scope.
+    """
+    if settings is None:
+        yield
+        return
+    token = _current_settings.set(settings)
+    try:
+        yield
+    finally:
+        _current_settings.reset(token)
+
+
+def effective_settings() -> ParsecraftConfig:
+    """The configuration this run reads.
+
+    The scoped configuration when the run installed one; otherwise the
+    default layer set, read on demand — the global file, the working
+    directory's project file, and the environment.
+    """
+    scoped = _current_settings.get()
+    if scoped is not None:
+        return scoped
+    return build_engine(None).load()
 
 
 def build_engine(config_files: Sequence[Path] | None = None) -> ConfigEngine[ParsecraftConfig]:

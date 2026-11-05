@@ -23,7 +23,7 @@ from parsecraft.backends import default_registry
 from parsecraft.backends.errors import BackendError, DependencyUnavailableError, UnsupportedDependencyVersionError
 from parsecraft.backends.protocol import SourceDocument
 from parsecraft.cache import ConversionCache
-from parsecraft.cli.config import build_engine
+from parsecraft.cli.config import ParsecraftConfig, config_scope, effective_settings
 from parsecraft.cli.errors import CliError
 from parsecraft.config import ConfigError
 from parsecraft.environment import EnvironmentInfo, constraints_from_environment, cuda_runtime_note, probe_environment
@@ -101,6 +101,7 @@ def convert_source(
     use_cache: bool = False,
     backend_options: dict[str, dict[str, str | int | float | bool]] | None = None,
     only_backend: str | None = None,
+    settings: ParsecraftConfig | None = None,
 ) -> DocumentResult:
     """Analyze, plan, and execute a source, returning the aggregated IR.
 
@@ -113,89 +114,95 @@ def convert_source(
     flag is absent; ``judge_base_url``/``judge_api_key`` override the endpoint
     the same way. ``backend`` and ``judge`` are mutually exclusive — both choose
     the lead candidate. ``timeout_s`` is resolved by :func:`_effective_timeout_s`:
-    an explicit flag wins, otherwise the ``timeout_s`` config key applies. That
-    resolution reads the global config a second time (the text classifier
-    already read it once) — one 0.58 ms load, not a cache, by agreement.
+    an explicit flag wins, otherwise the ``timeout_s`` config key applies.
     ``preference`` reaches the plan both as a constraint (the judge the planner
     builds itself) and as the resolved judge's ranking axis, so one flag drives
     both paths. All flags default to their neutral values, which is exactly the
     historical behaviour. ``timeout_s`` bounds each backend attempt (the CLI
     flag wins, otherwise the ``timeout_s`` config key); ``None`` means unbounded,
     exactly as before.
+
+    ``settings`` is the effective configuration of this run (pc-8e6): the
+    judge spec, the judge endpoint, the text-classifier spec and the request
+    timeout all read it, so they cannot disagree with the routing constraints
+    the caller derived from the very same settings. ``None`` keeps the default
+    layer set — the global file, the working directory's project file, and the
+    environment.
     """
-    unknown_error: UnsupportedSourceError | None = None
-    try:
-        media_type = media_type_for(path)
-    except UnsupportedSourceError as exc:
-        unknown_error = exc
-        # Provisional: the sniff decides below; never used for routing unless text.
-        media_type = "text/plain"
-    environment = probe_environment()  # a single probe per invocation, shared by analysis and the seams
-    warn_unusable_gpu(environment)
-    registry_names = frozenset(descriptor.name for descriptor in default_registry.list_backends())
-    resolved_classifier, resolved_judge, preferred_backend = _resolve_providers(
-        classifier, backend, judge, environment, preference, registry_names, judge_base_url, judge_api_key
-    )
-    source = read_unknown_source(path, unknown_error) if unknown_error is not None else read_source(path, media_type)
-    registry = default_registry
-    try:
-        analyzer = choose_analyzer(registry.list_backends(), media_type, installed_extras=environment.installed_extras)
-    except NoAnalyzerError as exc:
-        raise ConvertError(str(exc), exit_code=_USAGE_EXIT_CODE) from exc
-    try:
-        analysis = analyze_source(
-            source,
-            registry,
-            media_type=media_type,
-            installed_extras=environment.installed_extras,
-            classifier=resolved_classifier,
-            offline=environment.offline,
+    with config_scope(settings):
+        unknown_error: UnsupportedSourceError | None = None
+        try:
+            media_type = media_type_for(path)
+        except UnsupportedSourceError as exc:
+            unknown_error = exc
+            # Provisional: the sniff decides below; never used for routing unless text.
+            media_type = "text/plain"
+        environment = probe_environment()  # a single probe per invocation, shared by analysis and the seams
+        warn_unusable_gpu(environment)
+        registry_names = frozenset(descriptor.name for descriptor in default_registry.list_backends())
+        resolved_classifier, resolved_judge, preferred_backend = _resolve_providers(
+            classifier, backend, judge, environment, preference, registry_names, judge_base_url, judge_api_key
         )
-    except DependencyUnavailableError as exc:
-        raise ConvertError(f"optional dependency missing: {exc}") from exc  # exit 1
-    except UnsupportedDependencyVersionError as exc:
-        raise ConvertError(f"unsupported dependency version: {exc}") from exc  # exit 1
-    except AssetError as exc:
-        # A backend that must acquire a model refuses an uncached download while
-        # offline; the asset error already names the model (pc-e38).
-        raise ConvertError(f"model assets unavailable: {exc}") from exc  # exit 1
-    except BackendError as exc:
-        raise ConvertError(f"analysis with {analyzer.name!r} failed: {exc}") from exc
-    constraints = build_constraints(
-        media_type,
-        max_passes=max_passes,
-        allow_ocr=allow_ocr,
-        environment=environment,
-        preference=preference,
-        preferred_backend=preferred_backend,
-        backend_options=backend_options,
-        only_backend=only_backend,
-    )
-    try:
-        cache = ConversionCache() if use_cache else None
-        pipeline = execute(
-            analysis,
-            registry,
-            constraints,
-            source,
-            resolved_judge,
-            cache=cache,
-            ocr_classifier=classifier,
-            text_classifier=_text_classifier_spec(),
-            # Empty options build byte-identical requests to the old bare call
-            # (RequestOptions(timeout_s=None).model_dump() == RequestOptions().model_dump()).
-            options=RequestOptions(timeout_s=_effective_timeout_s(timeout_s)),
+        source = read_unknown_source(path, unknown_error) if unknown_error is not None else read_source(path, media_type)
+        registry = default_registry
+        try:
+            analyzer = choose_analyzer(registry.list_backends(), media_type, installed_extras=environment.installed_extras)
+        except NoAnalyzerError as exc:
+            raise ConvertError(str(exc), exit_code=_USAGE_EXIT_CODE) from exc
+        try:
+            analysis = analyze_source(
+                source,
+                registry,
+                media_type=media_type,
+                installed_extras=environment.installed_extras,
+                classifier=resolved_classifier,
+                offline=environment.offline,
+            )
+        except DependencyUnavailableError as exc:
+            raise ConvertError(f"optional dependency missing: {exc}") from exc  # exit 1
+        except UnsupportedDependencyVersionError as exc:
+            raise ConvertError(f"unsupported dependency version: {exc}") from exc  # exit 1
+        except AssetError as exc:
+            # A backend that must acquire a model refuses an uncached download while
+            # offline; the asset error already names the model (pc-e38).
+            raise ConvertError(f"model assets unavailable: {exc}") from exc  # exit 1
+        except BackendError as exc:
+            raise ConvertError(f"analysis with {analyzer.name!r} failed: {exc}") from exc
+        constraints = build_constraints(
+            media_type,
+            max_passes=max_passes,
+            allow_ocr=allow_ocr,
+            environment=environment,
+            preference=preference,
+            preferred_backend=preferred_backend,
+            backend_options=backend_options,
+            only_backend=only_backend,
         )
-    except JudgeViolationError as exc:
-        raise ConvertError(f"judge returned an invalid order: {exc}", exit_code=1) from exc
-    except AssetError as exc:
-        raise ConvertError(f"model assets unavailable: {exc}") from exc  # exit 1, same mapping as the analyzer path
-    except (NoEligibleBackendError, RoutingError) as exc:
-        raise ConvertError(f"routing failed: {exc}") from exc
-    failure = pipeline_failure(pipeline.document)
-    if failure is not None:
-        raise ConvertError(no_content_message(failure, pipeline.document))  # exit 1
-    return pipeline.document
+        try:
+            cache = ConversionCache() if use_cache else None
+            pipeline = execute(
+                analysis,
+                registry,
+                constraints,
+                source,
+                resolved_judge,
+                cache=cache,
+                ocr_classifier=classifier,
+                text_classifier=_text_classifier_spec(),
+                # Empty options build byte-identical requests to the old bare call
+                # (RequestOptions(timeout_s=None).model_dump() == RequestOptions().model_dump()).
+                options=RequestOptions(timeout_s=_effective_timeout_s(timeout_s)),
+            )
+        except JudgeViolationError as exc:
+            raise ConvertError(f"judge returned an invalid order: {exc}", exit_code=1) from exc
+        except AssetError as exc:
+            raise ConvertError(f"model assets unavailable: {exc}") from exc  # exit 1, same mapping as the analyzer path
+        except (NoEligibleBackendError, RoutingError) as exc:
+            raise ConvertError(f"routing failed: {exc}") from exc
+        failure = pipeline_failure(pipeline.document)
+        if failure is not None:
+            raise ConvertError(no_content_message(failure, pipeline.document))  # exit 1
+        return pipeline.document
 
 
 def no_content_message(failure: PassFailure, document: DocumentResult) -> str:
@@ -359,11 +366,16 @@ def _text_classifier_spec() -> str | None:
 
 
 def _effective_timeout_s(cli_value: float | None) -> float | None:
-    """CLI flag wins; otherwise the ``timeout_s`` config key; ``None`` when unset."""
+    """CLI flag wins; otherwise the ``timeout_s`` config key; ``None`` when unset.
+
+    The config key comes from the run's effective configuration — the scope
+    this conversion installed, or the default layer set when it installed
+    none (pc-8e6).
+    """
     if cli_value is not None:
         return cli_value
     try:
-        return build_engine(None).load().timeout_s
+        return effective_settings().timeout_s
     except ConfigError as exc:
         raise ConvertError(f"cannot read timeout configuration: {exc}") from exc
 

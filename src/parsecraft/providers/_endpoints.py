@@ -18,6 +18,15 @@ resolved per knob in the same order everywhere:
 The default decision model is selected the same way by :func:`select_judge_spec`:
 explicit ``--judge`` beats ``PARSECRAFT_JUDGE_MODEL`` beats ``[judge] model``.
 
+**Which layer set these seams read.** Every section below comes from
+:func:`parsecraft.cli.config.effective_settings` — the configuration the
+*current run* installed, so the judge spec, the endpoint, the text-classifier
+spec and the request timeout cannot disagree with the routing constraints the
+caller derived from the same settings (pc-8e6). A run that installed no scope
+reads the default layer set: the global file, the working directory's project
+file, and the environment. The layer set is therefore never a hidden
+per-seam choice: it is the run's, and the run owns it.
+
 Config files are read lazily (inside the resolve functions, never at import)
 so unresolved runs — including every run without a judge — never touch the
 filesystem beyond what they already did. A malformed config file or an
@@ -33,7 +42,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 
-from parsecraft.cli.config import JudgeSettings, ProviderEndpoint, TextClassifierSettings, build_engine
+from parsecraft.cli.config import JudgeSettings, ProviderEndpoint, TextClassifierSettings, effective_settings
 from parsecraft.config import ConfigError
 from parsecraft.routing.judge_providers import JudgeProviderUnavailableError
 
@@ -69,7 +78,12 @@ def override_endpoint(base_url: str | None, api_key: str | None) -> Generator[No
 
 
 def select_judge_spec(cli_spec: str | None) -> str | None:
-    """Pick the decision-model spec: CLI flag, generic env, or ``[judge] model``."""
+    """Pick the decision-model spec: CLI flag, generic env, or ``[judge] model``.
+
+    The file value comes from the run's effective configuration (see the
+    module docstring), so it is the very same ``[judge] model`` the routing
+    constraints were derived from.
+    """
     if cli_spec:
         return cli_spec
     from_env = os.environ.get(JUDGE_MODEL_ENV, "").strip()
@@ -88,6 +102,9 @@ def select_text_classifier_spec() -> str | None:
     entries on a choice the extract never sees. A routing judge's existence
     must never switch on document shaping (consumer ruling: "opt-in means
     opt-in by me"), so the dedicated section is the only activation signal.
+
+    The section comes from the run's effective configuration (see the module
+    docstring).
     """
     from_file = (_text_classifier_section().model or "").strip()
     return from_file or None
@@ -104,6 +121,9 @@ def resolve_endpoint(
     ``api_key`` is ``None`` when no source names a credential — the caller
     keeps its legacy lookup (env var or local sentinel) in that case, so
     unconfigured runs behave exactly as before.
+
+    The ``[providers.<section>]`` file value comes from the run's effective
+    configuration (see the module docstring).
     """
     override = _current_override.get()
     section = _provider_section(provider)
@@ -124,25 +144,25 @@ def resolve_endpoint(
 
 
 def _judge_section() -> JudgeSettings:
-    """The file's ``[judge]`` section (defaults when no file configures one)."""
+    """The run's ``[judge]`` section (defaults when no file configures one)."""
     try:
-        return build_engine(None).load().judge
+        return effective_settings().judge
     except ConfigError as exc:
         raise JudgeProviderUnavailableError("judge", "config", f"cannot read judge configuration: {exc}") from exc
 
 
 def _text_classifier_section() -> TextClassifierSettings:
-    """The file's ``[text_classifier]`` section (defaults when absent, pc-9p6.5)."""
+    """The run's ``[text_classifier]`` section (defaults when absent, pc-9p6.5)."""
     try:
-        return build_engine(None).load().text_classifier
+        return effective_settings().text_classifier
     except ConfigError as exc:
         raise JudgeProviderUnavailableError("text_classifier", "config", f"cannot read text-classifier configuration: {exc}") from exc
 
 
 def _provider_section(provider: str) -> ProviderEndpoint:
-    """The file's ``[providers.<section>]`` for one provider (defaults absent)."""
+    """The run's ``[providers.<section>]`` for one provider (defaults absent)."""
     try:
-        providers = build_engine(None).load().providers
+        providers = effective_settings().providers
     except ConfigError as exc:
         raise JudgeProviderUnavailableError(provider, provider, f"cannot read provider configuration: {exc}") from exc
     if provider in providers:

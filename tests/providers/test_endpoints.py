@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from parsecraft.cli.config import build_engine, config_scope
 from parsecraft.providers._endpoints import (
     JUDGE_API_KEY_ENV,
     JUDGE_BASE_URL_ENV,
@@ -166,6 +167,62 @@ def _write_global(tmp_path: Path, text: str) -> None:
     path = tmp_path / "global" / "config.toml"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
+
+
+def test_the_judge_model_comes_from_the_run_scope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The run's layer set decides the judge model, not the working directory's file (pc-8e6)."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "parsecraft.toml").write_text('[judge]\nmodel = "zen/from-cwd"\n', encoding="utf-8")
+    vault = _write_project(tmp_path / "vault", '[judge]\nmodel = "zen/from-vault"\n')
+    with config_scope(build_engine([vault]).load()):
+        assert select_judge_spec(None) == "zen/from-vault"
+
+
+def test_the_text_classifier_model_comes_from_the_run_scope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The classifier section follows the run's layer set too (pc-8e6)."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "parsecraft.toml").write_text('[text_classifier]\nmodel = "stub/from-cwd"\n', encoding="utf-8")
+    vault = _write_project(tmp_path / "vault", '[text_classifier]\nmodel = "stub/from-vault"\n')
+    with config_scope(build_engine([vault]).load()):
+        assert select_text_classifier_spec() == "stub/from-vault"
+
+
+def test_the_provider_endpoint_comes_from_the_run_scope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The provider section follows the run's layer set too (pc-8e6)."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "parsecraft.toml").write_text('[providers.zen]\nbase_url = "https://cwd.invalid"\n', encoding="utf-8")
+    vault = _write_project(tmp_path / "vault", '[providers.zen]\nbase_url = "https://vault.invalid"\n')
+    with config_scope(build_engine([vault]).load()):
+        base_url, _ = resolve_endpoint("zen", default_base_url="https://default.invalid", legacy_api_key_env=None)
+    assert base_url == "https://vault.invalid"
+
+
+def test_the_run_scope_does_not_weaken_the_env_precedence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Env still wins over the run's file — the scope changes the layer set, not the order."""
+    vault = _write_project(tmp_path / "vault", '[judge]\nmodel = "zen/from-vault"\n[providers.zen]\nbase_url = "https://vault.invalid"\n')
+    monkeypatch.setenv(JUDGE_MODEL_ENV, "zen/from-env")
+    monkeypatch.setenv(JUDGE_BASE_URL_ENV, "https://env.invalid")
+    with config_scope(build_engine([vault]).load()):
+        assert select_judge_spec(None) == "zen/from-env"
+        base_url, _ = resolve_endpoint("zen", default_base_url="https://default.invalid", legacy_api_key_env=None)
+    assert base_url == "https://env.invalid"
+
+
+def test_the_run_scope_ends_with_the_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Past the scope the seams read the default layer set again."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "parsecraft.toml").write_text('[judge]\nmodel = "zen/from-cwd"\n', encoding="utf-8")
+    vault = _write_project(tmp_path / "vault", '[judge]\nmodel = "zen/from-vault"\n')
+    with config_scope(build_engine([vault]).load()):
+        assert select_judge_spec(None) == "zen/from-vault"
+    assert select_judge_spec(None) == "zen/from-cwd"
+
+
+def _write_project(path: Path, text: str) -> Path:
+    """Write a project-layer config file and return its path."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
 
 
 def test_override_endpoint_resets_after_the_block() -> None:

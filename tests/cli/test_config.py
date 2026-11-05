@@ -436,11 +436,6 @@ def test_config_driven_routing_journey_end_to_end(tmp_path: Path) -> None:
     assert passes_source.origin == str(project)
 
 
-def _ensure_dir(path: Path) -> Path:
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-
-
 def test_build_engine_empty_sequence_skips_project_layer(tmp_path: Path) -> None:
     _project_file(tmp_path, "offline = true\n")  # cwd project file exists but must be ignored
     engine = config.build_engine([])
@@ -448,6 +443,55 @@ def test_build_engine_empty_sequence_skips_project_layer(tmp_path: Path) -> None
     offline_source = engine.source_of("offline")
     assert offline_source is not None
     assert offline_source.origin == "<defaults>"
+
+
+def test_config_scope_installs_the_runs_settings(tmp_path: Path) -> None:
+    """A scoped run reads exactly the settings it installed (pc-8e6)."""
+    vault = _project_file(_ensure_dir(tmp_path / "vault"), "timeout_s = 42.0\n")
+    settings = config.build_engine([vault]).load()
+    with config.config_scope(settings):
+        assert config.effective_settings() is settings
+        assert config.effective_settings().timeout_s == 42.0
+
+
+def test_config_scope_without_settings_keeps_the_ambient_one(tmp_path: Path) -> None:
+    """A nested scope that carries nothing cannot widen or narrow the outer one."""
+    vault = _project_file(_ensure_dir(tmp_path / "vault"), "timeout_s = 42.0\n")
+    settings = config.build_engine([vault]).load()
+    with config.config_scope(settings), config.config_scope(None):
+        assert config.effective_settings() is settings
+
+
+def test_config_scope_resets_after_the_block(tmp_path: Path) -> None:
+    """Past the scope the default layer set is read again."""
+    vault = _project_file(_ensure_dir(tmp_path / "vault"), "timeout_s = 42.0\n")
+    settings = config.build_engine([vault]).load()
+    with config.config_scope(settings):
+        assert config.effective_settings() is settings
+    assert config.effective_settings() is not settings
+    assert config.effective_settings().timeout_s is None
+
+
+def test_config_scope_resets_when_the_body_raises(tmp_path: Path) -> None:
+    """A failed run leaves no scope behind."""
+    vault = _project_file(_ensure_dir(tmp_path / "vault"), "timeout_s = 42.0\n")
+    settings = config.build_engine([vault]).load()
+    with pytest.raises(RuntimeError, match="boom"), config.config_scope(settings):
+        raise RuntimeError("boom")
+    assert config.effective_settings() is not settings
+
+
+def _ensure_dir(path: Path) -> Path:
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def test_effective_settings_reads_the_default_layer_set_without_a_scope(tmp_path: Path) -> None:
+    """No scope: the global file, the working directory's project file, and the environment."""
+    global_path = tmp_path / "global" / "config.toml"
+    global_path.parent.mkdir(parents=True, exist_ok=True)
+    global_path.write_text("timeout_s = 11.0\n", encoding="utf-8")
+    assert config.effective_settings().timeout_s == 11.0
 
 
 def _project_file(tmp_path: Path, text: str) -> Path:

@@ -187,6 +187,7 @@ def convert(
         Path | None,
         typer.Option("--output", "-o", dir_okay=False, help="Write the result to PATH (UTF-8) instead of stdout; the directory must already exist"),
     ] = None,
+    config_file: args.ConfigFileOption = None,
     verbose: args.VerboseFlag = False,
 ) -> None:
     """Convert a document through the auto-mode pipeline."""
@@ -215,6 +216,14 @@ def convert(
         typer.echo(f"error: output directory does not exist: {output.parent} (create it first)", err=True)
         raise typer.Exit(code=2)
     try:
+        # One effective configuration for this run: the judge spec, the judge
+        # endpoint, the text-classifier spec and the request timeout all read
+        # it, so they cannot disagree with each other (pc-8e6).
+        settings = config.build_engine([config_file] if config_file is not None else None).load()
+    except ConfigError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    try:
         with verbosity.third_party_output(verbose=verbose):
             document = convert_source(
                 source,
@@ -230,6 +239,7 @@ def convert(
                 use_cache=use_cache,
                 backend_options=options or None,
                 only_backend=backend if not auto else None,
+                settings=settings,
             )
     except ConvertError as exc:
         typer.echo(f"error: {exc}", err=True)
@@ -384,6 +394,7 @@ def benchmark(
         typer.Option("--timeout-s", help="Per-request backend deadline in seconds (bounds each attempt, not the whole run)"),
     ] = None,
     no_ocr: Annotated[bool, typer.Option("--no-ocr", help="Forbid OCR harnesses; a parser that OCRs internally stays eligible")] = False,
+    config_file: args.ConfigFileOption = None,
     verbose: args.VerboseFlag = False,
 ) -> None:
     """Benchmark eligible backends over local documents (offline)."""
@@ -395,7 +406,15 @@ def benchmark(
         typer.echo("error: --timeout-s must be positive", err=True)
         raise typer.Exit(code=2)
     try:
-        with verbosity.third_party_output(verbose=verbose):
+        # The same effective configuration `convert` reads (pc-8e6): the
+        # harness bounds the same `backend.convert` calls, so the deadline
+        # comes from the same layer set.
+        settings = config.build_engine([config_file] if config_file is not None else None).load()
+    except ConfigError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    try:
+        with verbosity.third_party_output(verbose=verbose), config.config_scope(settings):
             report = benchmark_module.benchmark_report(paths, max_passes=max_passes, allow_ocr=False if no_ocr else None, timeout_s=timeout_s)
             written = benchmark_module.write_reports(report, output) if output is not None else []
     except CliError as exc:

@@ -144,26 +144,12 @@ def test_cli_benchmark_reports_cli_error(tmp_path: Path, offline_probe: None, mo
     assert "harness blew up" in _text(result)
 
 
-def _text(result: Result) -> str:
-    return f"{result.output}{result.stderr or ''}"
-
-
 def test_cli_benchmark_json_payload(tmp_path: Path, offline_probe: None, monkeypatch: pytest.MonkeyPatch) -> None:
     _cli_registry(monkeypatch)
     result = runner.invoke(app, ["benchmark", str(_document(tmp_path)), "--json"])
     payload = cast("dict[str, object]", json.loads(result.output))
     rows = cast("list[object]", payload["results"])
     assert cast("dict[str, object]", rows[0])["backend"] == "native-text"
-
-
-def _cli_registry(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(benchmark_module, "default_registry", _registry())
-
-
-def _registry() -> BackendRegistry:
-    registry = BackendRegistry()
-    registry.register("native-text", _StubFactory(_descriptor()))
-    return registry
 
 
 def test_run_benchmark_forwards_timeout_s(tmp_path: Path, offline_probe: None) -> None:
@@ -194,6 +180,45 @@ def test_benchmark_report_reads_the_timeout_s_config_key(tmp_path: Path, offline
     registry, seen = _recording_registry()
     benchmark_module.benchmark_report([_document(tmp_path)], registry)
     assert [request.timeout_s for request in seen] == [9.0]
+
+
+def test_cli_benchmark_reads_the_timeout_from_the_config_file_option(tmp_path: Path, offline_probe: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The named file feeds the harness deadline, like it feeds convert's (pc-8e6)."""
+    registry, seen = _recording_registry()
+    monkeypatch.setattr(benchmark_module, "default_registry", registry)
+    monkeypatch.setattr(cli_config, "global_config_path", lambda: tmp_path / "global" / "config.toml")
+    project = tmp_path / "project" / "parsecraft.toml"
+    project.parent.mkdir(parents=True, exist_ok=True)
+    project.write_text("timeout_s = 42.0\n", encoding="utf-8")
+    result = runner.invoke(app, ["benchmark", str(_document(tmp_path)), "--config-file", str(project)])
+    assert result.exit_code == 0
+    assert [request.timeout_s for request in seen] == [42.0]
+
+
+def test_cli_benchmark_reports_a_malformed_config_file(tmp_path: Path, offline_probe: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A broken project file ends the run with a clean message, not a traceback (pc-8e6)."""
+    _cli_registry(monkeypatch)
+    monkeypatch.setattr(cli_config, "global_config_path", lambda: tmp_path / "global" / "config.toml")
+    project = tmp_path / "project" / "parsecraft.toml"
+    project.parent.mkdir(parents=True, exist_ok=True)
+    project.write_text("timeout_s = [\n", encoding="utf-8")
+    result = runner.invoke(app, ["benchmark", str(_document(tmp_path)), "--config-file", str(project)])
+    assert result.exit_code == 1
+    assert "error:" in _text(result)
+
+
+def _text(result: Result) -> str:
+    return f"{result.output}{result.stderr or ''}"
+
+
+def _cli_registry(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(benchmark_module, "default_registry", _registry())
+
+
+def _registry() -> BackendRegistry:
+    registry = BackendRegistry()
+    registry.register("native-text", _StubFactory(_descriptor()))
+    return registry
 
 
 def _recording_registry() -> tuple[BackendRegistry, list[ConversionRequest]]:

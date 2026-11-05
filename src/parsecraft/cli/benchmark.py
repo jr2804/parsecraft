@@ -21,7 +21,7 @@ from parsecraft.environment import constraints_from_environment, probe_environme
 
 def benchmark_report(
     paths: Sequence[Path],
-    registry: BackendRegistry = default_registry,
+    registry: BackendRegistry | None = None,
     *,
     max_passes: int = 1,
     allow_ocr: bool | None = None,
@@ -35,9 +35,13 @@ def benchmark_report(
     config key — the same ``_effective_timeout_s`` rule as ``convert``: the
     harness bounds the same ``backend.convert`` calls, so a second semantic
     would be surprising.
+
+    ``registry`` defaults to the process registry, resolved when the call
+    happens rather than when the module was imported, so a caller that
+    swaps the registry gets the swap.
     """
     constraints = constraints_from_environment(probe_environment(), formats=(), allow_ocr=allow_ocr, max_passes=max_passes)
-    return run_benchmark(list(paths), registry, constraints, timeout_s=_effective_timeout_s(timeout_s))
+    return run_benchmark(list(paths), registry if registry is not None else default_registry, constraints, timeout_s=_effective_timeout_s(timeout_s))
 
 
 def write_reports(report: BenchmarkReport, output_dir: Path) -> list[Path]:
