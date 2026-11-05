@@ -37,7 +37,10 @@ Markdown as a deterministic projection.
   `RoutingSettings.routing_constraints()` is the one
   config→`RoutingConstraints` construction path (library consumers must not
   re-derive the mapping), and backend/engine name validation lives there
-  because `config/` cannot import the registry. `output.py` owns the CLI's
+  because `config/` cannot import the registry. Schema changes to
+  `ParsecraftConfig` must keep `parsecraft.toml.example` in the project root
+  in sync (rule owned by `config/AGENTS.md`; guard test in
+  `tests/cli/test_config.py`). `output.py` owns the CLI's
   output channels: the one output-encoding policy (`app._callback` forces UTF-8
   on stdout/stderr before every command, because a document's glyphs (U+25AA in
   a projection) crashed a redirected cp1252 stdout and lost the conversion;

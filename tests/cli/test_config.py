@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import tomllib
 from pathlib import Path
 from typing import cast
 
@@ -453,3 +454,21 @@ def _project_file(tmp_path: Path, text: str) -> Path:
     path = tmp_path / "parsecraft.toml"
     path.write_text(text, encoding="utf-8")
     return path
+
+
+def test_example_config_matches_the_schema() -> None:
+    """The root example must load cleanly and document every schema key.
+
+    Sync rule owned by src/parsecraft/config/AGENTS.md: any ParsecraftConfig
+    or engine change checks/updates parsecraft.toml.example. This test pins
+    key coverage (new fields fail here); comment/semantic drift stays human.
+    """
+    example = Path(__file__).resolve().parents[2] / "parsecraft.toml.example"
+    raw = tomllib.loads(example.read_text(encoding="utf-8"))
+    settings = config.ParsecraftConfig.model_validate(raw)
+    assert set(raw) == set(config.ParsecraftConfig.model_fields)
+    assert set(raw["routing"]) == set(config.RoutingSettings.model_fields)
+    assert settings.timeout_s == 90.0
+    assert settings.routing.backend_options["docling"] == {"do_ocr": False}
+    assert settings.providers["typesafe"].api_key == "${TYPESAFE_API_KEY}"
+    assert settings.judge.model == "typesafe-ai/jev-1.13"

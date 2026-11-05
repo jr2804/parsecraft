@@ -1,0 +1,74 @@
+# parsecraft.toml.example — every configuration key ParseCraft accepts, in one file.
+#
+# Copy to one of these locations (later wins per key; provenance is per key):
+#   1. ~/.config/parsecraft/config.toml        global (all projects)
+#   2. <vault>/parsecraft.toml                 consumer-supplied vault file
+#   3. ./parsecraft.toml                       project (cwd convenience)
+# Env (PARSECRAFT_CONFIG_*) and CLI flags sit above all files.
+# Unknown keys are rejected (strict schema) — `parsecraft config check` validates
+# a file before you rely on it. Relative cache_dir values resolve against the
+# file that declares them, never the CWD.
+
+# --- Assets & environment ------------------------------------------------
+# Hugging Face token for gated model downloads. Secrets are ${VAR} references,
+# never literals — a literal is refused, a missing variable raises an error.
+hf_token = "${HF_TOKEN}"
+
+# Asset download cache. Relative paths resolve against the declaring file.
+cache_dir = ".parsecraft-cache"
+
+# Never touch the network (convert only with already-installed engines/assets).
+offline = false
+
+# Stop offering model downloads when free disk space drops below this (bytes).
+min_free_bytes = 2_147_483_648
+
+# Per-request backend deadline in seconds (a `convert --timeout-s` flag wins).
+timeout_s = 90.0
+
+# --- Routing -------------------------------------------------------------
+# All ten keys are optional; an absent key keeps its default. See
+# docs/reference/cli.md ("Routing settings") for the full table.
+[routing]
+preference = "balanced"          # speed | balanced | quality
+allow_ocr = true                 # true/false = hard override; omit the key to derive
+engines = ["pandoc"]             # engine ids backends may require (see the docs tables)
+preferred_backend = "docling"    # soft nudge — falls back silently if ineligible
+only_backend = ""                # "" = unset; a name here restricts to exactly that backend
+language = ""                    # "" = unset; scripting-language hint, e.g. "de"
+max_passes = 1                   # retry passes per failing page (>= 1)
+vram_budget_gb = 0.0             # 0 = derive from the machine
+gpu_usable = false               # true = allow GPU-backed routing
+
+[routing.backend_options.docling]
+do_ocr = false                   # backend-owned keys, forwarded verbatim; part of the
+                                 # conversion-cache key. Unknown option keys surface as
+                                 # a typed BACKEND_ERROR at first conversion.
+
+[routing.backend_options."pdf-inspector"]
+mode = "fast"
+
+# --- Judge / classifier models -------------------------------------------
+# Default decision model ("<provider>/<model>", same grammar as --judge).
+[judge]
+model = "typesafe-ai/jev-1.13"
+
+# Text-kind classifier — engages only through this section (no CLI flag).
+[text_classifier]
+model = "typesafe-ai/jev-preview"
+
+# --- Provider endpoints --------------------------------------------------
+# base_url omitted = provider default. api_key must be a ${VAR} reference.
+# Aliases: [providers.typesafe] -> typesafe-ai, [providers.ollama-cloud] -> ollama.
+[providers.typesafe]
+# base_url = "https://api.typesafe.ai/v1"
+api_key = "${TYPESAFE_API_KEY}"
+
+[providers.zen]
+api_key = "${OPENCODE_API_KEY}"
+
+[providers.ollama]
+# base_url = "http://localhost:11434"   # local daemon; no key needed
+
+[providers.ollama-cloud]
+# api_key = "${OLLAMA_API_KEY}"
