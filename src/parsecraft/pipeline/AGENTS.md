@@ -13,7 +13,10 @@ a `DocumentResult` with `TraceEntry` records — no silent drops.
 
 - `analysis.py` — public analysis entry points (`MEDIA_TYPES`,
   `media_type_for`, `choose_analyzer`, `analyze_source`) plus the pure
-  `apply_classifier` fold.
+  `apply_classifier` fold. `MEDIA_TYPES` is the single extension→MIME table:
+  a suffix may enter it only together with a backend that claims its MIME
+  (invariant-tested), because an unclaimed suffix is refused before any
+  backend is asked — the discovery table is the only gate a source passes.
 - `executor.py` — `execute` and helpers `_group_pages`, `_mergeable`,
   `_execute_group`, `_exception_failure`, `_result_failure`, `_trace`.
 - `models.py` — `PassAttempt`, `PageGroup`, `PipelineResult`.

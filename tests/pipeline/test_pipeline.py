@@ -753,6 +753,11 @@ def test_matlab_sources_map_to_plain_text(tmp_path: Path) -> None:
     assert media_type_for(tmp_path / "olaVectors.m") == "text/plain"
 
 
+def test_legacy_word_sources_map_to_their_own_media_type(tmp_path: Path) -> None:
+    """`.doc` is the Word 97-2003 binary type, not a docx alias (pc-9p6.9)."""
+    assert media_type_for(tmp_path / "memo.doc") == "application/msword"
+
+
 def test_the_text_family_is_pinned_by_count() -> None:
     """The host-facing text family has a deliberate size — hosts build file filters.
 

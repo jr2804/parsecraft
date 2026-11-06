@@ -93,7 +93,9 @@ No base install converts an office document. Word (`.docx`) has three separate
 routes: `parsecraft[docling]` — headings, tables, and reading order,
 conversion-verified 2026-10-17 — `parsecraft[pymupdf]` (**AGPL**), or the
 `pandoc` binary above. The same split applies to `.pptx`; `.xlsx` needs no
-extra (`openpyxl` is core).
+extra (`openpyxl` is core). Legacy Word 97-2003 binary (`.doc`) has one route:
+`parsecraft[docling]` reads it natively in Rust, with no LibreOffice and no
+model download.
 
 ### Conditional-licence extras
 

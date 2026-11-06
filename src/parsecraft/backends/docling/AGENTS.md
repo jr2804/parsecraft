@@ -61,6 +61,12 @@ mapping is engine-independent.
   real library (PDF/HTML/DOCX: re-verified 2026-10-31 against docling.rs
   2.55.4 through this backend — PDF with models installed, page_range
   honored exactly).
+  Legacy Word 97-2003 binary (`.doc`, `application/msword`) joined them
+  2026-11-06 on the same evidence — two real OLE2 Word files (an English
+  Word 95 document and a Chinese-language one with a heading, a numbered list
+  and a table) read natively by docling.rs 2.65.1 with no LibreOffice and no
+  models, and through this backend's own CLI path they land as one page with
+  4 and 8 typed blocks (paragraph, list, table).
   Markdown and plain text were verified the same way but are withdrawn
   (2026-10-30): both reach docling's marko table matcher, which spins without
   timeout on pipe-heavy content, so they route to ``native-markdown`` /
@@ -69,7 +75,10 @@ mapping is engine-independent.
   ``BACKEND_ERROR`` naming the redirect target (defense-in-depth for direct
   registry use). The library's other registered inputs (pptx, xlsx, odt, ods,
   odp, rtf, xls, images) stay undeclared until a conversion proves them —
-  mirror LiteParse's contract.
+  mirror LiteParse's contract. The legacy binary trio's other two members
+  (`.ppt` / `.xls`) are registered upstream and stay undeclared for the same
+  reason: a legacy PowerPoint fixture converted to ZERO items and a legacy
+  spreadsheet fixture to one near-empty table.
 - `analyze()` is cheap and model-free: PDF page count and text length come
   from `pypdfium2` (a base dependency, ADR-0008), text formats are measured
   directly. It never loads layout models and never downloads.

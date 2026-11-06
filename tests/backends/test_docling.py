@@ -272,9 +272,12 @@ def test_descriptor_declares_only_verified_formats_and_stays_cpu_only() -> None:
     capabilities = descriptor.capabilities
     # Markdown/plain-text withdrawn 2026-10-30 (marko table-matcher CPU spin):
     # they route to native-markdown/native-text instead.
+    # DOC (legacy Word 97-2003 binary) added 2026-11-06, conversion-verified
+    # against the real engine — the same bar DOCX met.
     assert capabilities.supported_formats == [
         "application/pdf",
         "text/html",
+        "application/msword",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ]
     assert capabilities.optional_dependency_group == "docling"

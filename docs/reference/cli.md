@@ -119,7 +119,7 @@ the fetch starts — informational only, no prompt and no flag. Supported suffix
 `parsecraft.pipeline.MEDIA_TYPES` map: the text family (`.txt`, `.text`, `.md`,
 `.markdown`, `.html`, `.htm`, `.rst`, `.tex`, `.log`, `.ini`, `.cfg`, `.toml`,
 `.sh`, `.py`, `.c`, `.cc`, `.cpp`, `.h`, `.hpp`, `.m`), the delimited family (`.csv`, `.tsv`), the office family
-(`.docx`, `.pptx`, `.xlsx`, `.odt`, `.rtf`, `.epub`), plus `.pdf`, `.jpg`,
+(`.doc`, `.docx`, `.pptx`, `.xlsx`, `.odt`, `.rtf`, `.epub`), plus `.pdf`, `.jpg`,
 `.jpeg`, `.png`, `.tif`, and `.tiff`. `.json`, `.xml`, and extensionless
 paths stay out of `MEDIA_TYPES` on purpose — the CLI routes them through a
 text sniff instead of rejecting them: content identified as text becomes

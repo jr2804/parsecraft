@@ -7,7 +7,13 @@ through :func:`importlib.import_module` at instantiation.
 real engine, now docling.rs (PDF, HTML and DOCX re-verified 2026-10-31
 through the real ``docling_rs`` package: a 9-page Word-generated report reads
 10 433 chars and 11 headings through this backend's own CLI path, same as
-under the Python engine). Markdown and plain text were verified under the
+under the Python engine). Legacy Word 97-2003 binary (``.doc``) joined them
+2026-11-06 on the same evidence: two real OLE2 Word files - an English Word 95
+document and a Chinese-language one carrying a heading, a numbered list and a
+table - read natively by docling.rs 2.65.1 (4 and 8 items, 146 and 338 chars,
+no LibreOffice and no models), and through this backend's own CLI path they
+land as one page with 4 and 8 typed blocks (paragraph, list and table).
+Markdown and plain text were verified under the
 Python engine, but that claim is WITHDRAWN as of 2026-10-30: a 9 KiB
 pipe-heavy Markdown file spins the marko table matcher with no timeout (CPU
 spin over an hour, isolated repro via plain ``DocumentConverter``); the same
@@ -17,7 +23,10 @@ kept unchanged until it is retested against the Rust engine. The library also
 registers pptx/xlsx/odt/ods/odp/rtf/xls and
 image
 formats, but those stay deliberately undeclared until they are verified the same
-way - the same contract LiteParse follows.
+way - the same contract LiteParse follows. The legacy binary trio's other two
+members (``.ppt`` / ``.xls``) are registered upstream too and stay undeclared:
+a legacy PowerPoint fixture converted to ZERO items and a legacy spreadsheet
+fixture to one near-empty table, so neither earns a claim yet.
 
 DOCX arrived here because a consumer's Word sources had only two candidates, both
 broken for them: pandoc converts Word but drops every table (0 tables in that same
@@ -26,6 +35,11 @@ returned all 9 pages for a one-page request). docling.rs reads Word natively in 
 LibreOffice; verified by pointing the retired ``DOCLING_LIBREOFFICE_CMD``
 variable at garbage), and the
 consumer already installs ``parsecraft[docling]``.
+
+DOC arrived for the same reason one layer down: the engine could already read
+legacy Word, but the suffix map had no entry for it, so ``media_type_for()``
+refused the source before any backend was asked - the discovery table was the
+only blocker, and a vault carrying legacy Word had no route at all.
 """
 
 from __future__ import annotations
@@ -45,9 +59,11 @@ from parsecraft.backends.protocol import (
 DOCLING_BACKEND_VERSION = "0.2.0"
 
 _DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+_DOC = "application/msword"
 
 #: Conversion-verified MIME inputs (PDF/HTML/DOCX: docling.rs 2.55.4,
-#: 2026-10-31 through the real package - see the module docstring).
+#: 2026-10-31 through the real package - see the module docstring). DOC
+#: (legacy Word 97-2003 binary) was added 2026-11-06, also conversion-verified.
 #: Markdown and plain text
 #: are deliberately ABSENT (withdrawn 2026-10-30): both reach docling's marko
 #: table matcher, which spins without timeout on pipe-heavy content, so they
@@ -55,6 +71,7 @@ _DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document
 DOCLING_FORMATS: tuple[str, ...] = (
     "application/pdf",
     "text/html",
+    _DOC,
     _DOCX,
 )
 

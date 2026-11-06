@@ -42,6 +42,7 @@ MEDIA_TYPES: dict[str, str] = {
     ".cfg": "text/plain",
     ".cpp": "text/plain",
     ".csv": "text/csv",
+    ".doc": "application/msword",
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ".epub": "application/epub+zip",
     ".h": "text/plain",
