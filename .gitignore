@@ -75,6 +75,7 @@ skills-lock.json
 # Local tool directories
 .repowise/
 .grepai/
+.codegraph/
 .mcp.json
 opencode.json
 mcporter.json
