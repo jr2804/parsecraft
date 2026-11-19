@@ -501,7 +501,7 @@ def _install_marker_modules(
     models_mod = _stub_module("marker.models", create_model_dict=_create)
 
     def _text_from_rendered(rendered: object) -> tuple[str, str, object]:
-        return rendered.markdown, "md", rendered.images  # ty: ignore[unresolved-attribute]
+        return rendered.markdown, "md", rendered.images  # ty: ignore[missing-attribute]
 
     output_mod = _stub_module("marker.output", text_from_rendered=_text_from_rendered)
     renderers_md = _stub_module("marker.renderers.markdown", MarkdownOutput=_MarkdownOutput, page_separator=_PAGE_SEP)

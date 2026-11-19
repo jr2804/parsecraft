@@ -215,7 +215,7 @@ def test_lazy_module_loads_on_first_resolve(monkeypatch: pytest.MonkeyPatch) -> 
         assert spec.model == "m"
         return _StubClassifier(facts())
 
-    module.load_classifier = load_classifier  # ty: ignore[unresolved-attribute] — ModuleType is dynamically extended
+    module.load_classifier = load_classifier  # ty: ignore[missing-attribute] — ModuleType is dynamically extended
     monkeypatch.setitem(sys.modules, "parsecraft.providers.lazyc", module)
     assert isinstance(resolve_classifier("lazyc/m"), _StubClassifier)
 
@@ -226,7 +226,7 @@ def test_explicit_registration_beats_lazy_module_path(monkeypatch: pytest.Monkey
     def module_loader(spec: ClassifierSpec) -> PageOcrClassifier:
         raise AssertionError("lazy module must not load when a loader is registered")
 
-    module.load_classifier = module_loader  # ty: ignore[unresolved-attribute] — ModuleType is dynamically extended
+    module.load_classifier = module_loader  # ty: ignore[missing-attribute] — ModuleType is dynamically extended
     monkeypatch.setitem(sys.modules, "parsecraft.providers.prefc", module)
     register_classifier_provider("prefc", lambda spec: _StubClassifier(facts()))
     assert isinstance(resolve_classifier("prefc/m"), _StubClassifier)

@@ -395,7 +395,7 @@ def pdf_inspector_stub(monkeypatch: pytest.MonkeyPatch) -> Iterator[_Stub]:
 def _install_stub(stub: _Stub, monkeypatch: pytest.MonkeyPatch) -> types.ModuleType:
     """Register the fake package the heavy impl imports from."""
     module = types.ModuleType("pdf_inspector")
-    module.PageMarkdown = _PageMarkdown  # ty: ignore[unresolved-attribute]
+    module.PageMarkdown = _PageMarkdown  # ty: ignore[missing-attribute]
 
     def extract_pages_markdown_bytes(_data: bytes, pages: list[int] | None = None) -> _PagesExtractionResult:  # noqa: ANN202 - stub mirrors the upstream signature
         stub.extract_pages_args.append(pages)
@@ -406,7 +406,7 @@ def _install_stub(stub: _Stub, monkeypatch: pytest.MonkeyPatch) -> types.ModuleT
         selected = list(stub.pages) if pages is None else [page for page in stub.pages if page.page in pages]
         return _PagesExtractionResult(selected)
 
-    module.extract_pages_markdown_bytes = extract_pages_markdown_bytes  # ty: ignore[unresolved-attribute]
+    module.extract_pages_markdown_bytes = extract_pages_markdown_bytes  # ty: ignore[missing-attribute]
     monkeypatch.setitem(sys.modules, "pdf_inspector", module)
     return module
 

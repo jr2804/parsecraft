@@ -201,8 +201,8 @@ def make_fake_pypandoc(
             raise convert_error
         return markdown
 
-    stub.get_pandoc_version = get_pandoc_version  # ty: ignore[unresolved-attribute] — fake module
-    stub.convert_text = convert_text  # ty: ignore[unresolved-attribute] — fake module
+    stub.get_pandoc_version = get_pandoc_version  # ty: ignore[missing-attribute] — fake module
+    stub.convert_text = convert_text  # ty: ignore[missing-attribute] — fake module
     return stub
 
 

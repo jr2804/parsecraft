@@ -403,7 +403,7 @@ def _make_fake_trafilatura(records: dict[str, Any]) -> ModuleType:
         return records["text"]
 
     stub = ModuleType("trafilatura")
-    stub.extract = extract  # ty: ignore[unresolved-attribute] — fake module
+    stub.extract = extract  # ty: ignore[missing-attribute] — fake module
     return stub
 
 

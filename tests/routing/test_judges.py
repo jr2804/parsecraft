@@ -193,7 +193,7 @@ def test_explicit_registration_beats_lazy_module_path(monkeypatch: pytest.Monkey
     def module_loader(spec: JudgeSpec, machine: MachineProfile | None = None, preference: RoutingPreference = RoutingPreference.BALANCED) -> RoutingJudge:
         raise AssertionError("lazy module must not load when a loader is registered")
 
-    module.load_judge = module_loader  # ty: ignore[unresolved-attribute] — ModuleType is dynamically extended
+    module.load_judge = module_loader  # ty: ignore[missing-attribute] — ModuleType is dynamically extended
     monkeypatch.setitem(sys.modules, "parsecraft.providers.preferred", module)
     register_judge_provider("preferred", lambda spec, machine=None, preference=None: DeterministicJudge())
     assert isinstance(resolve_judge("preferred/m"), DeterministicJudge)
@@ -219,7 +219,7 @@ def test_lazy_module_loads_on_first_resolve(monkeypatch: pytest.MonkeyPatch) -> 
         assert machine is None
         return DeterministicJudge()
 
-    module.load_judge = load_judge  # ty: ignore[unresolved-attribute] — ModuleType is dynamically extended
+    module.load_judge = load_judge  # ty: ignore[missing-attribute] — ModuleType is dynamically extended
     monkeypatch.setitem(sys.modules, "parsecraft.providers.lazyp", module)
     assert isinstance(resolve_judge("lazyp/m"), DeterministicJudge)
 

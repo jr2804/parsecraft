@@ -9,7 +9,7 @@ the HF revision API 2026-10-30; OpenRAIL-M weights, first consumer of
 
 from __future__ import annotations
 
-from transformers import AutoProcessor, pipeline  # ty: ignore[unresolved-import] — extra not installed in dev/CI; heavy by contract
+from transformers import AutoProcessor, pipeline  # ty: ignore[import-not-found] — extra not installed in dev/CI; heavy by contract
 
 from parsecraft.backends.ocr._common import (
     Transcriber,

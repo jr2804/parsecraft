@@ -437,9 +437,9 @@ def _page(*texts: str) -> PageText:
 
 def _import_pymupdf_inspect(monkeypatch: pytest.MonkeyPatch, reader: _FakePdfReader) -> Any:
     fake = ModuleType("pypdf")
-    fake.PasswordType = _FakePasswordType  # ty: ignore[unresolved-attribute] — fake module
-    fake.PdfReader = lambda stream: reader  # ty: ignore[unresolved-attribute] — fake module
-    fake.PageObject = object  # ty: ignore[unresolved-attribute] — fake module; annotation-only import
+    fake.PasswordType = _FakePasswordType  # ty: ignore[missing-attribute] — fake module
+    fake.PdfReader = lambda stream: reader  # ty: ignore[missing-attribute] — fake module
+    fake.PageObject = object  # ty: ignore[missing-attribute] — fake module; annotation-only import
     monkeypatch.setitem(sys.modules, "pypdf", fake)
     monkeypatch.delitem(sys.modules, "parsecraft.backends.pymupdf._analyze", raising=False)
     return importlib.import_module("parsecraft.backends.pymupdf._analyze")

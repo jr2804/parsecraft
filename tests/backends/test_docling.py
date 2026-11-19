@@ -952,32 +952,32 @@ def _install_stub_modules(state: _State, monkeypatch: pytest.MonkeyPatch) -> Non
             raise state.pdf_open_error
         return _PdfDocument(state)
 
-    pypdfium2.PdfDocument = _make_pdf_document  # ty: ignore[unresolved-attribute]
+    pypdfium2.PdfDocument = _make_pdf_document  # ty: ignore[missing-attribute]
 
     docling_rs = module("docling_rs")
-    docling_rs.ConversionResult = _ConversionResult  # ty: ignore[unresolved-attribute]
+    docling_rs.ConversionResult = _ConversionResult  # ty: ignore[missing-attribute]
 
     def _make_converter(**options: str | int | float | bool) -> _Converter:
         converter = _Converter(state, options)
         state.converters.append(converter)
         return converter
 
-    docling_rs.DocumentConverter = _make_converter  # ty: ignore[unresolved-attribute]
-    docling_rs.DocumentStream = _DocumentStream  # ty: ignore[unresolved-attribute]
+    docling_rs.DocumentConverter = _make_converter  # ty: ignore[missing-attribute]
+    docling_rs.DocumentStream = _DocumentStream  # ty: ignore[missing-attribute]
 
     docling_core = module("docling_core")
     types_mod = module("docling_core.types")
     doc_mod = module("docling_core.types.doc")
     doc_document = module("docling_core.types.doc.document")
     doc_io = module("docling_core.types.io")
-    docling_core.types = types_mod  # ty: ignore[unresolved-attribute]
-    types_mod.doc = doc_mod  # ty: ignore[unresolved-attribute]
-    doc_mod.document = doc_document  # ty: ignore[unresolved-attribute]
-    doc_document.DoclingDocument = _Document  # ty: ignore[unresolved-attribute]
-    doc_document.TextItem = _TextItem  # ty: ignore[unresolved-attribute]
-    doc_document.TableItem = _TableItem  # ty: ignore[unresolved-attribute]
-    doc_document.PictureItem = _PictureItem  # ty: ignore[unresolved-attribute]
-    doc_io.DocumentStream = _DocumentStream  # ty: ignore[unresolved-attribute]
+    docling_core.types = types_mod  # ty: ignore[missing-attribute]
+    types_mod.doc = doc_mod  # ty: ignore[missing-attribute]
+    doc_mod.document = doc_document  # ty: ignore[missing-attribute]
+    doc_document.DoclingDocument = _Document  # ty: ignore[missing-attribute]
+    doc_document.TextItem = _TextItem  # ty: ignore[missing-attribute]
+    doc_document.TableItem = _TableItem  # ty: ignore[missing-attribute]
+    doc_document.PictureItem = _PictureItem  # ty: ignore[missing-attribute]
+    doc_io.DocumentStream = _DocumentStream  # ty: ignore[missing-attribute]
 
 
 def _impl() -> types.ModuleType:

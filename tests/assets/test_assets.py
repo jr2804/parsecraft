@@ -644,7 +644,7 @@ def import_huggingface(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
     ``default_downloader``'s ``importlib`` boundary is untouched.
     """
     fake_hub = ModuleType("huggingface_hub")
-    fake_hub.hf_hub_download = _hub_sentinel  # ty: ignore[unresolved-attribute] — fake module
+    fake_hub.hf_hub_download = _hub_sentinel  # ty: ignore[missing-attribute] — fake module
     monkeypatch.setitem(sys.modules, "huggingface_hub", fake_hub)
     # Drop any cached adapter so it (re)binds against the stub; monkeypatch
     # restores the absence at teardown.
