@@ -28,13 +28,15 @@ from parsecraft.config import (
     ConfigShowEntry,
     ConfigValidationError,
 )
+from parsecraft.paths import config_root, global_config_file
 from parsecraft.routing.models import RoutingConstraints, RoutingPreference
 
 APP_NAME = "parsecraft"
-#: Home-relative global config directory (pc-66v): ``~/.config/parsecraft/``
-#: on every platform. This deliberately overrides the engine's platformdirs
-#: rule ("never a hard-coded XDG path") for this app's global layer.
-GLOBAL_CONFIG_DIRNAME = ".config"
+#: Global config directory (pc-66v, pc-3f5): ``~/.config/parsecraft/`` on
+#: every platform — see ``parsecraft.paths`` for the directory policy. The
+#: directory is handed to the engine explicitly (``global_config_dir``), so
+#: the engine keeps its platformdirs default for other vendors while this
+#: app's global layer stays home-relative.
 GLOBAL_CONFIG_FILENAME = "config.toml"
 PROJECT_CONFIG_FILENAME = "parsecraft.toml"
 ENV_PREFIX = f"{APP_NAME_UPPERCASE}_CONFIG_"
@@ -270,6 +272,7 @@ def build_engine(config_files: Sequence[Path] | None = None) -> ConfigEngine[Par
         app_name=APP_NAME,
         path_keys=PATH_KEYS,
         secret_keys=SECRET_KEYS,
+        global_config_dir=config_root(),
     )
     global_path = global_config_path()
     if global_path.is_file():
@@ -315,8 +318,8 @@ def _unknown_name_error(key: str, value: str, accepted: list[str]) -> str:
 
 
 def global_config_path() -> Path:
-    """Platform-independent global config path (pc-66v exception, see above)."""
-    return Path.home() / GLOBAL_CONFIG_DIRNAME / APP_NAME / GLOBAL_CONFIG_FILENAME
+    """Platform-independent global config path (pc-66v, pc-3f5; see above)."""
+    return global_config_file()
 
 
 def resolved_entries(engine: ConfigEngine[ParsecraftConfig]) -> list[ConfigShowEntry]:

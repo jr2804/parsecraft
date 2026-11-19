@@ -45,6 +45,7 @@ import pypdfium2 as pdfium  # base dependency (ADR-0008 d10), not an extra
 from docling_core.types.doc.document import DoclingDocument, PictureItem, TableItem, TextItem  # ty: ignore[unresolved-import]
 from docling_rs import ConversionResult, DocumentConverter, DocumentStream  # ty: ignore[unresolved-import]
 
+from parsecraft import paths
 from parsecraft.backends.docling.docling import DESCRIPTOR, DOCLING_BACKEND_VERSION
 from parsecraft.backends.errors import BackendError
 from parsecraft.backends.options import coerce_option_value
@@ -379,7 +380,7 @@ def _convert_and_watch(
     blob = b""
     with _CAPTURE_LOCK:
         backup = os.dup(2)
-        with tempfile.TemporaryFile() as sink:
+        with tempfile.TemporaryFile(dir=paths.temp_dir()) as sink:
             os.dup2(sink.fileno(), 2)
             try:
                 result = _convert(data, request, options)

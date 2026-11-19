@@ -33,7 +33,13 @@ duplicated; integrity data (per-file SHA-256) lives in `AssetPin`.
   `ChecksumMismatchError` — never a silent pass.
 - `requires_user_acceptance` is a hard gate: `ensure` raises
   `LicenseNotAcceptedError` until `accept_license` records acceptance
-  (timestamped, stored in the cache dir as JSON).
+  (timestamped, stored as JSON in the **config root**
+  (`~/.config/parsecraft/license-acceptances.json`) - an acceptance is durable
+  state, not a cache entry; `AssetManager(config_dir=...)` overrides it). A
+  store left in the cache dir by an older version is still read, and so is one
+  in the pre-2026.11 platform location (`paths.legacy_models_cache_dir()`),
+  which is a different directory on Windows and macOS - an existing acceptance
+  survives the move on every platform.
 - Offline mode raises `OfflineModeError` for missing files; it never downloads.
 - A first-use fetch announces itself: one `downloading <model> (<size>) into
   <dir>` INFO record on the `parsecraft.assets.manager` logger (channel installed on the parent `parsecraft.assets`), emitted BEFORE the

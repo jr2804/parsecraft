@@ -16,7 +16,6 @@ from importlib.metadata import version as _dist_version
 from pathlib import Path
 
 import pydantic
-from platformdirs import user_cache_path
 
 from parsecraft.assets.downloader import Downloader, default_downloader
 from parsecraft.assets.errors import (
@@ -37,6 +36,7 @@ from parsecraft.assets.models import (
     human_bytes,
 )
 from parsecraft.backends.protocol import ModelAssetDescriptor
+from parsecraft.paths import config_root, legacy_models_cache_dir, models_cache_dir
 
 _LICENSE_STORE_FILENAME = "license-acceptances.json"
 #: Dot-prefixed so it cannot collide with a file a model repository ships.
@@ -57,6 +57,11 @@ class AssetManager:
     Parameters are explicit constructor arguments; nothing is read from the
     environment at import time and no network call happens outside
     :meth:`ensure`.
+
+    ``cache_dir`` holds the disposable model files (default
+    ``~/.cache/parsecraft/models``); ``config_dir`` holds the durable licence
+    acceptances (default ``~/.config/parsecraft``) — the two are separate
+    because clearing the cache must not forget an acceptance.
     """
 
     def __init__(
@@ -65,12 +70,13 @@ class AssetManager:
         downloader: Downloader | None = None,
         offline: bool = False,
         min_free_bytes: int = 0,
+        config_dir: Path | None = None,
     ) -> None:
         self.cache_dir = cache_dir if cache_dir is not None else default_cache_dir()
         self.downloader: Downloader = downloader if downloader is not None else default_downloader()
         self.offline = offline
         self.min_free_bytes = min_free_bytes
-        self._license_store_path = self.cache_dir / _LICENSE_STORE_FILENAME
+        self._license_store_path = (config_dir if config_dir is not None else config_root()) / _LICENSE_STORE_FILENAME
 
     # ── cache ──────────────────────────────────────────────────────────────
 
@@ -156,7 +162,7 @@ class AssetManager:
         )
         store = self._load_license_store()
         store[f"{descriptor.model_id}@{descriptor.model_revision}"] = acceptance.model_dump(mode="json")
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self._license_store_path.parent.mkdir(parents=True, exist_ok=True)
         self._license_store_path.write_text(json.dumps(store, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         return acceptance
 
@@ -243,10 +249,29 @@ class AssetManager:
         return path
 
     def _load_license_store(self) -> dict[str, dict[str, str | int]]:
-        if not self._license_store_path.is_file():
-            return {}
-        raw = json.loads(self._license_store_path.read_text(encoding="utf-8"))
+        path = self._license_store_path
+        if not path.is_file():
+            # Legacy store: the acceptances used to live in the model cache —
+            # in the current cache dir (a pinned PARSECRAFT_CACHE_DIR, or Linux
+            # where the path did not move) or in the pre-2026.11 platform
+            # location, which is a different directory on Windows and macOS.
+            legacy = next(
+                (candidate for candidate in self._legacy_store_paths() if candidate.is_file()),
+                None,
+            )
+            if legacy is None:
+                return {}
+            path = legacy
+        raw = json.loads(path.read_text(encoding="utf-8"))
         return dict(raw.items())
+
+    def _legacy_store_paths(self) -> list[Path]:
+        """Where a licence store written by an older version may still sit."""
+        candidates = [self.cache_dir / _LICENSE_STORE_FILENAME]
+        legacy_dir = legacy_models_cache_dir()
+        if legacy_dir is not None:
+            candidates.append(legacy_dir / _LICENSE_STORE_FILENAME)
+        return candidates
 
     def _check_disk_space(self, pin: AssetPin) -> None:
         required = pin.descriptor.size_bytes
@@ -345,8 +370,8 @@ def _dist_version_or(default: str) -> str:
 
 
 def default_cache_dir() -> Path:
-    """The managed model cache root (``<user cache>/parsecraft/models``)."""
-    return user_cache_path("parsecraft") / "models"
+    """The managed model cache root (``~/.cache/parsecraft/models``)."""
+    return models_cache_dir()
 
 
 def model_revision_dir(cache_dir: Path, model_id: str, revision: str) -> Path:

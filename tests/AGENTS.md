@@ -28,9 +28,12 @@ basenames may repeat across groups (`cli/test_config.py` vs
 ## Ownership
 
 - `conftest.py` — the global machinery: the autouse offline tripwire
-  (pc-mp2), the `pytest_addoption`/`pytest_configure`/
-  `pytest_collection_modifyitems` tier gates, and the cross-group fixtures
-  (`doc_factory`, `cache_subdir`, `subdir`, `downloads_dir`).
+  (pc-mp2), the autouse **home sandbox** (a session-scoped stand-in for
+  `Path.home()`, so no test creates a directory under, or reads a file from,
+  the developer's real home — pc-3f5), the `pytest_addoption`/
+  `pytest_configure`/`pytest_collection_modifyitems` tier gates, and the
+  cross-group fixtures (`doc_factory`, `cache_subdir`, `subdir`,
+  `downloads_dir`).
 - `<group>/conftest.py` — exists **only** where a group owns fixtures no other
   group may see; today that is `providers/conftest.py` (`jev_sdk`) and
   `config/conftest.py` (`data_dir`, still pointing at `tests/data`). Do not
@@ -101,6 +104,10 @@ basenames may repeat across groups (`cli/test_config.py` vs
   and unguarded `ruff format`; a rule by mechanism, not by task name, because the
   inversion that motivated it (`mise lint` in the quality job, 2026-11-01) came
   from the split landing in `.config/mise/` and not in `ci.yml`.
+- `test_paths.py` — the storage-location policy: home-relative cache and
+  config roots, the scratch directory under the cache root, and the guard
+  that no package picks a directory of its own (only the generic config
+  engine may reach for platformdirs).
 - `typing_consumer.py` — type-level consumer contract (checked by `ty`).
 - `test-cache/` — pytest-owned cache dir; scaffolded synthetic documents
   only; self-ignored, never committed. Never written to directly — access it
@@ -146,6 +153,10 @@ basenames may repeat across groups (`cli/test_config.py` vs
     deliberately after review. Live endpoints are marked `mutable = true`:
     cached by filename and validated structurally (never by hash), so upstream
     edits do not fail the tier.
+- **Never touch the developer's real home.** `Path.home()` is redirected to
+  the session sandbox (`conftest.py`), and every test that resolves a
+  cache/config root passes an explicit directory; a test that needs the
+  default behaviour asserts the default instead of writing through it.
 - `mise test` always stays offline and fast — only the default tier runs.
 - Never weaken `fail_under = 100` (`pyproject.toml`) or the gates in
   `test_offline_import.py` — the offline package-import check **and** the

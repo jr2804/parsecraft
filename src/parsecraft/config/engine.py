@@ -76,13 +76,16 @@ class ConfigEngine[SchemaT: ConfigSchema]:
         deprecated_aliases: Mapping[str, str] | None = None,
         secret_keys: Iterable[str] = (),
         environ: Mapping[str, str] | None = None,
+        global_config_dir: Path | None = None,
     ) -> None:
         """Create an engine for ``schema`` under ``app_name``.
 
         ``path_keys`` are dotted keys resolved relative to their declaring file;
         ``env_aliases`` maps dotted keys to explicit environment variable names;
         ``deprecated_aliases`` maps legacy keys to their replacements;
-        ``secret_keys`` are redacted by :meth:`show`.
+        ``secret_keys`` are redacted by :meth:`show`; ``global_config_dir``
+        overrides the platform-appropriate global config directory (the app
+        layer passes its own home-relative directory).
         """
         self._schema = schema
         self._app_name = app_name
@@ -91,6 +94,7 @@ class ConfigEngine[SchemaT: ConfigSchema]:
         self._deprecated_aliases = dict(deprecated_aliases or {})
         self._secret_keys = frozenset(secret_keys)
         self._environ = environ
+        self._global_config_dir = global_config_dir
         self._values: dict[ConfigLayer, dict[str, object]] = {ConfigLayer.DEFAULT: _plain_mapping(_schema_defaults(schema))}
         self._origins: dict[ConfigLayer, str] = {ConfigLayer.DEFAULT: _DEFAULT_ORIGIN}
         #: Per-leaf provenance overrides for file layers built from several
@@ -213,8 +217,15 @@ class ConfigEngine[SchemaT: ConfigSchema]:
         return sorted(entries, key=lambda entry: entry.key)
 
     def global_config_path(self) -> Path:
-        """Platform-appropriate global config path (never a hard-coded XDG path)."""
-        return Path(platformdirs.user_config_dir(self._app_name)) / _GLOBAL_CONFIG_FILENAME
+        """Global config path: the caller's directory, else the platform one.
+
+        The default is platform-appropriate (never a hard-coded XDG path); an
+        engine built with ``global_config_dir`` resolves there instead.
+        """
+        base = self._global_config_dir
+        if base is None:
+            base = Path(platformdirs.user_config_dir(self._app_name))
+        return base / _GLOBAL_CONFIG_FILENAME
 
     def migrate(self, path: str | Path) -> bool:
         """Rewrite deprecated keys in a TOML file, preserving its style."""

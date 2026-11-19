@@ -310,3 +310,32 @@ Consequences, recorded rather than implied:
   return unchanged.
 - Rule 10 stays as written but is verified on the tiers that have wheels;
   `pc-45p` records the per-extra availability and the scope wording.
+
+## Amendment (2026-11-19): the storage roots are home-relative, not platform-relative
+
+Decision 5's "platform-appropriate global config dir via **platformdirs**" stays
+true for the **generic engine**: `ConfigEngine` keeps `platformdirs` as its
+default so it stays vendorable and platform-appropriate. What changes is the
+**application**. ParseCraft no longer uses the OS application-data directory
+(`%LOCALAPPDATA%\parsecraft` on Windows, `~/Library/Application Support` on
+macOS): it buries the user's files several levels deep in the profile, where
+they are hard to find and easy to delete by accident.
+
+- `src/parsecraft/paths.py` is the one owner of every runtime directory:
+  `~/.cache/parsecraft` holds what is disposable (model downloads, the
+  conversion cache, runtime scratch space), `~/.config/parsecraft` holds what
+  is durable (the global config file, the recorded licence acceptances). The
+  split is the same on every platform — a Windows user and a Linux user find
+  the same two directories under their home folder.
+- `ConfigEngine` gained an explicit `global_config_dir` argument; the CLI
+  passes the application's config root, so the application's policy wins over
+  the engine's default while the engine keeps its own for other vendors.
+- No module picks a location of its own any more; `tests/test_paths.py` pins
+  that. Two named exceptions remain: the config engine, which keeps its
+  vendorable default, and one migration probe in `paths.py` that names the
+  pre-2026.11 platform location so a licence-acceptance store written there is
+  still read (on Windows and macOS that location is a different directory, so
+  the move would otherwise cost the user their acceptances).
+- Third-party caches keep their own homes (the docling.rs model cache in
+  `~/.cache/docling.rs`, Hugging Face in `~/.cache/huggingface`): parsecraft
+  does not relocate another project's files.

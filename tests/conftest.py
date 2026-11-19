@@ -43,6 +43,31 @@ class _HasKeywords(Protocol):
 
 
 @pytest.fixture(autouse=True)
+def _home_sandbox(monkeypatch: pytest.MonkeyPatch, _sandbox_home: Path) -> None:
+    """Point ``Path.home()`` at the sandbox so no test touches a real home.
+
+    The environment variables that the platform libraries read are redirected
+    too (``platformdirs`` and the Hugging Face hub resolve the home from the
+    environment), so a test can neither read nor write the developer's real
+    home by another route.
+    """
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: _sandbox_home))
+    for name in ("HOME", "USERPROFILE", "LOCALAPPDATA", "APPDATA", "XDG_CACHE_HOME", "XDG_CONFIG_HOME"):
+        monkeypatch.setenv(name, str(_sandbox_home))
+
+
+@pytest.fixture(scope="session")
+def _sandbox_home(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A session-wide stand-in for the user's home directory.
+
+    The product resolves its cache and config roots from ``Path.home()``
+    (``parsecraft.paths``); without a sandbox the suite would create real
+    directories under the developer's home and read a real global config.
+    """
+    return tmp_path_factory.mktemp("home")
+
+
+@pytest.fixture(autouse=True)
 def _offline_tripwire(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """The default suite must PROVE offline, not merely avoid network by luck (pc-mp2).
 

@@ -88,10 +88,10 @@ def test_sha256_of_matches_known_digest(tmp_path: Path) -> None:
 # ── construction and cache basics ──────────────────────────────────────────
 
 
-def test_default_cache_dir_uses_platformdirs_without_creating_it() -> None:
+def test_default_cache_dir_is_the_home_relative_models_dir_without_creating_it() -> None:
     manager = AssetManager(downloader=FakeDownloader())
-    assert manager.cache_location().endswith("models")
-    assert Path(manager.cache_location()).name == "models"
+    assert manager.cache_location() == str(Path.home() / ".cache" / "parsecraft" / "models")
+    assert not Path(manager.cache_location()).exists()
 
 
 def test_package_version_prefers_metadata_with_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -168,12 +168,13 @@ def test_clear_cache_counts_revisions_and_ignores_missing(tmp_path: Path) -> Non
 # ── license acceptance records ─────────────────────────────────────────────
 
 
-def test_license_acceptance_none_when_unrecorded(tmp_path: Path) -> None:
+def test_license_acceptance_none_when_unrecorded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("parsecraft.assets.manager.config_root", lambda: tmp_path / "config")
     assert AssetManager(cache_dir=tmp_path, downloader=FakeDownloader()).license_acceptance("acme/model", "abc123") is None
 
 
 def test_accept_license_persists_and_round_trips(tmp_path: Path) -> None:
-    manager = AssetManager(cache_dir=tmp_path, downloader=FakeDownloader())
+    manager = AssetManager(cache_dir=tmp_path, config_dir=tmp_path / "config", downloader=FakeDownloader())
     descriptor = make_descriptor()
     acceptance = manager.accept_license(descriptor)
     assert acceptance.accepted_at.tzinfo is not None
@@ -181,16 +182,76 @@ def test_accept_license_persists_and_round_trips(tmp_path: Path) -> None:
     assert stored is not None
     assert stored.model_license == "apache-2.0"
     assert stored.record_version == 1
-    raw = json.loads((tmp_path / "license-acceptances.json").read_text(encoding="utf-8"))
+    raw = json.loads((tmp_path / "config" / "license-acceptances.json").read_text(encoding="utf-8"))
     assert set(raw) == {"acme/model@abc123"}
+    # The record is durable state, not a cache entry: it stays out of the
+    # model cache, so clearing the cache cannot forget an acceptance.
+    assert not (tmp_path / "license-acceptances.json").exists()
 
 
 def test_accept_license_appends_to_existing_store(tmp_path: Path) -> None:
-    manager = AssetManager(cache_dir=tmp_path, downloader=FakeDownloader())
+    manager = AssetManager(cache_dir=tmp_path, config_dir=tmp_path / "config", downloader=FakeDownloader())
     manager.accept_license(make_descriptor(model_revision="r1"))
     manager.accept_license(make_descriptor(model_revision="r2"))
     assert manager.license_acceptance("acme/model", "r2") is not None
     assert manager.license_acceptance("acme/model", "r1") is not None
+
+
+def test_license_store_defaults_to_the_config_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Without an explicit directory the record lands in the config root, not the cache."""
+    monkeypatch.setattr("parsecraft.assets.manager.config_root", lambda: tmp_path / "config")
+    manager = AssetManager(cache_dir=tmp_path / "cache", downloader=FakeDownloader())
+    manager.accept_license(make_descriptor())
+    assert (tmp_path / "config" / "license-acceptances.json").is_file()
+    assert not (tmp_path / "cache" / "license-acceptances.json").exists()
+
+
+def test_license_acceptance_reads_the_legacy_cache_store(tmp_path: Path) -> None:
+    """A store written by an older version (in the model cache) still counts."""
+    legacy = tmp_path / "license-acceptances.json"
+    legacy.write_text(
+        json.dumps(
+            {
+                "acme/model@abc123": {
+                    "accepted_at": "2026-01-01T00:00:00Z",
+                    "model_id": "acme/model",
+                    "model_license": "apache-2.0",
+                    "model_revision": "abc123",
+                    "record_version": 1,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    manager = AssetManager(cache_dir=tmp_path, config_dir=tmp_path / "config", downloader=FakeDownloader())
+    stored = manager.license_acceptance("acme/model", "abc123")
+    assert stored is not None
+    assert stored.model_license == "apache-2.0"
+
+
+def test_license_acceptance_reads_the_pre_2026_11_platform_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A store in the old platform location (Windows, macOS) still counts."""
+    legacy_dir = tmp_path / "platform" / "models"
+    legacy_dir.mkdir(parents=True)
+    (legacy_dir / "license-acceptances.json").write_text(
+        json.dumps(
+            {
+                "acme/model@abc123": {
+                    "accepted_at": "2026-01-01T00:00:00Z",
+                    "model_id": "acme/model",
+                    "model_license": "apache-2.0",
+                    "model_revision": "abc123",
+                    "record_version": 1,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("parsecraft.assets.manager.legacy_models_cache_dir", lambda: legacy_dir)
+    manager = AssetManager(cache_dir=tmp_path / "cache", config_dir=tmp_path / "config", downloader=FakeDownloader())
+    stored = manager.license_acceptance("acme/model", "abc123")
+    assert stored is not None
+    assert stored.model_license == "apache-2.0"
 
 
 # ── local model directories ────────────────────────────────────────────────
@@ -242,7 +303,8 @@ def test_ensure_offline_with_cached_files_skips_download(tmp_path: Path) -> None
     assert downloader.calls == []
 
 
-def test_ensure_requires_license_acceptance(tmp_path: Path) -> None:
+def test_ensure_requires_license_acceptance(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("parsecraft.assets.manager.config_root", lambda: tmp_path / "config")
     manager = AssetManager(cache_dir=tmp_path, downloader=FakeDownloader())
     with pytest.raises(LicenseNotAcceptedError, match="requires explicit acceptance"):
         manager.ensure(make_pin(descriptor=make_descriptor(requires_user_acceptance=True)))
@@ -250,7 +312,7 @@ def test_ensure_requires_license_acceptance(tmp_path: Path) -> None:
 
 def test_ensure_with_recorded_acceptance_downloads(tmp_path: Path) -> None:
     downloader = FakeDownloader()
-    manager = AssetManager(cache_dir=tmp_path, downloader=downloader)
+    manager = AssetManager(cache_dir=tmp_path, config_dir=tmp_path / "config", downloader=downloader)
     descriptor = make_descriptor(requires_user_acceptance=True)
     manager.accept_license(descriptor)
     paths = manager.ensure(make_pin(descriptor=descriptor))

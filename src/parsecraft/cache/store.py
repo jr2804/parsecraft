@@ -14,10 +14,10 @@ import os
 import re
 from pathlib import Path
 
-from platformdirs import user_cache_path
 from pydantic import BaseModel, Field, ValidationError
 
 from parsecraft.ir.models import DocumentResult
+from parsecraft.paths import conversions_cache_dir
 
 #: Envelope schema version — a format change yields a miss, never a mis-read.
 CACHE_SCHEMA_VERSION = 2  # v2: DocumentResult.quality carries routing degradation
@@ -150,8 +150,8 @@ class ConversionCache:
 
 
 def default_cache_root() -> Path:
-    """Conversion-cache root: ``$PARSECRAFT_CACHE_DIR`` or the user cache dir."""
+    """Conversion-cache root: ``$PARSECRAFT_CACHE_DIR`` or ``~/.cache/parsecraft/conversions``."""
     override = os.environ.get(_CACHE_DIR_ENV, "").strip()
     if override:
         return Path(override)
-    return user_cache_path("parsecraft") / "conversions"
+    return conversions_cache_dir()

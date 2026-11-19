@@ -46,6 +46,7 @@ from glob import glob
 from pathlib import Path
 from subprocess import DEVNULL, TimeoutExpired, run
 
+from parsecraft import paths
 from parsecraft.backends.errors import BackendError, DependencyUnavailableError
 from parsecraft.backends.ocr import _common
 from parsecraft.backends.ocr._models import (
@@ -245,7 +246,7 @@ def transcribe_page(page_number: int, request: ConversionRequest, tessdata_dir: 
     """
     image = _common.rasterize_page(request.source, page_number)
     command = resolve_tesseract_cmd()
-    with tempfile.TemporaryDirectory(prefix="parsecraft-tesseract-") as work:
+    with tempfile.TemporaryDirectory(prefix="parsecraft-tesseract-", dir=paths.temp_dir()) as work:
         page_file = Path(work) / "page.png"
         page_file.write_bytes(image)
         argv = [

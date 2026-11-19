@@ -38,7 +38,11 @@ document, format, model, or pipeline concepts.
   the environment; a missing variable raises `ConfigSecretError`.
 - **Writes go through tomlkit** (`migrate`), preserving file style.
 - **Global directory comes from platformdirs** (`global_config_path`), never a
-  hard-coded XDG or `~/.cache` path.
+  hard-coded XDG or `~/.cache` path. The engine stays vendorable and
+  platform-appropriate; an explicit `global_config_dir` argument overrides the
+  default, and ParseCraft passes its own home-relative config root
+  (`~/.config/parsecraft`) so the application does not use the OS
+  application-data directory (pc-3f5).
 - **Snapshots are deterministic:** `snapshot()` sorts keys recursively.
 
 ## Work Guidance

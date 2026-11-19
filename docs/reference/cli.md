@@ -24,6 +24,30 @@ with status `2`. Shell completion is enabled (`add_completion=True`).
 `0.0.0` when the distribution is not installed (for example, a source checkout
 run without an install).
 
+## Files on disk
+
+ParseCraft keeps its files in two directories under your home folder, on every
+platform — Windows included. The OS application-data directory
+(`%LOCALAPPDATA%`) is deliberately not used: it buries the files several
+levels deep in the user profile.
+
+| What | Where | Disposable? |
+| ---- | ----- | ----------- |
+| Model downloads (the managed asset cache) | `~/.cache/parsecraft/models` | Yes — deleting it costs a re-download |
+| Conversion cache | `~/.cache/parsecraft/conversions` | Yes — deleting it costs a re-conversion |
+| Runtime scratch space (rasterized pages, OCR work dirs) | `~/.cache/parsecraft/tmp` | Yes — emptied per run |
+| Global configuration | `~/.config/parsecraft/config.toml` | No — durable state |
+| Recorded licence acceptances | `~/.config/parsecraft/license-acceptances.json` | No — durable state |
+
+`parsecraft models path` prints the model cache location, `parsecraft cache`
+prints the conversion-cache location. Third-party caches keep their own homes
+(the docling.rs model cache lives in `~/.cache/docling.rs`, Hugging Face in
+`~/.cache/huggingface`).
+
+A licence acceptance recorded by an earlier version is still honoured: the old
+store is read from the platform application-data directory when the new file is
+absent, and the next acceptance writes the record to the new location.
+
 ## Commands
 
 ### `parsecraft backends`
@@ -274,7 +298,7 @@ The key covers the source bytes, the registered backend set
 `RoutingConstraints`, and the judge identity, so a fingerprint, constraint, or
 envelope-schema change is a **miss, never stale reuse**. Caching is **off by
 default** and opt-in per invocation; the root is `$PARSECRAFT_CACHE_DIR` or the
-platform user-cache directory followed by `parsecraft/conversions`. Inspect or
+`~/.cache/parsecraft/conversions`. Inspect or
 clear it with [`parsecraft cache`](#parsecraft-cache).
 
 #### Judge endpoint configuration
@@ -362,8 +386,8 @@ lists every key; per-entry sizes come from the library API
 (`parsecraft.cache.ConversionCache.entries()` → `key`, `size_bytes`). With
 `--clear` the output is the single line
 `removed N conversion cache entries from <root>`. The root honours
-`PARSECRAFT_CACHE_DIR` and otherwise defaults to the platform user-cache
-directory plus `parsecraft/conversions`.
+`PARSECRAFT_CACHE_DIR` and otherwise defaults to
+`~/.cache/parsecraft/conversions`.
 
 ### `parsecraft inspect`
 

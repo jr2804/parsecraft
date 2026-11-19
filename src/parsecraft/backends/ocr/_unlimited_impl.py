@@ -27,6 +27,7 @@ from typing import Protocol
 
 from transformers import AutoTokenizer  # ty: ignore[unresolved-import] — extra not installed in dev/CI; heavy by contract
 
+from parsecraft import paths
 from parsecraft.backends.errors import BackendError
 from parsecraft.backends.ocr._common import (
     analyze_source,
@@ -133,7 +134,7 @@ class _UnlimitedBackend:
 
     def _run_batch(self, request: ConversionRequest, batch: list[int]) -> list[str]:
         """Rasterize the batch to temp PNGs and run one ``infer_multi`` generation."""
-        with tempfile.TemporaryDirectory(prefix="parsecraft-ocr-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="parsecraft-ocr-", dir=paths.temp_dir()) as tmp:
             image_files = []
             for number in batch:
                 page_path = Path(tmp) / f"page-{number:04d}.png"

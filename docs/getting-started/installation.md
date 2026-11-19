@@ -113,6 +113,19 @@ the MinerU2.5 checkpoint itself (Apache-2.0 weights, MIT code), and the
 `onnxruntime`-carrying GIL-builds-only install constraint — is no longer a
 dependency. See ADR-0007's amendment.
 
+## Where files live
+
+ParseCraft writes to two directories under your home folder, on every platform:
+
+- `~/.cache/parsecraft` — model downloads, the conversion cache, and runtime
+  scratch space. Disposable: deleting it costs a re-download.
+- `~/.config/parsecraft` — the global configuration file and the recorded
+  licence acceptances. Durable.
+
+The OS application-data directory (`%LOCALAPPDATA%`) is not used, so the files
+stay where you can see them. See the [CLI reference](../reference/cli.md#files-on-disk)
+for the full table.
+
 ## Upgrading
 
 Releases are CalVer (`YYYY.M.N`); pin an exact version when you depend on
@@ -125,6 +138,9 @@ side — if you do not touch the named surface, a plain upgrade is safe.
 | `parsecraft.backends.docling.libreoffice` (`LIBREOFFICE_ENV`, `find_libreoffice_cmd`, `resolve_libreoffice_cmd`, `configure_libreoffice_env`, `LibreOfficeUnavailableError`) | 2026.10.16 | Copy the helpers you need, or pin `parsecraft==2026.10.15`. The module is gone, not renamed; the backend stopped calling it in 2026.10.15 and no declared format needs LibreOffice. |
 | `DOCLING_LIBREOFFICE_CMD` | 2026.10.15 | Nothing — the backend stopped reading it. Office formats are already parsed natively by `docling-rs` and the variable has no effect. |
 | OCR being implicitly off | next release | Nothing, unless you relied on it. OCR permission is now derived from `EnvironmentInfo.ocr_backends` — the registered OCR-family backends whose dependency group is installed or whose engine is usable — instead of an `ocr-` extra-name prefix that no extra ever carried. So installing `parsecraft[ocr]` or `parsecraft[surya]` now permits OCR where it previously never did, and on a host with no OCR harness an image-only page is planned onto an installed OCR-capable parser (`docling`, `marker`, `mineru`) with `intent=ocr` rather than degrading to native. Permission is not capability: whether a permitted backend runs is still decided by the existing GPU and VRAM gate, so installing `[ocr]` on a host without a usable GPU changes nothing. Pass `--no-ocr` to keep the old behaviour. |
+| the model or conversion cache | next release | Move it yourself, or let it re-download. The cache root moved from the platform user-cache directory (`%LOCALAPPDATA%\parsecraft` on Windows) to `~/.cache/parsecraft` on every platform. Nothing is lost — the cache is disposable — but a script that pins a path, or a `PARSECRAFT_CACHE_DIR` override, still points at the old location until you change it. |
+| the global config file | next release | Copy it. The global file moved from the platform config directory (`%LOCALAPPDATA%\parsecraft\config.toml` on Windows) to `~/.config/parsecraft/config.toml` on every platform; parsecraft reads only the new location, so an unmigrated file is ignored rather than half-read. |
+| recorded licence acceptances | next release | Nothing, once. An acceptance recorded by an older version (the store lived inside the model cache) is still read — from the old platform location when the paths differ, which is the case on Windows and macOS — so a conditional-licence backend stays accepted. Re-accept once to have the record written to `~/.config/parsecraft/license-acceptances.json`. |
 | `convert` stderr on OCR pages | next release | Nothing — additive. A `degraded-empty-output` quality signal, and a matching stderr line, now appears when an OCR-capable parser returns no blocks for a page that needed OCR and reported no diagnosis of its own; the constant `DEGRADED_EMPTY_OUTPUT_CODE` is exported from `parsecraft.pipeline`. Exit codes are unchanged: a document where every pass failed still exits 1 on the distinct `pipeline-all-passes-failed`, and an adapter that explained itself (for example docling with OCR models missing) reports through its own page diagnostic instead. |
 | `--backend docling` with `--backend-option` | next release | Fix the option name, or stop passing it. The docling adapter now honours `--backend-option` — until now it accepted the flag and discarded it — so a key it does not know is rejected with exit `1` and the accepted list, where it used to be ignored in silence. This only bites a script that already pinned `--backend docling` and passed a key nothing read: the flag requires `--backend`, so auto-mode callers cannot reach it. The other backends still ignore unknown keys (pc-23b); do not read their silence as acceptance. |
 

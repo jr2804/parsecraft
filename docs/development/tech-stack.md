@@ -11,7 +11,7 @@ These install with `pip install parsecraft` (`pyproject.toml` `[project] depende
 | [markdown-it-py](https://github.com/executablebooks/markdown-it-py) | CommonMark parsing for the Markdown input adapter (lazy import) |
 | [pydantic](https://docs.pydantic.dev/) | IR schema and validation |
 | [pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) | Configuration schema base |
-| [platformdirs](https://github.com/tox-dev/platformdirs) | Platform-appropriate config and cache directories |
+| [platformdirs](https://github.com/tox-dev/platformdirs) | Platform-appropriate directories — the generic config engine's default, and one migration probe that names the pre-2026.11 location; the application uses home-relative roots (`src/parsecraft/paths.py`) |
 | [tomlkit](https://github.com/python-poetry/tomlkit) | Style-preserving TOML read and write |
 | [typer](https://typer.tiangolo.com/) | CLI framework |
 

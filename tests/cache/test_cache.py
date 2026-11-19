@@ -41,10 +41,9 @@ def test_default_root_honours_env_override(tmp_path: Path, monkeypatch: pytest.M
     assert ConversionCache().root == tmp_path / "override"
 
 
-def test_default_root_falls_back_to_user_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_default_root_falls_back_to_the_home_relative_cache(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("PARSECRAFT_CACHE_DIR", raising=False)
-    assert default_cache_root().name == "conversions"
-    assert "parsecraft" in str(default_cache_root())
+    assert default_cache_root() == Path.home() / ".cache" / "parsecraft" / "conversions"
 
 
 # ── round trip + atomicity ─────────────────────────────────────────────────

@@ -29,8 +29,9 @@ return identical IR without dispatching any backend.
 - **Atomic writes:** temp file (`.key.pid.tmp`) + `os.replace`; keys are
   validated `^[0-9a-f]{64}$` (anything else raises in `put`, misses in
   `get` — no path traversal).
-- **Location:** `$PARSECRAFT_CACHE_DIR` or
-  `platformdirs.user_cache_path("parsecraft") / "conversions"`; never
+- **Location:** `$PARSECRAFT_CACHE_DIR` or `~/.cache/parsecraft/conversions`
+  (resolved through `parsecraft.paths.conversions_cache_dir()` — home-relative
+  on every platform, never the OS application-data directory); never
   `tests/test-cache/` (pytest-owned — see `tests/AGENTS.md`).
 - **No timestamps in payloads** beyond what the IR itself carries; entry
   listing is sorted by key for stable inspect output.

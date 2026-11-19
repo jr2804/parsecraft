@@ -51,6 +51,18 @@ Markdown as a deterministic projection.
   file writes pass `encoding="utf-8"` explicitly at their own call sites) and
   the `parsecraft.assets` info channel — first-use download notices routed to
   the current stderr, never stdout.
+- `paths.py` — the storage-location policy, the one owner of every runtime
+  directory: `cache_root()` (`~/.cache/parsecraft`) for models, conversions
+  and scratch space, `config_root()` (`~/.config/parsecraft`) for the global
+  config file and licence acceptances. Home-relative on every platform - the
+  OS application-data directory (`%LOCALAPPDATA%` on Windows) is not used,
+  because it buries the files deep in the user profile. Every package
+  resolves its directories here; no module may pick a location of its own
+  (two named exceptions: the config engine, which keeps platformdirs as its
+  vendorable default and takes an explicit `global_config_dir` instead, and
+  `paths.legacy_models_cache_dir()`, a migration probe that names the
+  pre-2026.11 platform location so a licence store written there is still
+  read).
 - `__about__.py` — package metadata; `__version__` re-exported from
   `parsecraft.__init__` (distribution metadata, fallback `0.0.0`).
 - `py.typed` — PEP 561 marker; must stay in the wheel

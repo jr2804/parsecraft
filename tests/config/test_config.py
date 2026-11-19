@@ -281,6 +281,12 @@ def test_global_config_path_uses_platformdirs(monkeypatch: pytest.MonkeyPatch) -
     assert engine.global_config_path() == Path("/config-root/config.toml")
 
 
+def test_global_config_path_uses_the_explicit_directory(tmp_path: Path) -> None:
+    """A caller-provided directory wins over the platform default (pc-3f5)."""
+    engine = ConfigEngine(Demo, app_name="parsecraft", global_config_dir=tmp_path)
+    assert engine.global_config_path() == tmp_path / "config.toml"
+
+
 def test_cli_accepts_dotted_keys() -> None:
     engine = ConfigEngine(Demo, app_name="parsecraft")
     engine.set_cli({"log.level": "trace"})

@@ -14,6 +14,7 @@ Kept compact — agents hallucinate less when they know where definitions live.
 | What                   | Where                                                           | Key names                                       |
 | ---------------------- | --------------------------------------------------------------- | ----------------------------------------------- |
 | Package source root    | `src/parsecraft/`  | `__init__.py`, `__about__.py` (version)         |
+| Runtime storage dirs   | `src/parsecraft/paths.py`                        | `cache_root()`, `config_root()`, `models_cache_dir()`, `conversions_cache_dir()`, `temp_dir()`, `global_config_file()` |
 | CLI entry points       | `src/parsecraft/cli/`            | `app.py` (Typer app), `args.py`, `commands.py`  |
 | Test suite             | `tests/`                                                        | `test_*.py`, `conftest.py`                      |
 | Issue tracker (beads)  | `.beads/`                                                       | `bd` CLI, issue prefix `pc`                     |
